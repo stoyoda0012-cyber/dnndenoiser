@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dnndenoiser"
+version = "0.1.0"
+description = "Deep-learning denoiser for XPS (X-ray photoelectron spectroscopy) spectra"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Satoshi Toyoda" }]
+keywords = ["XPS", "denoising", "spectroscopy", "neural network", "PyTorch"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+# Every entry has an importer in the shipped package, the CLI, the tests or the
+# reference benchmark. Two more were declared once for modules that are not part
+# of this distribution and are not listed here.
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "torch>=2.0",
+    "h5py>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "ruff>=0.4"]
+
+[project.scripts]
+dnndenoiser = "dnndenoiser.cli:main"
+
+# All library code lives under the `dnndenoiser` package in a `src/` layout.
+# `benchmarks` and `tests` sit outside `src/`, so package discovery never sees
+# them and they are not distributed as importable library packages.
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["dnndenoiser*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# E+F are enforced and clean. Candidates for a follow-up cleanup, mostly
+# auto-fixable: I (isort), B (bugbear), UP (pyupgrade), W (pycodestyle warnings).
+select = ["E", "F"]
+ignore = [
+    "E501", # line too long — not enforced
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

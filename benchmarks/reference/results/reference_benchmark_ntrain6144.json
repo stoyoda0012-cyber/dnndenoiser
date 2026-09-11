@@ -1,0 +1,2489 @@
+{
+  "record_version": "1",
+  "generated_utc": "2026-09-08T00:00:51+00:00",
+  "script": "benchmarks/reference/reference_benchmark.py",
+  "claim_scope": {
+    "supports": "Architecture X, at the hyperparameters this software suggests for it, trained on the synthetic training pool described under `design.data` and evaluated on independently drawn synthetic test spectra, scored the reported SNR gain.",
+    "does_not_support": [
+      "that architecture X is intrinsically better than architecture Y",
+      "that this ranking holds on measured spectra, on other peak sets, at other training-set sizes, or outside the noise levels listed here",
+      "that a difference smaller than the reported across-seed spread is real",
+      "any statement about physically meaningful quantities (peak areas, positions, widths) surviving denoising: those were not measured"
+    ],
+    "regime_note": "Training and inference operate at the same signal-to-noise regime: every evaluated noise level is also present in the training pool. No claim is made about extrapolation to unseen noise levels.",
+    "denoised_output_is_a_model_estimate": "The evaluated quantity is agreement with a known synthetic reference. A high SNR gain does not establish that structure in the output is real; the network can oversmooth, suppress weak features, and produce plausible structure that was not in the input."
+  },
+  "environment": {
+    "device_requested_resolved_to": "mps",
+    "python": "3.12.11",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "machine": "arm64",
+    "torch": "2.9.1",
+    "numpy": "2.3.3",
+    "scipy": "1.16.3"
+  },
+  "design": {
+    "data": {
+      "provenance": "generated in-process by dnndenoiser.data.synthetic_generator.SyntheticGenerator; no measured data, no external files",
+      "peak_set_id": "C1s_adventitious",
+      "peak_set_peaks_mu_fwhm_intensity": [
+        [
+          284.8,
+          1.2,
+          1.0
+        ],
+        [
+          286.3,
+          1.3,
+          0.3
+        ],
+        [
+          288.5,
+          1.4,
+          0.15
+        ]
+      ],
+      "energy_range_ev": [
+        277.79998779296875,
+        295.5
+      ],
+      "energy_step_ev": 0.069427490234375,
+      "generator_config": {
+        "n_energy_points": 256,
+        "eta": 0.3,
+        "use_pseudo_voigt": true,
+        "background_type": "linear",
+        "background_level": 0.05,
+        "background_slope": 0.001,
+        "intensity_variation": 0.2,
+        "position_jitter": 0.3,
+        "width_variation": 0.1,
+        "normalize": true
+      },
+      "n_train_spectra_per_noise_level": 2048,
+      "n_train_spectra_total_pooled": 6144,
+      "n_test_spectra_per_noise_level": 512
+    },
+    "split_rule": {
+      "rule": "train and test are independent draws from disjoint RNG streams, not a shuffle of one draw",
+      "leakage_preventing_unit": "the independently generated spectrum",
+      "train_stream_seed_formula": "10000000 + 1000*seed_index + level_index",
+      "test_stream_seed_formula": "90000000 + 1000*seed_index + level_index",
+      "verified": "row-hash comparison for identity, plus a nearest-neighbour distance comparison for near-duplication; see self_checks.leakage",
+      "shared_test_set": "within one seed every architecture is trained on the same arrays and scored on the same test spectra, which is what makes the comparison paired"
+    },
+    "noise_model": {
+      "config": "NoiseConfig(noise_type='poisson', poisson_level=L)",
+      "levels": [
+        100.0,
+        1000.0,
+        10000.0
+      ],
+      "implementation_note": "dnndenoiser.data.synthetic_generator.add_poisson_noise normalizes the spectrum by its maximum and scales it to lambda = (10000/L)**2 at the peak. This benchmark does not use the package default; it names its noise rule explicitly: the Gaussian approximation to the Poisson distribution (heteroscedastic, sd proportional to sqrt(intensity)), selected once from the peak lambda and applied to every bin when that lambda exceeds 20, and true Poisson counts otherwise -- so the approximation is used at L=100 and L=1000, and at L=10000 (lambda 1) Poisson counts are drawn. That rule was the package default until 2026-09-11; the default is now true Poisson with a per-bin admissibility test, and the benchmark keeps the earlier rule so that its published measurement stays exactly reproducible. This is the package's own noise model, not an independent one.",
+      "training_pool": "one model per architecture per seed, trained on all noise levels pooled in equal proportion; evaluated on each level separately"
+    },
+    "seeds": {
+      "n_seeds": 5,
+      "what_a_seed_varies": "both the data draw (train and test RNG stream seeds) and the model init and batch order (torch.manual_seed)",
+      "torch_seed_formula": "20000 + seed_index"
+    },
+    "metric": {
+      "name": "SNR gain (dB)",
+      "definition": "signal power = mean(reference**2); noise power = mean((estimate - reference)**2); SNR_dB = 10*log10(signal power / noise power); gain = output SNR - input SNR",
+      "reference": "the clean synthetic spectrum",
+      "computed_over": "the full 256-point energy axis, background included",
+      "aggregation": "mean over the test spectra of one run gives that run's score; the reported mean and SD are over runs (seeds)",
+      "independence_assumption": "dispersion is reported across independent training runs (seeds), which is the unit that supports comparing architectures. Per-spectrum SNR values within one test set share a single trained model and are not independent replicates; they must not be used to shrink the error bar."
+    },
+    "training_recipe": {
+      "optimizer": "Adam",
+      "weight_decay": 1e-09,
+      "loss": "HuberLoss(delta=1.0)",
+      "lr_scheduler": "StepLR(step_size=10, gamma=0.1)",
+      "gradient_clip_norm": 4.0,
+      "target": "noise2clean (the clean synthetic spectrum)",
+      "model_config": {
+        "num_features": 256,
+        "num_hidden_units": 100,
+        "encoder_output_dim": 64
+      },
+      "epochs_cap_applied": null,
+      "schedule_caveat": "the LR schedule is fixed at StepLR(step_size=10, gamma=0.1) while the suggested epoch counts differ (30 vs 50), so architectures assigned 50 epochs spend their extra epochs at a learning rate already reduced by 1e-2 or more. This is what the software does; it is not a controlled budget."
+    },
+    "conditions": {
+      "primary": {
+        "name": "suggested-hyperparameters",
+        "hyperparameters": {
+          "bi-LSTM": {
+            "lr": 0.01,
+            "epochs": 30,
+            "batch_size": 32
+          },
+          "LSTM": {
+            "lr": 0.01,
+            "epochs": 30,
+            "batch_size": 32
+          },
+          "GRU": {
+            "lr": 0.01,
+            "epochs": 30,
+            "batch_size": 32
+          },
+          "Transformer": {
+            "lr": 0.001,
+            "epochs": 50,
+            "batch_size": 32
+          },
+          "ResNet-FCNN": {
+            "lr": 0.001,
+            "epochs": 50,
+            "batch_size": 16
+          },
+          "ResNet-1DCNN": {
+            "lr": 0.001,
+            "epochs": 50,
+            "batch_size": 16
+          },
+          "FCNN": {
+            "lr": 0.01,
+            "epochs": 30,
+            "batch_size": 32
+          },
+          "1D-CNN": {
+            "lr": 0.01,
+            "epochs": 30,
+            "batch_size": 32
+          }
+        },
+        "why": "this is what the software fills in for the user, so the result describes the software's behaviour rather than the architectures in the abstract",
+        "supports": "architecture X at its suggested settings scored ... and NOT architecture X is intrinsically better"
+      },
+      "secondary": {
+        "name": "matched-budget",
+        "hyperparameters": {
+          "lr": 0.001,
+          "epochs": 30,
+          "batch_size": 32
+        },
+        "why": "identical epochs, batch size and learning rate for every architecture, so the primary result can be read against one condition where the budget is not confounded with the architecture"
+      }
+    },
+    "reproducibility": {
+      "bit_exact_across_devices": false,
+      "detail": "Floating-point reduction order differs between CPU, MPS and CUDA backends, and MPS/CUDA kernels are not required to be run-to-run deterministic. Re-running this script on a different device, or on a different torch build, will not reproduce these numbers bit-for-bit and may move them by a few tenths of a dB. What is reproducible: the generated data (numpy Generator, platform independent), the parameter counts, the experimental design, and \u2014 the thing the record is for \u2014 the procedure by which the numbers can be regenerated and checked.",
+      "measured_here": "self_checks.repeat_run_determinism trains the baseline architecture twice with identical inputs on this device and reports whether the scores came out bit-identical. That is a same-device statement only."
+    }
+  },
+  "self_checks": {
+    "parameter_counts": {
+      "observed": {
+        "FCNN": 37345,
+        "ResNet-FCNN": 658177,
+        "1D-CNN": 151785,
+        "ResNet-1DCNN": 91682,
+        "GRU": 193957,
+        "LSTM": 249957,
+        "bi-LSTM": 579657,
+        "Transformer": 861706
+      },
+      "mismatches": {},
+      "passed": true
+    },
+    "gui_hyperparameter_crosscheck": {
+      "status": "compared",
+      "gui_source": "gui/panels/training_panel.py",
+      "gui_values": {
+        "bi-LSTM": {
+          "lr": 0.01,
+          "epochs": 30,
+          "batch_size": 32
+        },
+        "LSTM": {
+          "lr": 0.01,
+          "epochs": 30,
+          "batch_size": 32
+        },
+        "GRU": {
+          "lr": 0.01,
+          "epochs": 30,
+          "batch_size": 32
+        },
+        "Transformer": {
+          "lr": 0.001,
+          "epochs": 50,
+          "batch_size": 32
+        },
+        "ResNet-FCNN": {
+          "lr": 0.001,
+          "epochs": 50,
+          "batch_size": 16
+        },
+        "ResNet-1DCNN": {
+          "lr": 0.001,
+          "epochs": 50,
+          "batch_size": 16
+        },
+        "FCNN": {
+          "lr": 0.01,
+          "epochs": 30,
+          "batch_size": 32
+        },
+        "1D-CNN": {
+          "lr": 0.01,
+          "epochs": 30,
+          "batch_size": 32
+        }
+      },
+      "passed": true
+    },
+    "leakage": {
+      "n_train_spectra": 6144,
+      "n_test_spectra": 1536,
+      "identical_clean_spectra": 0,
+      "identical_noisy_spectra": 0,
+      "passed": true,
+      "near_duplicate_analysis": {
+        "what_it_measures": "RMS distance from each clean test spectrum to its nearest clean training spectrum, against the same statistic computed within the training set. A ratio near 1 means the test set is a fresh draw from the same distribution, not a disguised copy of the training set; it also means this benchmark measures in-distribution performance only.",
+        "test_to_train_nn_rms_median": 0.007047706102354404,
+        "test_to_train_nn_rms_min": 0.0025337901160141507,
+        "train_to_train_nn_rms_median": 0.007051512861566926,
+        "ratio_median_test_over_train": 0.9994601500008219
+      }
+    },
+    "repeat_run_determinism": null
+  },
+  "runs": [
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "FCNN",
+      "seed_index": 0,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 37345,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.34429729680636,
+          "output_snr_db_mean": 27.808020115716417,
+          "snr_gain_db_mean": -8.536277181089954,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.864529059180918
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.407687670998605,
+          "output_snr_db_mean": 26.042588261078006,
+          "snr_gain_db_mean": 9.634900590079399,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.4658683777285684
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.6896419580319137,
+          "output_snr_db_mean": 17.235987659251798,
+          "snr_gain_db_mean": 20.92562961728371,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.3965020680415625
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 0.00018403044418846548,
+      "train_seconds": 15.619517041021027
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "ResNet-FCNN",
+      "seed_index": 0,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 16
+      },
+      "n_trainable_parameters": 658177,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.34429729680636,
+          "output_snr_db_mean": 38.94663763648482,
+          "snr_gain_db_mean": 2.6023403396784612,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.9113896395149834
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.407687670998605,
+          "output_snr_db_mean": 30.152362842907728,
+          "snr_gain_db_mean": 13.74467517190912,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.7653054279316986
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.6896419580319137,
+          "output_snr_db_mean": 17.530866060226927,
+          "snr_gain_db_mean": 21.22050801825884,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.190392525154317
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 2.9692375141128952e-05,
+      "train_seconds": 103.03992791697965
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "1D-CNN",
+      "seed_index": 0,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 151785,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.34429729680636,
+          "output_snr_db_mean": 28.049740466756646,
+          "snr_gain_db_mean": -8.294556830049721,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.786264485830146
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.407687670998605,
+          "output_snr_db_mean": 26.51018458862064,
+          "snr_gain_db_mean": 10.102496917622034,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.307227490524708
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.6896419580319137,
+          "output_snr_db_mean": 17.654041087702673,
+          "snr_gain_db_mean": 21.343683045734586,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.7258662690340585
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 0.000286476704635182,
+      "train_seconds": 27.256995125004323
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "ResNet-1DCNN",
+      "seed_index": 0,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 16
+      },
+      "n_trainable_parameters": 91682,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.34429729680636,
+          "output_snr_db_mean": 31.462540737350416,
+          "snr_gain_db_mean": -4.881756559455951,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.186329314200981
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.407687670998605,
+          "output_snr_db_mean": 27.822310425814585,
+          "snr_gain_db_mean": 11.414622754815976,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.5468239414587304
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.6896419580319137,
+          "output_snr_db_mean": 17.73370201857008,
+          "snr_gain_db_mean": 21.423343976601995,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.741251147134572
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 0.00030987282650585257,
+      "train_seconds": 179.7003246669774
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "GRU",
+      "seed_index": 0,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 193957,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.34429729680636,
+          "output_snr_db_mean": 34.334465023234344,
+          "snr_gain_db_mean": -2.009832273572025,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.2421295467066087
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.407687670998605,
+          "output_snr_db_mean": 29.20744566531561,
+          "snr_gain_db_mean": 12.799757994317002,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.6429243535795184
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.6896419580319137,
+          "output_snr_db_mean": 16.74152536957902,
+          "snr_gain_db_mean": 20.431167327610936,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.0772617915721225
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 3.770456184308083e-05,
+      "train_seconds": 24.50369712500833
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "LSTM",
+      "seed_index": 0,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 249957,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.34429729680636,
+          "output_snr_db_mean": 32.69856821422538,
+          "snr_gain_db_mean": -3.6457290825809823,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.2537875173600335
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.407687670998605,
+          "output_snr_db_mean": 28.71310964305815,
+          "snr_gain_db_mean": 12.305421972059541,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.590807007804692
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.6896419580319137,
+          "output_snr_db_mean": 16.937964103336732,
+          "snr_gain_db_mean": 20.62760606136865,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.146274269033225
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 4.408580681077486e-05,
+      "train_seconds": 20.485598499974003
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "bi-LSTM",
+      "seed_index": 0,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 579657,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.34429729680636,
+          "output_snr_db_mean": 34.98161336408695,
+          "snr_gain_db_mean": -1.3626839327194202,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.193676193463708
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.407687670998605,
+          "output_snr_db_mean": 29.42673413046785,
+          "snr_gain_db_mean": 13.01904645946924,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.717169092812773
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.6896419580319137,
+          "output_snr_db_mean": 16.813547468344556,
+          "snr_gain_db_mean": 20.503189426376473,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.139430528419792
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 3.071079168156151e-05,
+      "train_seconds": 31.265589291986544
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "Transformer",
+      "seed_index": 0,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 861706,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.34429729680636,
+          "output_snr_db_mean": 27.293875944214925,
+          "snr_gain_db_mean": -9.05042135259144,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.627472636871144
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.407687670998605,
+          "output_snr_db_mean": 26.051244648852617,
+          "snr_gain_db_mean": 9.64355697785401,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.632203044833671
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.6896419580319137,
+          "output_snr_db_mean": 17.838656059969786,
+          "snr_gain_db_mean": 21.5282980180017,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.9521955686107324
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 0.00034461687285632553,
+      "train_seconds": 134.56755224999506
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "FCNN",
+      "seed_index": 1,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 37345,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.3024597964015,
+          "output_snr_db_mean": 28.109603000641435,
+          "snr_gain_db_mean": -8.192856795760065,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.091507353491219
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.343401021290845,
+          "output_snr_db_mean": 26.10172566138972,
+          "snr_gain_db_mean": 9.758324640098877,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.502591686807492
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.601192880598867,
+          "output_snr_db_mean": 16.94747250445735,
+          "snr_gain_db_mean": 20.548665385056218,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.288737404018432
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 0.0001464221706631482,
+      "train_seconds": 15.959321458998602
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "ResNet-FCNN",
+      "seed_index": 1,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 16
+      },
+      "n_trainable_parameters": 658177,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.3024597964015,
+          "output_snr_db_mean": 38.98626068373325,
+          "snr_gain_db_mean": 2.6838008873317474,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.936706400986975
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.343401021290845,
+          "output_snr_db_mean": 30.09956619486546,
+          "snr_gain_db_mean": 13.756165173574619,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.726289933817304
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.601192880598867,
+          "output_snr_db_mean": 17.513648383257582,
+          "snr_gain_db_mean": 21.114841263856448,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.990846198520715
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 2.997760252299031e-05,
+      "train_seconds": 104.56075466697803
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "1D-CNN",
+      "seed_index": 1,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 151785,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.3024597964015,
+          "output_snr_db_mean": 30.085408620749348,
+          "snr_gain_db_mean": -6.2170511756521485,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.856472916205979
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.343401021290845,
+          "output_snr_db_mean": 27.450463065737058,
+          "snr_gain_db_mean": 11.107062044446213,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.5121521346782627
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.601192880598867,
+          "output_snr_db_mean": 17.998187160790522,
+          "snr_gain_db_mean": 21.59938004138939,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.531701067873561
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 0.00026439049770488054,
+      "train_seconds": 26.92547850002302
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "ResNet-1DCNN",
+      "seed_index": 1,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 16
+      },
+      "n_trainable_parameters": 91682,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.3024597964015,
+          "output_snr_db_mean": 31.99010092536669,
+          "snr_gain_db_mean": -4.312358871034812,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.1500387948193804
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.343401021290845,
+          "output_snr_db_mean": 28.272542207268387,
+          "snr_gain_db_mean": 11.929141185977542,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.6068940929318134
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.601192880598867,
+          "output_snr_db_mean": 17.932653433571137,
+          "snr_gain_db_mean": 21.533846314170003,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.6547830402128767
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 0.00029975909581025917,
+      "train_seconds": 181.71628787499503
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "GRU",
+      "seed_index": 1,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 193957,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.3024597964015,
+          "output_snr_db_mean": 35.18402054180255,
+          "snr_gain_db_mean": -1.1184392545989457,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.5966052326001376
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.343401021290845,
+          "output_snr_db_mean": 29.602401680134932,
+          "snr_gain_db_mean": 13.25900065884409,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.771687352917055
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.601192880598867,
+          "output_snr_db_mean": 16.830563850913727,
+          "snr_gain_db_mean": 20.431756731512593,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.886605152573399
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 3.746194995339162e-05,
+      "train_seconds": 22.224525666999398
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "LSTM",
+      "seed_index": 1,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 249957,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.3024597964015,
+          "output_snr_db_mean": 34.12099735697449,
+          "snr_gain_db_mean": -2.181462439427011,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.603775514180566
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.343401021290845,
+          "output_snr_db_mean": 29.150627664961064,
+          "snr_gain_db_mean": 12.807226643670218,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.833331523083562
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.601192880598867,
+          "output_snr_db_mean": 17.056051862931508,
+          "snr_gain_db_mean": 20.657244743530377,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.949554623847465
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 4.313733261559113e-05,
+      "train_seconds": 20.083906125015346
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "bi-LSTM",
+      "seed_index": 1,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 579657,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.3024597964015,
+          "output_snr_db_mean": 35.71307599938732,
+          "snr_gain_db_mean": -0.5893837970141774,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.377676146885455
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.343401021290845,
+          "output_snr_db_mean": 29.756656638825284,
+          "snr_gain_db_mean": 13.413255617534439,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.8352656753407897
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.601192880598867,
+          "output_snr_db_mean": 16.892592065921892,
+          "snr_gain_db_mean": 20.493784946520762,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.0637478840846954
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 3.191540959808966e-05,
+      "train_seconds": 31.05862250001519
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "Transformer",
+      "seed_index": 1,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 861706,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.3024597964015,
+          "output_snr_db_mean": 27.082058551936708,
+          "snr_gain_db_mean": -9.22040124446479,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.4401308657114167
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.343401021290845,
+          "output_snr_db_mean": 25.833041526273114,
+          "snr_gain_db_mean": 9.489640504982265,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.308542092406537
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.601192880598867,
+          "output_snr_db_mean": 18.091043166017577,
+          "snr_gain_db_mean": 21.69223604661644,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.718130781535303
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 0.0003382536536567689,
+      "train_seconds": 135.49196483398555
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "FCNN",
+      "seed_index": 2,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 37345,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.42795669455957,
+          "output_snr_db_mean": 28.195721390511906,
+          "snr_gain_db_mean": -8.232235304047657,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.835262166189024
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.36303796951453,
+          "output_snr_db_mean": 25.773302626737717,
+          "snr_gain_db_mean": 9.410264657223188,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.4897766186259083
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5491440476632947,
+          "output_snr_db_mean": 16.901282489567595,
+          "snr_gain_db_mean": 20.45042653723089,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.5530858505617475
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 0.00014360497963631738,
+      "train_seconds": 15.984925374999875
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "ResNet-FCNN",
+      "seed_index": 2,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 16
+      },
+      "n_trainable_parameters": 658177,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.42795669455957,
+          "output_snr_db_mean": 39.25001100226619,
+          "snr_gain_db_mean": 2.8220543077066282,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.939453387991556
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.36303796951453,
+          "output_snr_db_mean": 29.78386100533709,
+          "snr_gain_db_mean": 13.420823035822561,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.524291714276895
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5491440476632947,
+          "output_snr_db_mean": 17.270381731694172,
+          "snr_gain_db_mean": 20.819525779357466,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.09327368070924
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 3.125614027510437e-05,
+      "train_seconds": 107.87116129198694
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "1D-CNN",
+      "seed_index": 2,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 151785,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.42795669455957,
+          "output_snr_db_mean": 27.856035477559686,
+          "snr_gain_db_mean": -8.571921216999876,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.6270733727507785
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.36303796951453,
+          "output_snr_db_mean": 25.946527787908177,
+          "snr_gain_db_mean": 9.583489818393645,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.359548912213727
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5491440476632947,
+          "output_snr_db_mean": 17.509368402486405,
+          "snr_gain_db_mean": 21.058512450149703,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.667171522393127
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 0.000295252499806035,
+      "train_seconds": 25.41305875001126
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "ResNet-1DCNN",
+      "seed_index": 2,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 16
+      },
+      "n_trainable_parameters": 91682,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.42795669455957,
+          "output_snr_db_mean": 30.810110170024117,
+          "snr_gain_db_mean": -5.617846524535448,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.6989516822705886
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.36303796951453,
+          "output_snr_db_mean": 27.703080874830576,
+          "snr_gain_db_mean": 11.340042905316047,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.4865215241402012
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5491440476632947,
+          "output_snr_db_mean": 17.584119066400895,
+          "snr_gain_db_mean": 21.133263114064192,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.543698127964755
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 0.000312178278780569,
+      "train_seconds": 188.3089453749999
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "GRU",
+      "seed_index": 2,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 193957,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.42795669455957,
+          "output_snr_db_mean": 34.68191363917501,
+          "snr_gain_db_mean": -1.7460430553845567,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.1668055980330148
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.36303796951453,
+          "output_snr_db_mean": 29.297823743823137,
+          "snr_gain_db_mean": 12.934785774308612,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.473230865332925
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5491440476632947,
+          "output_snr_db_mean": 16.741971094636675,
+          "snr_gain_db_mean": 20.291115142299972,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.2072438976781426
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 3.8302971537026074e-05,
+      "train_seconds": 20.87390645800042
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "LSTM",
+      "seed_index": 2,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 249957,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.42795669455957,
+          "output_snr_db_mean": 34.005458711828766,
+          "snr_gain_db_mean": -2.422497982730806,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.311275834237911
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.36303796951453,
+          "output_snr_db_mean": 28.65271573131964,
+          "snr_gain_db_mean": 12.289677761805109,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.519546441814682
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5491440476632947,
+          "output_snr_db_mean": 16.830704349904146,
+          "snr_gain_db_mean": 20.379848397567443,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.22111112074098
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 4.564992706453571e-05,
+      "train_seconds": 20.551701375021366
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "bi-LSTM",
+      "seed_index": 2,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 579657,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.42795669455957,
+          "output_snr_db_mean": 36.118999838060375,
+          "snr_gain_db_mean": -0.30895685649919424,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.348832990964656
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.36303796951453,
+          "output_snr_db_mean": 29.38426910784382,
+          "snr_gain_db_mean": 13.021231138329288,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.4863164285917714
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5491440476632947,
+          "output_snr_db_mean": 17.222965961489482,
+          "snr_gain_db_mean": 20.772110009152776,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.2758460595646115
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 3.0762889982346074e-05,
+      "train_seconds": 31.391038125002524
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "Transformer",
+      "seed_index": 2,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 861706,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.42795669455957,
+          "output_snr_db_mean": 27.492982943523053,
+          "snr_gain_db_mean": -8.934973751036516,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.3732936149495307
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.36303796951453,
+          "output_snr_db_mean": 26.115003036275887,
+          "snr_gain_db_mean": 9.751965066761358,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.416115132402607
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5491440476632947,
+          "output_snr_db_mean": 17.5674824565249,
+          "snr_gain_db_mean": 21.116626504188197,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.7788192995722962
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 0.0003438782629624863,
+      "train_seconds": 134.15674354098155
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "FCNN",
+      "seed_index": 3,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 37345,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.35849020872243,
+          "output_snr_db_mean": 27.591898027276688,
+          "snr_gain_db_mean": -8.766592181445738,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.8903767887799474
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.34242984874918,
+          "output_snr_db_mean": 25.581045827958416,
+          "snr_gain_db_mean": 9.238615979209234,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.453051832801886
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5364996686792374,
+          "output_snr_db_mean": 16.712669255758303,
+          "snr_gain_db_mean": 20.24916892443754,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.614339540399978
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 0.000174828651779535,
+      "train_seconds": 14.945376000017859
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "ResNet-FCNN",
+      "seed_index": 3,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 16
+      },
+      "n_trainable_parameters": 658177,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.35849020872243,
+          "output_snr_db_mean": 38.99269150308509,
+          "snr_gain_db_mean": 2.634201294362666,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.8257395633717186
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.34242984874918,
+          "output_snr_db_mean": 29.959008572108623,
+          "snr_gain_db_mean": 13.616578723359444,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.652558205785845
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5364996686792374,
+          "output_snr_db_mean": 17.13491221589381,
+          "snr_gain_db_mean": 20.671411884573047,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.4685986213153885
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 3.106017526732785e-05,
+      "train_seconds": 98.92712562502129
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "1D-CNN",
+      "seed_index": 3,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 151785,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.35849020872243,
+          "output_snr_db_mean": 27.995329856160588,
+          "snr_gain_db_mean": -8.363160352561835,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.751969696994829
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.34242984874918,
+          "output_snr_db_mean": 26.135770912785176,
+          "snr_gain_db_mean": 9.793341064035996,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.3340688819134465
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5364996686792374,
+          "output_snr_db_mean": 17.74773681588866,
+          "snr_gain_db_mean": 21.2842364845679,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.090784586945081
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 0.0003086632219340875,
+      "train_seconds": 25.45659554199665
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "ResNet-1DCNN",
+      "seed_index": 3,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 16
+      },
+      "n_trainable_parameters": 91682,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.35849020872243,
+          "output_snr_db_mean": 31.573147164855413,
+          "snr_gain_db_mean": -4.7853430438670115,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.7756065761801922
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.34242984874918,
+          "output_snr_db_mean": 28.04716219123909,
+          "snr_gain_db_mean": 11.704732342489905,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.5075129894224855
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5364996686792374,
+          "output_snr_db_mean": 17.5836665483209,
+          "snr_gain_db_mean": 21.120166217000136,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.8176089407208242
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 0.00031648705830396767,
+      "train_seconds": 173.87369266699534
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "GRU",
+      "seed_index": 3,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 193957,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.35849020872243,
+          "output_snr_db_mean": 35.11145038832947,
+          "snr_gain_db_mean": -1.247039820392953,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.187828264894718
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.34242984874918,
+          "output_snr_db_mean": 29.38227478173866,
+          "snr_gain_db_mean": 13.039844932989475,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.6102287961640904
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5364996686792374,
+          "output_snr_db_mean": 16.369466145437485,
+          "snr_gain_db_mean": 19.905965814116723,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.279456739586842
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 3.791979646431779e-05,
+      "train_seconds": 20.132704874995397
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "LSTM",
+      "seed_index": 3,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 249957,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.35849020872243,
+          "output_snr_db_mean": 34.524425438386615,
+          "snr_gain_db_mean": -1.8340647703358093,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.2078503872696555
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.34242984874918,
+          "output_snr_db_mean": 29.107477143770147,
+          "snr_gain_db_mean": 12.765047295020967,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.6039879799539953
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5364996686792374,
+          "output_snr_db_mean": 16.645006316476255,
+          "snr_gain_db_mean": 20.181505985155493,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.340815787654568
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 4.108278165896687e-05,
+      "train_seconds": 19.52352562500164
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "bi-LSTM",
+      "seed_index": 3,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 579657,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.35849020872243,
+          "output_snr_db_mean": 37.163140875763915,
+          "snr_gain_db_mean": 0.8046506670414957,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.1352781631004154
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.34242984874918,
+          "output_snr_db_mean": 29.552929982845647,
+          "snr_gain_db_mean": 13.210500134096467,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.6658670630875068
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5364996686792374,
+          "output_snr_db_mean": 16.62535082209553,
+          "snr_gain_db_mean": 20.161850490774768,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.531614991734934
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 2.7604920087280032e-05,
+      "train_seconds": 30.29920366598526
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "Transformer",
+      "seed_index": 3,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 861706,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.35849020872243,
+          "output_snr_db_mean": 26.47355766375884,
+          "snr_gain_db_mean": -9.884932544963583,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.2954394737383517
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.34242984874918,
+          "output_snr_db_mean": 25.339779674324582,
+          "snr_gain_db_mean": 8.997349825575402,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.2852178807694785
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.5364996686792374,
+          "output_snr_db_mean": 17.75109671922938,
+          "snr_gain_db_mean": 21.28759638790862,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.152577387963828
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 0.0003568469311782489,
+      "train_seconds": 131.47324424999533
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "FCNN",
+      "seed_index": 4,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 37345,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.382774011314055,
+          "output_snr_db_mean": 25.340636190911365,
+          "snr_gain_db_mean": -11.04213782040269,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.2680288180273154
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.387473938111285,
+          "output_snr_db_mean": 24.42159978720619,
+          "snr_gain_db_mean": 8.034125849094904,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.769111121715351
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.598031352692482,
+          "output_snr_db_mean": 17.136977625556625,
+          "snr_gain_db_mean": 20.735008978249105,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.4640755643126155
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 0.00020804604559998552,
+      "train_seconds": 15.037083500006702
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "ResNet-FCNN",
+      "seed_index": 4,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 16
+      },
+      "n_trainable_parameters": 658177,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.382774011314055,
+          "output_snr_db_mean": 38.52131221009634,
+          "snr_gain_db_mean": 2.1385381987822814,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.7930812355662638
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.387473938111285,
+          "output_snr_db_mean": 30.014289384762318,
+          "snr_gain_db_mean": 13.626815446651033,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.730420848359446
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.598031352692482,
+          "output_snr_db_mean": 17.559342916891353,
+          "snr_gain_db_mean": 21.157374269583837,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.118637603533439
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 3.193011824009773e-05,
+      "train_seconds": 100.17429325002013
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "1D-CNN",
+      "seed_index": 4,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 151785,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.382774011314055,
+          "output_snr_db_mean": 33.48570799136308,
+          "snr_gain_db_mean": -2.897066019950982,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.0955701479876914
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.387473938111285,
+          "output_snr_db_mean": 28.6698642102947,
+          "snr_gain_db_mean": 12.282390272183417,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.5139544350747265
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.598031352692482,
+          "output_snr_db_mean": 18.065491410703356,
+          "snr_gain_db_mean": 21.66352276339584,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.018123042210683
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 0.0002390322351099409,
+      "train_seconds": 25.9676902499923
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "ResNet-1DCNN",
+      "seed_index": 4,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 16
+      },
+      "n_trainable_parameters": 91682,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.382774011314055,
+          "output_snr_db_mean": 31.443413504185777,
+          "snr_gain_db_mean": -4.93936050712828,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.932302207862531
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.387473938111285,
+          "output_snr_db_mean": 28.091067585844982,
+          "snr_gain_db_mean": 11.703593647733694,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.459116902474348
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.598031352692482,
+          "output_snr_db_mean": 17.957566806625792,
+          "snr_gain_db_mean": 21.555598159318272,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.6966300806709014
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 0.00031314383543682805,
+      "train_seconds": 175.01369287498528
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "GRU",
+      "seed_index": 4,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 193957,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.382774011314055,
+          "output_snr_db_mean": 34.12933742817128,
+          "snr_gain_db_mean": -2.2534365831427667,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.3079619740115875
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.387473938111285,
+          "output_snr_db_mean": 29.195371131427592,
+          "snr_gain_db_mean": 12.807897193316304,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.5862415875044715
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.598031352692482,
+          "output_snr_db_mean": 17.090346597058918,
+          "snr_gain_db_mean": 20.6883779497514,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.242802238022568
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 4.103638673313981e-05,
+      "train_seconds": 20.21516016701935
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "LSTM",
+      "seed_index": 4,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 249957,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.382774011314055,
+          "output_snr_db_mean": 34.03595410669611,
+          "snr_gain_db_mean": -2.346819904617943,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.3858650973649373
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.387473938111285,
+          "output_snr_db_mean": 28.920981487462914,
+          "snr_gain_db_mean": 12.533507549351627,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.6509551258648707
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.598031352692482,
+          "output_snr_db_mean": 17.022308255141432,
+          "snr_gain_db_mean": 20.620339607833913,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.233994239721133
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 4.08587426742694e-05,
+      "train_seconds": 19.770285209000576
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "bi-LSTM",
+      "seed_index": 4,
+      "hyperparameters": {
+        "lr": 0.01,
+        "epochs": 30,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 579657,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.382774011314055,
+          "output_snr_db_mean": 35.54535488449677,
+          "snr_gain_db_mean": -0.8374191268172879,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.1281244103423536
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.387473938111285,
+          "output_snr_db_mean": 29.48581784270936,
+          "snr_gain_db_mean": 13.098343904598071,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.6950676728090683
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.598031352692482,
+          "output_snr_db_mean": 17.117498047417357,
+          "snr_gain_db_mean": 20.715529400109837,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 4.178770864299873
+        }
+      },
+      "epochs_run": 30,
+      "final_train_loss": 2.9823311630631604e-05,
+      "train_seconds": 30.130912167020142
+    },
+    {
+      "condition": "suggested-hyperparameters",
+      "architecture": "Transformer",
+      "seed_index": 4,
+      "hyperparameters": {
+        "lr": 0.001,
+        "epochs": 50,
+        "batch_size": 32
+      },
+      "n_trainable_parameters": 861706,
+      "per_level": {
+        "100.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 36.382774011314055,
+          "output_snr_db_mean": 27.459930688468116,
+          "snr_gain_db_mean": -8.92284332284594,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.47259730355466
+        },
+        "1000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": 16.387473938111285,
+          "output_snr_db_mean": 26.104776692791354,
+          "snr_gain_db_mean": 9.717302754680066,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 2.5194340677234752
+        },
+        "10000.0": {
+          "n_test_spectra": 512,
+          "input_snr_db_mean": -3.598031352692482,
+          "output_snr_db_mean": 17.948393175136264,
+          "snr_gain_db_mean": 21.54642452782874,
+          "snr_gain_db_sd_over_spectra_not_a_replicate_sd": 3.800531710988841
+        }
+      },
+      "epochs_run": 50,
+      "final_train_loss": 0.0003417003441275786,
+      "train_seconds": 131.73349608300487
+    }
+  ],
+  "aggregates": {
+    "suggested-hyperparameters": {
+      "FCNN": {
+        "100.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            -8.536277181089954,
+            -8.192856795760065,
+            -8.232235304047657,
+            -8.766592181445738,
+            -11.04213782040269
+          ],
+          "snr_gain_db_mean": -8.95401985654922,
+          "snr_gain_db_sd_across_seeds": 1.19061085714455,
+          "input_snr_db_mean": 36.363195601560776
+        },
+        "1000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            9.634900590079399,
+            9.758324640098877,
+            9.410264657223188,
+            9.238615979209234,
+            8.034125849094904
+          ],
+          "snr_gain_db_mean": 9.215246343141121,
+          "snr_gain_db_sd_across_seeds": 0.6900484815890142,
+          "input_snr_db_mean": 16.36880608973289
+        },
+        "10000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            20.92562961728371,
+            20.548665385056218,
+            20.45042653723089,
+            20.24916892443754,
+            20.735008978249105
+          ],
+          "snr_gain_db_mean": 20.581779888451496,
+          "snr_gain_db_sd_across_seeds": 0.260140402750363,
+          "input_snr_db_mean": -3.5949019815331598
+        }
+      },
+      "ResNet-FCNN": {
+        "100.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            2.6023403396784612,
+            2.6838008873317474,
+            2.8220543077066282,
+            2.634201294362666,
+            2.1385381987822814
+          ],
+          "snr_gain_db_mean": 2.576187005572357,
+          "snr_gain_db_sd_across_seeds": 0.25865885374349595,
+          "input_snr_db_mean": 36.363195601560776
+        },
+        "1000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            13.74467517190912,
+            13.756165173574619,
+            13.420823035822561,
+            13.616578723359444,
+            13.626815446651033
+          ],
+          "snr_gain_db_mean": 13.633011510263355,
+          "snr_gain_db_sd_across_seeds": 0.1350629246817505,
+          "input_snr_db_mean": 16.36880608973289
+        },
+        "10000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            21.22050801825884,
+            21.114841263856448,
+            20.819525779357466,
+            20.671411884573047,
+            21.157374269583837
+          ],
+          "snr_gain_db_mean": 20.996732243125926,
+          "snr_gain_db_sd_across_seeds": 0.23825756308513066,
+          "input_snr_db_mean": -3.5949019815331598
+        }
+      },
+      "1D-CNN": {
+        "100.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            -8.294556830049721,
+            -6.2170511756521485,
+            -8.571921216999876,
+            -8.363160352561835,
+            -2.897066019950982
+          ],
+          "snr_gain_db_mean": -6.868751119042912,
+          "snr_gain_db_sd_across_seeds": 2.416917696566506,
+          "input_snr_db_mean": 36.363195601560776
+        },
+        "1000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            10.102496917622034,
+            11.107062044446213,
+            9.583489818393645,
+            9.793341064035996,
+            12.282390272183417
+          ],
+          "snr_gain_db_mean": 10.573756023336262,
+          "snr_gain_db_sd_across_seeds": 1.1197774464771195,
+          "input_snr_db_mean": 16.36880608973289
+        },
+        "10000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            21.343683045734586,
+            21.59938004138939,
+            21.058512450149703,
+            21.2842364845679,
+            21.66352276339584
+          ],
+          "snr_gain_db_mean": 21.389866957047484,
+          "snr_gain_db_sd_across_seeds": 0.2459012975161567,
+          "input_snr_db_mean": -3.5949019815331598
+        }
+      },
+      "ResNet-1DCNN": {
+        "100.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            -4.881756559455951,
+            -4.312358871034812,
+            -5.617846524535448,
+            -4.7853430438670115,
+            -4.93936050712828
+          ],
+          "snr_gain_db_mean": -4.9073331012042996,
+          "snr_gain_db_sd_across_seeds": 0.4678100970497274,
+          "input_snr_db_mean": 36.363195601560776
+        },
+        "1000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            11.414622754815976,
+            11.929141185977542,
+            11.340042905316047,
+            11.704732342489905,
+            11.703593647733694
+          ],
+          "snr_gain_db_mean": 11.618426567266633,
+          "snr_gain_db_sd_across_seeds": 0.23993704899581436,
+          "input_snr_db_mean": 16.36880608973289
+        },
+        "10000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            21.423343976601995,
+            21.533846314170003,
+            21.133263114064192,
+            21.120166217000136,
+            21.555598159318272
+          ],
+          "snr_gain_db_mean": 21.353243556230915,
+          "snr_gain_db_sd_across_seeds": 0.21283517772023433,
+          "input_snr_db_mean": -3.5949019815331598
+        }
+      },
+      "GRU": {
+        "100.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            -2.009832273572025,
+            -1.1184392545989457,
+            -1.7460430553845567,
+            -1.247039820392953,
+            -2.2534365831427667
+          ],
+          "snr_gain_db_mean": -1.6749581974182495,
+          "snr_gain_db_sd_across_seeds": 0.48596769897161307,
+          "input_snr_db_mean": 36.363195601560776
+        },
+        "1000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            12.799757994317002,
+            13.25900065884409,
+            12.934785774308612,
+            13.039844932989475,
+            12.807897193316304
+          ],
+          "snr_gain_db_mean": 12.968257310755096,
+          "snr_gain_db_sd_across_seeds": 0.19031829442564566,
+          "input_snr_db_mean": 16.36880608973289
+        },
+        "10000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            20.431167327610936,
+            20.431756731512593,
+            20.291115142299972,
+            19.905965814116723,
+            20.6883779497514
+          ],
+          "snr_gain_db_mean": 20.349676593058327,
+          "snr_gain_db_sd_across_seeds": 0.28653324276434794,
+          "input_snr_db_mean": -3.5949019815331598
+        }
+      },
+      "LSTM": {
+        "100.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            -3.6457290825809823,
+            -2.181462439427011,
+            -2.422497982730806,
+            -1.8340647703358093,
+            -2.346819904617943
+          ],
+          "snr_gain_db_mean": -2.4861148359385106,
+          "snr_gain_db_sd_across_seeds": 0.6866836523597541,
+          "input_snr_db_mean": 36.363195601560776
+        },
+        "1000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            12.305421972059541,
+            12.807226643670218,
+            12.289677761805109,
+            12.765047295020967,
+            12.533507549351627
+          ],
+          "snr_gain_db_mean": 12.540176244381493,
+          "snr_gain_db_sd_across_seeds": 0.2448399654957547,
+          "input_snr_db_mean": 16.36880608973289
+        },
+        "10000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            20.62760606136865,
+            20.657244743530377,
+            20.379848397567443,
+            20.181505985155493,
+            20.620339607833913
+          ],
+          "snr_gain_db_mean": 20.493308959091173,
+          "snr_gain_db_sd_across_seeds": 0.2068464602043264,
+          "input_snr_db_mean": -3.5949019815331598
+        }
+      },
+      "bi-LSTM": {
+        "100.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            -1.3626839327194202,
+            -0.5893837970141774,
+            -0.30895685649919424,
+            0.8046506670414957,
+            -0.8374191268172879
+          ],
+          "snr_gain_db_mean": -0.4587586092017169,
+          "snr_gain_db_sd_across_seeds": 0.8056319386355445,
+          "input_snr_db_mean": 36.363195601560776
+        },
+        "1000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            13.01904645946924,
+            13.413255617534439,
+            13.021231138329288,
+            13.210500134096467,
+            13.098343904598071
+          ],
+          "snr_gain_db_mean": 13.1524754508055,
+          "snr_gain_db_sd_across_seeds": 0.16532675888325102,
+          "input_snr_db_mean": 16.36880608973289
+        },
+        "10000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            20.503189426376473,
+            20.493784946520762,
+            20.772110009152776,
+            20.161850490774768,
+            20.715529400109837
+          ],
+          "snr_gain_db_mean": 20.529292854586924,
+          "snr_gain_db_sd_across_seeds": 0.24010430684558898,
+          "input_snr_db_mean": -3.5949019815331598
+        }
+      },
+      "Transformer": {
+        "100.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            -9.05042135259144,
+            -9.22040124446479,
+            -8.934973751036516,
+            -9.884932544963583,
+            -8.92284332284594
+          ],
+          "snr_gain_db_mean": -9.202714443180454,
+          "snr_gain_db_sd_across_seeds": 0.39966875941472185,
+          "input_snr_db_mean": 36.363195601560776
+        },
+        "1000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            9.64355697785401,
+            9.489640504982265,
+            9.751965066761358,
+            8.997349825575402,
+            9.717302754680066
+          ],
+          "snr_gain_db_mean": 9.51996302597062,
+          "snr_gain_db_sd_across_seeds": 0.3090660903863283,
+          "input_snr_db_mean": 16.36880608973289
+        },
+        "10000.0": {
+          "n_seeds": 5,
+          "per_seed_snr_gain_db": [
+            21.5282980180017,
+            21.69223604661644,
+            21.116626504188197,
+            21.28759638790862,
+            21.54642452782874
+          ],
+          "snr_gain_db_mean": 21.43423629690874,
+          "snr_gain_db_sd_across_seeds": 0.229334319675836,
+          "input_snr_db_mean": -3.5949019815331598
+        }
+      }
+    }
+  },
+  "paired_vs_baseline": {
+    "suggested-hyperparameters": {
+      "baseline": "FCNN",
+      "by_noise_level": {
+        "100.0": {
+          "seed_indices": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "baseline_per_seed_snr_gain_db": [
+            -8.536277181089954,
+            -8.192856795760065,
+            -8.232235304047657,
+            -8.766592181445738,
+            -11.04213782040269
+          ],
+          "comparisons": {
+            "ResNet-FCNN": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                11.138617520768415,
+                10.876657683091812,
+                11.054289611754285,
+                11.400793475808403,
+                13.180676019184972
+              ],
+              "mean_difference_db": 11.530206862121577,
+              "sd_difference_db": 0.9417752165251062,
+              "paired_t": 27.37630581686801,
+              "p_value_raw": 1.0587625104269974e-05,
+              "cohens_dz": 12.243056155867954,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 7.411337572988983e-05
+            },
+            "1D-CNN": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                0.24172035104023237,
+                1.9758056201079164,
+                -0.33968591295221806,
+                0.40343182888390317,
+                8.145071800451708
+              ],
+              "mean_difference_db": 2.0852687375063086,
+              "sd_difference_db": 3.4943113210252066,
+              "paired_t": 1.3343981746455371,
+              "p_value_raw": 0.25296990427199373,
+              "cohens_dz": 0.5967610055118114,
+              "seeds_favouring_arch": 4,
+              "p_value_holm_adjusted": 0.5059398085439875
+            },
+            "ResNet-1DCNN": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                3.6545206216340027,
+                3.880497924725253,
+                2.6143887795122094,
+                3.9812491375787262,
+                6.1027773132744105
+              ],
+              "mean_difference_db": 4.04668675534492,
+              "sd_difference_db": 1.271286844073034,
+              "paired_t": 7.117722259760493,
+              "p_value_raw": 0.0020591803561727843,
+              "cohens_dz": 3.183142163557576,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.006177541068518352
+            },
+            "GRU": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                6.526444907517929,
+                7.074417541161119,
+                6.486192248663101,
+                7.519552361052785,
+                8.788701237259923
+              ],
+              "mean_difference_db": 7.279061659130972,
+              "sd_difference_db": 0.9452249104641844,
+              "paired_t": 17.219686555061426,
+              "p_value_raw": 6.673420863168643e-05,
+              "cohens_dz": 7.700877937671304,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.0004004052517901186
+            },
+            "LSTM": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                4.8905480985089715,
+                6.011394356333054,
+                5.8097373213168515,
+                6.932527411109929,
+                8.695317915784747
+              ],
+              "mean_difference_db": 6.4679050206107105,
+              "sd_difference_db": 1.4410832503741813,
+              "paired_t": 10.03597487816367,
+              "p_value_raw": 0.0005542432768746309,
+              "cohens_dz": 4.488224409610827,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.0022169731074985237
+            },
+            "bi-LSTM": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                7.173593248370533,
+                7.603472998745888,
+                7.923278447548463,
+                9.571242848487234,
+                10.204718693585402
+              ],
+              "mean_difference_db": 8.495261247347505,
+              "sd_difference_db": 1.3180703764992112,
+              "paired_t": 14.411963104839602,
+              "p_value_raw": 0.0001347243917114012,
+              "cohens_dz": 6.4452258383280565,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.000673621958557006
+            },
+            "Transformer": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                -0.5141441715014867,
+                -1.0275444487047256,
+                -0.7027384469888585,
+                -1.118340363517845,
+                2.1192944975567496
+              ],
+              "mean_difference_db": -0.24869458663123326,
+              "sd_difference_db": 1.3460017177717776,
+              "paired_t": -0.4131480621467808,
+              "p_value_raw": 0.7006856975323714,
+              "cohens_dz": -0.1847654303465019,
+              "seeds_favouring_arch": 1,
+              "p_value_holm_adjusted": 0.7006856975323714
+            }
+          }
+        },
+        "1000.0": {
+          "seed_indices": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "baseline_per_seed_snr_gain_db": [
+            9.634900590079399,
+            9.758324640098877,
+            9.410264657223188,
+            9.238615979209234,
+            8.034125849094904
+          ],
+          "comparisons": {
+            "ResNet-FCNN": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                4.109774581829722,
+                3.997840533475742,
+                4.010558378599374,
+                4.37796274415021,
+                5.592689597556129
+              ],
+              "mean_difference_db": 4.417765167122235,
+              "sd_difference_db": 0.6743596809744639,
+              "paired_t": 14.648597033620854,
+              "p_value_raw": 0.0001263552889002704,
+              "cohens_dz": 6.551051748435601,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.0008844870223018929
+            },
+            "1D-CNN": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                0.46759632754263514,
+                1.348737404347336,
+                0.17322516117045694,
+                0.554725084826762,
+                4.2482644230885125
+              ],
+              "mean_difference_db": 1.3585096801951404,
+              "sd_difference_db": 1.6729818917262371,
+              "paired_t": 1.8157518667900319,
+              "p_value_raw": 0.1435840778260784,
+              "cohens_dz": 0.8120289208829308,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.2871681556521568
+            },
+            "ResNet-1DCNN": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                1.7797221647365777,
+                2.1708165458786652,
+                1.929778248092859,
+                2.466116363280671,
+                3.66946779863879
+              ],
+              "mean_difference_db": 2.4031802241255127,
+              "sd_difference_db": 0.7540304106393054,
+              "paired_t": 7.1266016164676325,
+              "p_value_raw": 0.0020495614596730237,
+              "cohens_dz": 3.187113132596302,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.006148684379019071
+            },
+            "GRU": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                3.164857404237603,
+                3.5006760187452137,
+                3.524521117085424,
+                3.8012289537802406,
+                4.7737713442214
+              ],
+              "mean_difference_db": 3.753010967613976,
+              "sd_difference_db": 0.6136126369643038,
+              "paired_t": 13.676360521850377,
+              "p_value_raw": 0.00016555648607028247,
+              "cohens_dz": 6.116254362330388,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.000993338916421695
+            },
+            "LSTM": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                2.6705213819801426,
+                3.0489020035713406,
+                2.8794131045819213,
+                3.526431315811733,
+                4.499381700256723
+              ],
+              "mean_difference_db": 3.3249299012403726,
+              "sd_difference_db": 0.7285030842013921,
+              "paired_t": 10.205542626830967,
+              "p_value_raw": 0.0005194065739245027,
+              "cohens_dz": 4.564057412173161,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.0020776262956980107
+            },
+            "bi-LSTM": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                3.384145869389842,
+                3.654930977435562,
+                3.6109664811061,
+                3.971884154887233,
+                5.064218055503167
+              ],
+              "mean_difference_db": 3.9372291076643804,
+              "sd_difference_db": 0.6639551312265832,
+              "paired_t": 13.259799516066913,
+              "p_value_raw": 0.00018694468719864912,
+              "cohens_dz": 5.929962617188887,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.000993338916421695
+            },
+            "Transformer": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                0.008656387774610863,
+                -0.2686841351166116,
+                0.34170040953816994,
+                -0.2412661536338323,
+                1.683176905585162
+              ],
+              "mean_difference_db": 0.30471668282949976,
+              "sd_difference_db": 0.8087116043130973,
+              "paired_t": 0.8425342397105128,
+              "p_value_raw": 0.4469190110931529,
+              "cohens_dz": 0.37679276667276185,
+              "seeds_favouring_arch": 3,
+              "p_value_holm_adjusted": 0.4469190110931529
+            }
+          }
+        },
+        "10000.0": {
+          "seed_indices": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "baseline_per_seed_snr_gain_db": [
+            20.92562961728371,
+            20.548665385056218,
+            20.45042653723089,
+            20.24916892443754,
+            20.735008978249105
+          ],
+          "comparisons": {
+            "ResNet-FCNN": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                0.2948784009751293,
+                0.5661758788002302,
+                0.36909924212657685,
+                0.422242960135506,
+                0.42236529133473155
+              ],
+              "mean_difference_db": 0.4149523546744348,
+              "sd_difference_db": 0.09936916158226995,
+              "paired_t": 9.33752139699238,
+              "p_value_raw": 0.0007323633344051484,
+              "cohens_dz": 4.175866517006752,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.005126543340836039
+            },
+            "1D-CNN": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                0.41805342845087523,
+                1.0507146563331737,
+                0.6080859129188134,
+                1.0350675601303578,
+                0.928513785146734
+              ],
+              "mean_difference_db": 0.8080870685959909,
+              "sd_difference_db": 0.28152157405987394,
+              "paired_t": 6.418469430463159,
+              "p_value_raw": 0.003028458198307191,
+              "cohens_dz": 2.8704267916039967,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.012113832793228764
+            },
+            "ResNet-1DCNN": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                0.4977143593182838,
+                0.9851809291137847,
+                0.6828365768333029,
+                0.8709972925625955,
+                0.8205891810691668
+              ],
+              "mean_difference_db": 0.7714636677794268,
+              "sd_difference_db": 0.1876091491927045,
+              "paired_t": 9.194888472918857,
+              "p_value_raw": 0.0007770935152944717,
+              "cohens_dz": 4.1120791341951595,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.005126543340836039
+            },
+            "GRU": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                -0.49446228967277506,
+                -0.11690865354362501,
+                -0.15931139493091706,
+                -0.3432031103208182,
+                -0.04663102849770695
+              ],
+              "mean_difference_db": -0.23210329539316846,
+              "sd_difference_db": 0.18312826026275744,
+              "paired_t": -2.8340723903354124,
+              "p_value_raw": 0.047149948922336316,
+              "cohens_dz": -1.26743570358906,
+              "seeds_favouring_arch": 0,
+              "p_value_holm_adjusted": 0.14144984676700895
+            },
+            "LSTM": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                -0.29802355591506213,
+                0.10857935847415945,
+                -0.0705781396634464,
+                -0.06766293928204803,
+                -0.11466937041519287
+              ],
+              "mean_difference_db": -0.088470929360318,
+              "sd_difference_db": 0.14506946777284158,
+              "paired_t": -1.3636709027706808,
+              "p_value_raw": 0.2443718029944625,
+              "cohens_dz": -0.6098521675067496,
+              "seeds_favouring_arch": 1,
+              "p_value_holm_adjusted": 0.488743605988925
+            },
+            "bi-LSTM": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                -0.4224401909072384,
+                -0.05488043853545577,
+                0.3216834719218866,
+                -0.08731843366277303,
+                -0.019479578139268483
+              ],
+              "mean_difference_db": -0.05248703386456981,
+              "sd_difference_db": 0.26418618091111834,
+              "paired_t": -0.44424948819710297,
+              "p_value_raw": 0.6798381835303751,
+              "cohens_dz": -0.19867441091564256,
+              "seeds_favouring_arch": 1,
+              "p_value_holm_adjusted": 0.6798381835303751
+            },
+            "Transformer": {
+              "n_seeds": 5,
+              "per_seed_difference_db": [
+                0.6026684007179881,
+                1.1435706615602221,
+                0.6661999669573078,
+                1.0384274634710806,
+                0.8114155495796354
+              ],
+              "mean_difference_db": 0.8524564084572468,
+              "sd_difference_db": 0.23350728284715327,
+              "paired_t": 8.16313073375719,
+              "p_value_raw": 0.0012259648079951814,
+              "cohens_dz": 3.6506630459797638,
+              "seeds_favouring_arch": 5,
+              "p_value_holm_adjusted": 0.006129824039975907
+            }
+          }
+        }
+      }
+    }
+  },
+  "total_wall_clock_seconds": 2658.5781140829786,
+  "quick_mode": false
+}

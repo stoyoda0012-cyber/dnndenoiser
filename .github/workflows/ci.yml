@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Layout-robust CI for the src/dnndenoiser package.
+# CUDA cannot run on GitHub-hosted runners; the GPU path is exercised on an
+# NVIDIA machine or a self-hosted GPU runner.
+#
+# macOS is opt-in. The macOS matrix runs on workflow_dispatch only — never on
+# push or pull request — and there is no scheduled macOS run. Trigger it from
+# the Actions tab ("Run workflow") or with `gh workflow run ci.yml`.
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install ruff
+      - run: ruff check src/ tests/
+
+  test:
+    name: pytest + CLI smoke (Python ${{ matrix.python-version }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # See the note at the top of this file: push and PR run Linux only;
+        # macOS is opt-in via the Actions tab ("Run workflow") or
+        # `gh workflow run ci.yml`.
+        os: ${{ github.event_name == 'workflow_dispatch' && fromJSON('["ubuntu-latest","macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install CPU-only torch first (avoid multi-GB CUDA wheels on Linux)
+        if: runner.os == 'Linux'
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install (core + dev)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run test suite (incl. import-boundary)
+        run: pytest -q
+
+      - name: CLI end-to-end smoke (generate -> train -> infer -> evaluate, CPU)
+        run: |
+          dnndenoiser --help
+          dnndenoiser generate -o /tmp/smoke.h5 -n 32 --peak-set C1s_single
+          dnndenoiser train -d /tmp/smoke.h5 -o /tmp/smoke.pt \
+            --arch FCNN --epochs 1 --batch-size 16 --device cpu
+          dnndenoiser infer -d /tmp/smoke.h5 -m /tmp/smoke.pt \
+            -o /tmp/smoke_out.h5 --batch-size 16 --device cpu
+          dnndenoiser evaluate -d /tmp/smoke_out.h5
+
+  build:
+    name: build + archive-cleanliness + clean-install smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build sdist and wheel
+        run: |
+          pip install build
+          python -m build -o dist/
+
+      - name: Assert archives contain no research or local-agent files
+        run: |
+          set -e
+          tar tzf dist/*.tar.gz > sdist_contents.txt
+          python -c "import zipfile,glob; print('\n'.join(zipfile.ZipFile(glob.glob('dist/*.whl')[0]).namelist()))" > wheel_contents.txt
+
+          # Do not use `! grep` here. Commands in a negated condition are
+          # exempt from `set -e`, so a match can be printed without failing
+          # the step. Accumulate violations and fail explicitly instead.
+          fail=0
+          deny() {  # deny <description> <extended-regex>
+            if grep -iE "$2" sdist_contents.txt wheel_contents.txt; then
+              echo "::error::$1 must not ship (pattern: $2)"
+              fail=1
+            fi
+          }
+
+          deny "Research layers and app code" \
+               '(^|/)(experiments|benchmarks|gui|save|docs)/'
+          deny "Local agent/control files" \
+               'AGENTS\.md|CLAUDE'
+
+          # A deny-list cannot protect an archive if its contents listing was
+          # not generated. Keep this check adjacent to the deny rules.
+          for listing in sdist_contents.txt wheel_contents.txt; do
+            if ! grep -q '[^[:space:]]' "$listing"; then
+              echo "::error::$listing is empty — archive listing failed"
+              fail=1
+            fi
+          done
+
+          [ "$fail" -eq 0 ] || exit 1
+          echo "archive contents clean"
+
+      - name: Install built wheel into a clean venv and smoke-test
+        run: |
+          python -m venv /tmp/cleanenv
+          /tmp/cleanenv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
+          /tmp/cleanenv/bin/pip install dist/*.whl
+          /tmp/cleanenv/bin/python -c "
+          import torch
+          from dnndenoiser.models.network import DenoisingNetwork
+          m = DenoisingNetwork(num_features=256, num_hidden_units=100,
+                               layer_type='FCNN', encoder_output_dim=64)
+          out = m(torch.zeros(2, 256))
+          out = out[0] if isinstance(out, tuple) else out
+          assert out.shape == (2, 256)
+          print('clean-install smoke OK')
+          "
+          /tmp/cleanenv/bin/dnndenoiser --help
+
+      - name: Validate CITATION.cff
+        run: pipx run cffconvert --validate
+
+  paper:
+    name: JOSS paper compiles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build draft PDF
+        uses: openjournals/openjournals-draft-action@master
+        with:
+          journal: joss
+          paper-path: paper/paper.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: joss-paper
+          path: paper/paper.pdf

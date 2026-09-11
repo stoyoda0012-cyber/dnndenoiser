@@ -1,0 +1,97 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# PyTorch models and results
+*.pt
+*.pth
+*.h5
+*.hdf5
+*.npz
+
+# Benchmark results (keep README but ignore data)
+benchmarks/*.pt
+benchmarks/*.npz
+
+# Generated figures and measurement data (keep PDFs)
+*.png
+*.jpg
+*.jpeg
+*.xlsx
+
+# Logs
+*.log
+logs/
+
+# Local agent state — default-deny, with an allowlist for shareable assets.
+# NOTE: this must be `.claude/*`, not `.claude/`. Ignoring the directory itself
+# makes Git skip traversal, and the negations below would never take effect.
+CLAUDE.local.md
+.claude/*
+!.claude/settings.json
+!.claude/commands/
+!.claude/hooks/
+# Local-only, restated explicitly (already covered by `.claude/*` above):
+.claude/settings.local.json
+.claude/notes/
+.claude/archive/
+.claude/worktrees/
+.codex/
+
+# `AGENTS.md` and `CLAUDE.md` are unanchored on purpose, with an exception for
+# the repository root. Agent notes kept beside the code they describe stay
+# local; only the root entry point is tracked, and it is tracked deliberately:
+# AGENTS.md carries the shared, tool-agnostic working rules, and CLAUDE.md is a
+# pointer to it. Neither ships in the sdist or wheel — the `build` job in
+# .github/workflows/ci.yml asserts that against the real archives.
+AGENTS.md
+!/AGENTS.md
+CLAUDE.md
+!/CLAUDE.md
+
+# MATLAB Drive tag
+.MATLABDriveTag
+
+# Temporary files
+tmp/
+temp/
+*.tmp

@@ -1,0 +1,13 @@
+# Runtime dependencies, mirroring [project].dependencies in pyproject.toml.
+# Installing the package (`pip install -e .`) is the supported route; this file
+# exists for environments that pin requirements separately.
+
+# PyTorch
+torch>=2.0
+
+# Numerical computing
+numpy>=1.24
+scipy>=1.10
+
+# Data storage
+h5py>=3.8
