@@ -25,7 +25,7 @@ from dnndenoiser.data.synthetic_generator import (
     PEAK_SETS,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "DenoisingNetwork",
