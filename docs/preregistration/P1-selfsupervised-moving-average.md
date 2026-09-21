@@ -1,35 +1,57 @@
 # Preregistration — P1: the self-supervised moving-average training method
 
-**Status: registered, not implemented.** Written 2026-09-21, before any of the
-port exists. Nothing below may be revised to match a result; if a criterion
-turns out to be wrong, it is changed *visibly*, with the reason and the date,
-and the change is part of the record.
+**Status: registered 2026-09-21; amended 2026-09-21 (Revision 1), still not
+implemented.** Nothing below may be revised to match a result. When a criterion
+turns out to be wrong it is changed *visibly*, with the reason and the date, and
+the change is part of the record — see **Revision log**, last section.
+
+> **Revision 1 — after independent audit, before any implementation.** Two
+> independent audits of the registered text found that, as written, the criteria
+> could be **passed in full by a port that ignores acquisition order, uses the
+> wrong loss function, and omits both the learning-rate scheduler and gradient
+> clipping**, while a **correct independent reimplementation would likely fail**
+> two criteria for reasons unrelated to correctness. Both are repaired here. The
+> registered text is preserved in git at commit `100940d`; every change is
+> itemised in the revision log with the finding that caused it.
 
 ## Why this is registered before the code
 
-The port's purpose is a **published claim** — that `dnndenoiser` provides the
-training method used in the JVST and SIA papers. Under `AGENTS.md` §8 that
-makes it an independent-audit item. A criterion written after seeing the output
-is not a criterion, so the acceptance conditions, the fixture and the tolerances
-are fixed here first.
+The port's purpose is a **published claim**. Under `AGENTS.md` §8 that makes it
+an independent-audit item. A criterion written after seeing the output is not a
+criterion, so the reference, the fixture and the tolerances are fixed here
+first — and, as Revision 1 shows, audited here first.
 
-## What is being ported
+## What is being ported, and what the claim is about
 
-The papers do not train against a clean reference. For each acquired frame the
-training target is the mean of its `W` temporally nearest **other** frames at
-the same pixel — leave-one-out, so the target's noise is independent of the
-input's. `W = 5` is canonical; larger `W` ≈ longer effective exposure.
+The method does not train against a clean reference. For each acquired frame the
+training target is the mean of its `W` temporally nearest **other** frames at the
+same pixel — leave-one-out, so that **for independent frames** the target's noise
+is independent of the input's. `W = 5` is canonical.
 
-`dnndenoiser` v0.1.0 cannot do this. Its methods are noise2clean and
-Noise2Noise with the second realisation synthesised from clean spectra; neither
-trains from measured frames alone.
+On a measured stack that independence is an assumption, not a guarantee:
+temporally adjacent frames subject to drift or charging are correlated, and
+temporal nearness is not statistical independence. Nothing here tests that.
+
+**The claim is about the deposit, not about the papers.** The deposited
+implementation describes itself as *"Distilled from the paper's self-contained
+training script"*. The chain is therefore **papers' script → deposit
+(a distillation) → port**, and every criterion below pins only the second link.
+A full pass licenses "reproduces the archived reference implementation". It does
+**not** license "reproduces the JVST/SIA method", and no wording of that kind may
+be published on the strength of this document.
+
+**What v0.1.0 cannot do.** Its CLI methods are noise2clean and Noise2Noise with
+the second realisation synthesised from clean spectra. The library also ships
+`Noise2Self` (`src/dnndenoiser/training/methods.py`), which is not wired to the
+CLI because its masked loss is incomplete. None of the three trains from a
+measured frame stack.
 
 ## The reference, pinned
 
 The reference is the **published** implementation, because it is citable and
 cannot change. A local working copy is not the reference: the copies on this
-machine differ from the deposit in six of fifteen files, including a `LICENSE`
-that still carries a pre-release placeholder.
+machine differ from the deposit in six of fifteen files, one being a `LICENSE`
+still carrying a pre-release placeholder.
 
 | | |
 |---|---|
@@ -37,171 +59,398 @@ that still carries a pre-release placeholder.
 | Archive | `software_arhaxpes_denoise.zip`, 22,091 bytes, md5 `f8ac7f5ca4abafb30239ebe1d3d0b217` |
 | Integrity | all 15 files verified against the deposit's own `SHA256SUMS.txt`; 0 mismatches |
 
-The three files this port is measured against, by sha256:
-
 | Path in the deposit | sha256 |
 |---|---|
 | `src/arhaxpes_denoise/selfsupervised.py` | `136f2e112430fbb42e72bc6d6c0f2b9b02d3a828f6774c11bd2392eb4a13cb09` |
 | `src/arhaxpes_denoise/network.py` | `c2c7be4db79f6a2bbd5c8ffe607ad1fe71ba6049250708e303b016ef3907a3ed` |
 | `examples/train_selfsupervised.py` | `deb2dd3d5751394bfec4699c2e78a7149445898c7a41e4249a293ae26eb13fe4` |
 
-The reference is **not vendored into this repository**. It is re-obtained from
-the DOI and checked against these digests. A digest that does not match voids
-the comparison rather than being updated to fit.
+The reference is **not vendored into this repository**; it is re-obtained from
+the DOI and checked against these digests. A digest that does not match voids the
+comparison rather than being updated to fit.
+
+**What "reproduces" means here.** An independent reimplementation inside
+`dnndenoiser`. Copying the deposit's module into `src/dnndenoiser/` would satisfy
+C0–C4 trivially and is **not** what is being registered. `AGENTS.md` §3's import
+boundary names `deppro` and `toyomacro` only; `arhaxpes_denoise` is added to the
+prohibition for the duration of this work — the port may read it to be tested
+against, and may not import or vendor it.
 
 ## The fixture
 
 Taken from the deposit's own `examples/train_selfsupervised.py`, so the fixture
-is itself published and cannot drift. It is restated here in full, and the test
-constructs it from these constants rather than importing the reference:
+is itself published and cannot drift. It is restated in full and the test
+constructs it from these constants rather than importing the reference.
 
-- grid: `energy = numpy.linspace(0, 1, 256)`; `TARGET_LENGTH = 256`, so no
-  resampling is exercised on this path;
-- clean spectrum: `300 * exp(-(energy - 0.5)**2 / (2 * 0.04**2)) + 20` — a
-  single Gaussian core level on a flat background, in counts;
+- grid: `energy = numpy.linspace(0, 1, 256)`; `TARGET_LENGTH = 256`;
+- clean spectrum: `300 * exp(-(energy - 0.5)**2 / (2 * 0.04**2)) + 20` — a single
+  Gaussian core level on a flat background, in counts;
 - noise: `rng = numpy.random.default_rng(1)`; **training pool** =
   `rng.poisson(tile(clean, (200, 1))).astype(float32)`, then **test frames** =
-  `rng.poisson(tile(clean, (16, 1))).astype(float32)`, drawn from the same
-  stream in that order. **The draw order and the `float32` cast are both part of
-  the fixture**: a different order gives different frames from the same seed,
-  and the cast happens before normalisation;
-- normalisation: element-global min-max over the training pool; the same two
-  constants are applied to the test frames and to the clean spectrum;
-- targets: `moving_average_targets(frames_n, arange(200), W=5)`;
-- training: `epochs=20`, `seed=0`, `batch_size=32`, `device="cpu"`;
-- model: ResNet-FCNN, `num_features=256`, `num_hidden_units=100`,
-  `encoder_output_dim=64`; Adam(`lr=1e-3`, `weight_decay=1e-9`),
-  StepLR(`step_size=25`, `gamma=0.5`), HuberLoss(`delta=1.0`), gradient-norm
-  clipping at 4.0.
+  `rng.poisson(tile(clean, (16, 1))).astype(float32)`, drawn from the same stream
+  in that order. **The draw order and the `float32` cast are both part of the
+  fixture**: a different order gives different frames from the same seed, and the
+  cast happens before normalisation;
+- noise model: **pure Poisson on counts. No detector or read-noise term**, and no
+  Gaussian approximation — unlike `dnndenoiser`'s own generator, which offers
+  both;
+- normalisation: element-global min-max over the training pool
+  (`g_min = 5.0`, `g_max = 387.0`); the same two constants are applied to the test
+  frames and to the clean spectrum;
+- targets: `moving_average_targets(frames_n, arange(200), W=5)`. Note the
+  function upcasts internally to `float64`;
+- training: `epochs=20`, `seed=0`, `batch_size=32`, `device="cpu"`,
+  `shuffle=True`, no `drop_last`;
+- **model, in full** — ResNet-FCNN with **four residual blocks**, each
+  `Linear → ReLU → Dropout(p=0.1) → Linear` with a post-add ReLU; two output
+  heads, and **the loss is taken on the first output only**; `global_skip=False`.
+  `num_features=256`. `num_hidden_units=100` and `encoder_output_dim=64` are
+  passed and are **inert on this path** — the deposit's `network.py` accepts them
+  "for call-site compatibility";
+- optimiser: Adam(`lr=1e-3`, `weight_decay=1e-9`); StepLR(`step_size=25`,
+  `gamma=0.5`); `HuberLoss(delta=1.0)`; gradient-norm clipping at 4.0.
 
-**Leakage.** The test frames are drawn after the training pool and never enter
-training, the targets, or the normalisation constants. That is the split, and
-the unit is the frame.
+### What the fixture does not exercise — measured, not assumed
 
-**Environment.** Criterion C2 is a numerical-identity claim and is stated for
-one environment: CPU, Python 3.12, `torch` 2.9.1, `numpy` 2.3.3. On any other
-environment C2 is **reported, not required** — a mismatch there is evidence
-about numerical reproducibility across builds, not evidence against the port.
-C1, C3 and C4 are required everywhere the suite runs.
+Three named components of the method are **inert on this fixture**. They are
+recorded here so that a pass is not mistaken for evidence about them:
+
+| Component | Measurement on the fixture | Consequence |
+|---|---|---|
+| `HuberLoss(delta=1.0)` | 140 optimiser steps, max\|residual\| = 0.9463 < δ; **0/140** steps leave the quadratic region | Huber ≡ `0.5·MSE` identically. Substituting `MSELoss` passes C3 |
+| `StepLR(step_size=25)` | `epochs=20`, so the decay never fires; learning rate constant at 1e-3 throughout | Omitting the scheduler changes nothing |
+| clip at 4.0 | max gradient norm 0.0464, **0/140** steps bound (86× headroom) | Omitting clipping changes nothing |
+
+C7 adds one case that makes the scheduler fire. The loss function and the clip
+threshold remain **unverified by C0–C7** and are checked by code review against
+the deposit; that limitation is stated, not papered over.
+
+### Split, leakage, and the regime
+
+**Split.** The 16 test frames are drawn after the training pool and enter
+neither training, the targets, nor the normalisation constants. The unit is the
+frame.
+
+**What the split does not prevent.** The test frames are Poisson draws from the
+**same single clean spectrum** the model saw 200 draws of. This is an
+in-distribution, single-signal evaluation; the absolute SNR values support no
+generalisation statement whatever.
+
+**Regime.** Training and inference operate at the same *input* signal-to-noise
+regime — training and test frames come from the same clean spectrum at the same
+Poisson rate (input SNR ≈ 22.2 dB). The training **target** sits at roughly `W`×
+that exposure by construction, so the training pair is signal-to-noise asymmetric
+by design. `C2`–`C6` exercise `W = 5` only; **no claim about W-dependence or
+effective-exposure scaling is made or supported.**
+
+### Environment
+
+C0, C1, C2 and C3 are numerical-identity or tight-tolerance claims and are
+required **only** in one environment: CPU, Python 3.12.11, `torch` 2.9.1,
+`numpy` 2.3.3. Elsewhere they are **reported, not required**. C4–C7 are required
+wherever the suite runs.
+
+This scoping is not caution for its own sake. `benchmarks/reference/report.md`
+records, for this project's own measurements, that reduction order differs
+between CPU, MPS and CUDA and that re-running "may move them by a few tenths of
+a dB" — from one implementation. Two implementations differencing on such a
+backend cannot be held to 0.5 dB.
 
 ## Acceptance criteria
 
-The claim under test is **"the port reproduces the published implementation"** —
-not "the port denoises well". Every comparison below is port against reference
-on the same fixture.
+The claim under test is **"the port reproduces the archived reference
+implementation"** — not "the port denoises well". Every comparison is port
+against reference on the fixture.
+
+### C0 — RNG-stream alignment (precondition for C2 and C3)
+
+> After `torch.manual_seed(s)` and construction, the port's model parameters are
+> **bit-identical** to the reference's, for `s ∈ {0, 1, 2, 3, 4, 5}`.
+
+C2 and C3 compare trained outputs pairwise by seed. That pairing cancels
+variance **only if both implementations consume the same random stream**. A port
+that is algorithmically identical but draws one extra value before constructing
+the model — which is all it takes to build a DataLoader before a model — produces
+a different trained model, and C3 then differences two effectively independent
+draws.
+
+C0 makes that presupposition explicit and testable instead of hidden. **If C0
+fails, C2 and C3 are not evaluated**: they are reported as inapplicable, and
+equivalence must be argued on C1, C4–C7 and code review. A C0 failure is not by
+itself evidence that the port is wrong.
 
 ### C1 — targets are exactly equal
 
-`moving_average_targets` is a deterministic computation with no floating-point
-reduction order at issue beyond a mean over `W` rows. The port's targets must
-equal the reference's **exactly** (`numpy.array_equal`), for `W ∈ {1, 2, 5, 10}`
-— the values the paper sweeps — on the fixture's 200-frame pool.
+`moving_average_targets` is deterministic given a tie-break rule. The port's
+targets must equal the reference's **exactly** (`numpy.array_equal`) in every
+case below.
 
-Exact equality is demanded because there is no reason for it to fail: if it
-does, the ported algorithm differs, and a tolerance would hide that.
+| Case | `frame_indices` | `W` | Why |
+|---|---|---|---|
+| a | `arange(200)` | 1, 2, 5, 10 | the paper's sweep |
+| b | **`default_rng(7).permutation(200)`** | 5 | **acquisition order must actually be used** |
+| c | `arange(3)` | 10 | the `min(W, n-1)` clamp fires |
+| d | `arange(1)` / `arange(200)` with `W = 0` | — | `ValueError` is raised in both |
+| e | `arange(200)` with `frame_indices[1] = frame_indices[0]` | 5 | duplicate indices; the reference's output is pinned |
+
+**Case b is the one that matters most.** On `arange(200)` the temporal distance
+`|t_i − t_j|` equals the row distance `|i − j|`, so a port that **ignores
+`frame_indices` entirely** and windows by row position is `array_equal` to the
+reference for all four values of case a, and then passes C2–C4 because the
+targets are identical. Acquisition order is the method's central ingredient and
+the registered fixture never exercised it. On a shuffled order the two
+implementations differ by up to 0.1026 — about 12% of full scale.
+
+**Tie-break.** Distances from `arange(n)` come in exact symmetric pairs
+(`1,1,2,2,3,3,…`), so for **odd `W`** the outermost neighbour slot is a genuine
+tie. The reference resolves it with `np.argsort`'s default (`quicksort`, not
+stable). Measured on the fixture: switching to `kind='stable'` changes the
+neighbour set for **86/200 rows at W=1 and 107/200 rows at W=5** — and changes
+target *values* on 145/200 rows by up to **0.0471** on the normalised scale.
+W=2 and W=10 are unaffected.
+
+> The port must reproduce the reference's neighbour selection **including
+> `numpy.argsort`'s default tie-breaking**. Because that is an implementation
+> detail numpy does not contract, C1 is pinned to the environment above, and a
+> demonstrated tie-break difference is diagnosed as such — **not** charged to the
+> port.
+
+*(The registered text asserted "there is no reason for it to fail". That was
+false; see the revision log.)*
 
 ### C2 — trained outputs agree at a fixed seed
 
-Same seed, same environment (above), both implementations trained on the
-fixture, both run over the 16 test frames:
+Given C0, same seed 0, pinned environment, both trained on the fixture, both run
+over the 16 test frames:
 
 > **relative L∞ < 1e-4**, where the statistic is
-> `max|y_port − y_ref| / max|y_ref|` over all 16 × 256 output values.
+> `max|y_port − y_ref| / max|y_ref|` over all 16 × 256 outputs.
+> (`max|y_ref| = 0.8529`, so the bound is ≈ 8.5e-5 absolute.)
 
-Exact equality is **not** required and would be wrong to require: batch
-shuffling, BLAS reduction order and thread count make bit-identity an unstable
-target even within one machine.
+**What this tolerance is and is not.** The registered text justified 1e-4 by
+batch shuffling, BLAS reduction order and thread count. Measured, none of those
+populate the band on this fixture: shuffling is seeded and deterministic, and
+training at 1 vs 12 threads gives relative L∞ of **exactly 0.0**. Observed
+differences are either exactly 0 or ≥ 1.5e-3 — fifteen times the threshold. On
+the training path C2 is therefore, in practice, an exact-equality test with a
+margin, and it is kept as a margin rather than tightened.
+
+**Revision of C2 requires a demonstration, not an argument.** If C2 fails and
+environmental non-determinism is proposed as the cause, that cause must be
+**reproduced between two runs of the unmodified reference** before C2 may be
+changed. Without that demonstration the failure belongs to the port. Note also
+that the environment pin fixes Python, `torch` and `numpy` but **not** the CPU
+microarchitecture or the BLAS kernel selected; C2 across different CPUs is
+reported, not required.
 
 ### C3 — trained outputs agree across seeds, in what they achieve
 
-Seeds `1, 2, 3, 4, 5` (five seeds, disjoint from C2's seed 0). For each seed,
-both implementations are trained and evaluated on the fixture, and output SNR
-is computed against the fixture's **known clean spectrum** — available because
-the fixture is synthetic:
+Given C0, seeds `1, 2, 3, 4, 5`, pinned environment. Output SNR against the
+fixture's **generative** clean spectrum — not an estimate from the frames, which
+is what makes this truth-referenced:
 
 ```
 SNR_dB = 10 * log10( mean(clean_n**2) / mean((denoised - clean_n)**2) )
 ```
 
-> **|SNR_port − SNR_ref| ≤ 0.5 dB for every one of the five seeds**, and the
-> paired mean difference is reported with its spread.
+> **|SNR_port − SNR_ref| ≤ 0.5 dB for every one of the five seeds**, paired by
+> seed, with the mean difference and its spread reported.
 
-The comparison is **paired** by seed, as `AGENTS.md` §6 requires. The absolute
-SNR values are a property of this fixture and are **not** a performance claim
-about the method; only the difference is under test.
+**Calibration, stated before any result exists.** The reference's own SNR across
+these five seeds is 35.78 / 36.08 / 34.41 / 33.88 / 32.55 dB — **sd 1.442 dB**,
+range 3.53 dB. (Reproduced independently on the fixture, single-threaded CPU,
+together with `g_min = 5.0`, `g_max = 387.0`, `max|y_ref| = 0.8529` and an input
+SNR of 22.24 dB. The fixture is deterministic as specified.) The 0.5 dB bound is 3.5× tighter than that spread, and is
+defensible **only** under C0: pairing removes the seed variance when the streams
+align. Without C0 the difference of two effectively independent draws has
+sd ≈ 2 dB and five-for-five agreement would be a roughly 1-in-3700 event. This
+is why C0 gates C3 rather than sitting beside it.
 
-### C4 — weights interchange unmodified
+**What C3 does not do.** It is not a sensitive test of the method's ingredients.
+Training with `targets = the frame itself` — leave-one-out removed entirely,
+the method's defining property gone — moves the mean ΔSNR by only about 0.24 dB.
+Conversely `weight_decay=0` passes C3 at 0.076 dB while failing C2. C3 detects
+gross divergence and RNG misalignment; it does not certify the algorithm. That
+work is C1's and code review's.
 
-The SIA paper states publicly that the trained weights load unmodified into the
-released implementation. The port must preserve that in both directions:
+The estimand is the **port-minus-reference difference**. The absolute SNR values
+are properties of this fixture and are not a performance claim.
 
-> a `state_dict` from the reference's `DenoisingNetwork` loads into
+### C4 — the two ResNet-FCNN definitions interchange
+
+> A `state_dict` from the reference's `DenoisingNetwork` loads into
 > `dnndenoiser`'s ResNet-FCNN with `strict=True` and no key renaming, and the
-> reverse; and a model so loaded produces outputs equal to the originating
-> model's within C2's tolerance on the fixture.
+> reverse; and a model so loaded produces eval-mode outputs equal to the
+> originating model's on the fixture.
 
-Already measured, 2026-09-21, before registration: both classes at
-`num_features=256, num_hidden_units=100, encoder_output_dim=64` have the same
-22 `state_dict` keys, the same shapes, and 658,177 parameters. C4 turns that
-measurement into a guarded test.
+Measured 2026-09-21, before registration: both classes at
+`num_features=256, num_hidden_units=100, encoder_output_dim=64` expose the same
+22 `state_dict` keys with the same shapes and 658,177 parameters, and eval-mode
+outputs differ by exactly 0.0.
+
+**Scope, corrected.** This tests **structural compatibility between two class
+definitions at one configuration**, using untrained weights. It does **not**
+establish that any paper's trained weights load into `dnndenoiser`: those were
+never deposited, and the configuration they were trained at is not fixed here.
+C4 also cannot see the dropout rate — `state_dict` keys, shapes and parameter
+count are identical for `p=0.1` and `p=0.5`. The permissible sentence is "these
+two ResNet-FCNN definitions are `state_dict`-compatible at `(256, 100, 64)`".
+
+*(The registered text justified C4 by an SIA statement about trained weights.
+That paper is in press and the criterion does not test what the sentence
+described; see the revision log.)*
 
 ### C5 — a documented frame-stack schema
 
-The CLI path needs an HDF5 layout for frame stacks: the frames, the energy
-axis, and the **acquisition order**, since order is what "temporally nearest"
-means. The schema is documented in `docs/QUICK_START.md` alongside the existing
-one, and a round-trip test reads back what it writes.
+An HDF5 layout for frame stacks: the frames, the energy axis, and the
+**acquisition order**, since order is what "temporally nearest" means.
+Documented in `docs/QUICK_START.md` beside the existing schema, with a
+round-trip test.
 
-This is a completeness condition, not a numerical one; it passes or it does not.
+> The schema **requires acquisition indices to be unique**, and the reader
+> rejects duplicates. `numpy.fill_diagonal` excludes a frame from its own
+> neighbourhood **by position, not by index value**, so two frames sharing an
+> index make each a distance-0 "other" frame of the other — a target/input
+> dependence that defeats leave-one-out silently, and that a user-written file
+> can produce.
+
+### C6 — the resample path
+
+Every real frame stack whose length is not 256 passes through `resample`.
+
+> `resample(x, 128)` and `resample(x, 512)` on the fixture's test frames equal
+> the reference exactly.
+
+The reference builds its interpolation matrix in `float32`, clips the source
+index at `n_old − 2`, and returns the input **by identity** when
+`n_old == n_new`. A port that returns a copy, or interpolates in `float64`, is
+not equivalent.
+
+### C7 — one case where the scheduler fires
+
+> The fixture at `epochs=30`, seed 0: C2's statistic, same bound.
+
+At 30 epochs `StepLR(step_size=25)` fires once and the learning rate halves, so
+this case exercises a component the 20-epoch fixture leaves inert. The loss
+function and the clip threshold remain unexercised; see the fixture's table.
 
 ## What this does not claim, and will not be written as claiming
 
-- **Not a performance claim.** Nothing here licenses a statement of the form
-  "dnndenoiser achieves N dB on measured data". The fixture is synthetic and
-  its SNR values are properties of the fixture.
-- **Not validated on measurement.** No measured frames are used. The port
-  reproducing the reference on synthetic Poisson frames is evidence about the
-  implementation, not about either one's behaviour on an instrument.
+- **Not a claim about the papers.** The deposit is the papers' authors' own
+  distillation of a training script. Nothing here connects the port to the
+  papers' published results.
+- **No claim about denoising performance**, on measured or synthetic data,
+  beyond the port-versus-reference *difference* C3 measures. (That difference
+  itself is supported and should not be disclaimed away.)
+- **Not validated on measurement.** No measured frames are used.
+- **A model estimate, not a measurement.** `AGENTS.md` §5: the network can
+  oversmooth, suppress weak features and hallucinate plausible structure.
+  Nothing here bounds any of those.
 - **No reference-free SNR.** For a measured stack there is no clean reference.
-  The only one constructible from the frames themselves — an all-frame mean —
-  is **not independent of the training targets**, which are means of subsets of
-  those same frames. Any number computed that way is reported as what it is,
-  with the dependence stated, and never as a held-out result (`AGENTS.md` §5).
-- **Distribution shift still governs.** A model trained by this method is valid
-  inside the distribution of the frames it was trained on. Nothing here changes
-  that, and the limits in `README.md` continue to apply.
+  The only one constructible from the frames — an all-frame mean — is **not
+  independent of the training targets**, which are means of subsets of those
+  same frames. Any number computed that way is reported as what it is, with the
+  dependence stated, never as a held-out result.
+- **Denoising is preprocessing.** Nothing here shows that peak areas, positions
+  or widths survive it. Physically meaningful quantities must be verified
+  downstream, not assumed preserved.
+- **One `W`, one fixture, one peak.** `W = 5` only, a single Gaussian core level,
+  a single clean spectrum. No statement about W-dependence, effective exposure,
+  other line shapes, multi-peak spectra or real backgrounds.
+- **Loss, scheduler and clip are not verified by the criteria** — the fixture
+  cannot discriminate them (measured above). They are checked by code review.
 
 ## If a criterion fails
 
-A failure is recorded and diagnosed; it is not silently renegotiated.
+A failure is recorded and diagnosed, never silently renegotiated.
 
-- **C1 fails** → the ported algorithm differs from the reference. The port is
-  wrong until shown otherwise; no tolerance is introduced.
-- **C2 fails in the pinned environment** → report the observed statistic, then
-  determine whether the cause is the port or an environmental non-determinism
-  the criterion did not anticipate. If the latter, the criterion is revised **in
-  this file, visibly, with the evidence** — and the revision is an audit item.
-- **C3 fails** → the port and the reference do not reach the same result. The
-  claim "reproduces the method" is not made.
-- **C4 fails** → the claim about weight interchange is withdrawn from the
-  documentation, whatever else passes.
+- **C0 fails** → C2 and C3 are not evaluated. Not by itself evidence against the
+  port.
+- **C1 fails** → the ported algorithm differs, *unless* the difference is a
+  demonstrated `numpy.argsort` tie-break difference, which is diagnosed as such.
+  Otherwise the port is wrong until shown otherwise; no tolerance is introduced.
+- **C2 fails** → the port owns the failure unless the proposed environmental
+  cause is **reproduced between two runs of the unmodified reference**.
+- **C3 fails, C0 passing** → the implementations do not reach the same result.
+  The claim is not made.
+- **C4 fails** → the compatibility statement is withdrawn from the documentation.
+- **C5/C6/C7 fail** → the corresponding capability is not documented as present.
 
-A partially met set does not become "reproduces the JVST/SIA method". It becomes
-a statement of exactly what was and was not reproduced.
+A partially met set does not become "reproduces the reference implementation". It
+becomes a statement of exactly what was and was not reproduced, **published in
+this file**, and that statement is itself an audit item.
+
+**Any revision to any criterion is an audit item under `AGENTS.md` §8** — not
+only C2's.
 
 ## Release and audit
 
-The port targets **v0.1.1**. Before that release, and because the claim is a
-published one, it gets the independent audit `AGENTS.md` §8 requires. The audit
-sees this file, the implementation, and the test results together — and is asked
-specifically whether the criteria were met as written, rather than as
-interpreted afterwards.
+The port targets **v0.1.1**. Because the claim is a published one it gets the
+independent audit §8 requires, before release.
+
+**The audited object is the claim, not only the evidence.** The audit approves
+the exact wording as it will appear in `README.md`, `paper/paper.md`,
+`CHANGELOG.md` and the release note, and is asked whether the criteria were met
+as written rather than as interpreted afterwards.
+
+### Documents the port falsifies on release
+
+Listed now so the release cannot quietly leave them stale:
+
+| Document | Statement |
+|---|---|
+| `README.md` | header "Noise2Clean / Noise2Noise training" — the enumeration becomes incomplete |
+| `README.md` | the training-methods table gains a row whose "needs clean spectra" answer is *no* |
+| `docs/QUICK_START.md` | troubleshooting: methods "need a `clean` dataset in the training HDF5" |
+| `paper/paper.md` | Summary's method enumeration |
+| `paper/paper.md` | "it does not ingest measured noisy/noisy pairs" — **a manuscript in press; amending it is a separate act from editing a README** |
+
+## Revision log
+
+### Revision 1 — 2026-09-21, after two independent audits, before implementation
+
+Both audits ran against the registered text (git `100940d`) without access to
+this project's private records. Measurements marked **[verified here]** were
+reproduced independently before this revision was written; the rest are the
+auditors' and are marked as such. Every auditor number that was cheap to re-run
+reproduced **exactly** — the fixture constants, the input SNR, `max|y_ref|`, and
+the five-seed SNR spread — which is why the remainder are carried with
+attribution rather than re-derived.
+
+| # | Finding | Change |
+|---|---|---|
+| 1 | **A port ignoring `frame_indices` passes every criterion.** On `arange(200)` temporal and row distance coincide; a positional port is `array_equal` for W = 1, 2, 5, 10 and then passes C2–C4 on identical targets. *(auditor's measurement; differs by 0.1026 on a permuted order)* | C1 case **b** added |
+| 2 | **C1's justification was false.** "No reason for it to fail" — but `np.argsort`'s unstable tie-break decides the outermost neighbour for odd `W`. **[verified here]** 86/200 rows differ at W=1, 107/200 at W=5; target values differ on 145/200 rows by up to 0.0471 | Tie-break pinned; C1 moved under the environment pin; failure rule amended |
+| 3 | **C3 presupposed RNG-stream alignment without stating it.** A port drawing one extra value before model construction fails 3 of 5 seeds *(auditor's measurement)*; the reference's own seed spread is **sd 1.442 dB** — 3.5× the bound **[verified here]** | **C0 added** as an explicit precondition; C3's calibration written out |
+| 4 | **The fixture was not reproducible from the document.** `Dropout(0.1)` is load-bearing and was omitted, while the two parameters that *were* stated are inert. **[verified here]** `nn.Dropout` at `network.py:28`; the docstring calls the others "accepted for call-site compatibility"; the word "dropout" appeared 0 times in the registered text | Model spec restated in full: four blocks, dropout, two heads, loss on the first, `global_skip=False` |
+| 5 | **Three named components are inert on the fixture.** **[verified here]** Huber: 0/140 steps leave the quadratic region (max residual 0.9463 < δ=1.0), so Huber ≡ 0.5·MSE. StepLR: never fires at 20 epochs; LR constant 1e-3. Clip: max grad norm 0.0464, 0/140 bound | Measured table added; **C7** added so the scheduler fires; loss and clip declared unverified by the criteria |
+| 6 | **C2's stated rationale was empirically false.** Shuffling is seeded; 1 vs 12 threads gives exactly 0.0 *(auditor's measurement)*. The band (0, 1e-4) is unpopulated on the training path | Rationale corrected; revision of C2 now requires a **demonstration** against the unmodified reference; CPU/BLAS declared unpinned |
+| 7 | **The purpose claimed the papers; the criteria pin the deposit.** The deposit's own docstring says it is *"Distilled from the paper's ... script"* **[verified here]** | Purpose and failure text restated as the deposit; a "not about the papers" disclaimer added |
+| 8 | **§6's signal-to-noise regime element was absent** | Regime paragraph added: same input regime, target at ≈W× exposure, W = 5 only |
+| 9 | **The metric's independence assumptions were unstated** | C3 states the reference is generative, and the split section states this is an in-distribution single-signal evaluation |
+| 10 | **Edge cases uncovered**: the `min(W, n-1)` clamp, the `ValueError` trigger (n=1 and W=0, not n=2), and duplicate acquisition indices making a distance-0 "other" frame | C1 cases **c, d, e**; C5 requires unique indices |
+| 11 | **The `resample` path was noted as unexercised but not recorded as a gap** | **C6** added |
+| 12 | **A vendored copy would pass every criterion** | "What reproduces means" added; `arhaxpes_denoise` added to the import prohibition for this work |
+| 13 | **C4's justification described the papers' trained weights; C4 tests two untrained class definitions.** The SIA paper is also in press | C4's scope corrected; the dropout blind spot recorded |
+| 14 | **The negative section was missing four disclaimers** (§5 preprocessing, §5 model-estimate, single-`W`, deposit-as-distillation) **and over-disclaimed one thing** C3 does support | All four added; the performance bullet narrowed to preserve C3's supported difference |
+| 15 | **§8 process gaps**: the audit was scoped to the criteria, not the published sentence; only C2's revision was an audit item | Audit scoped to the claim wording; all criterion revisions are audit items |
+| 16 | **"v0.1.0's methods are noise2clean and Noise2Noise" was false.** **[verified here]** `Noise2Self` ships at `src/dnndenoiser/training/methods.py:283` | Corrected to the CLI methods, with `Noise2Self`'s status named |
+| 17 | **C3 was required on every device**, contradicting `benchmarks/reference/report.md`'s own record of device non-determinism | C0–C3 scoped to the pinned environment, reported elsewhere |
+| 18 | **Leave-one-out independence was stated unconditionally** | Qualified: it holds *for independent frames*; drift and charging break it on measured stacks |
+
+**Audited and found sound, unchanged:** C4's scope as a compatibility test; the
+split statement; the draw-order and `float32` specification (an auditor rebuilt
+the fixture from the document's constants alone and obtained the deposit's
+values); C3's pairing design; C2's refusal of bit-identity; C1's refusal of a
+tolerance; the reference-free-SNR disclaimer; the non-vendoring of the reference;
+and the register-before-implementation discipline itself.
 
 ## Record
 
 | | |
 |---|---|
-| Registered | 2026-09-21 |
+| Registered | 2026-09-21 (git `100940d`) |
+| Amended | 2026-09-21, Revision 1, before implementation |
 | Reference | `10.5281/zenodo.22092109` v1.0.0, digests above |
-| Implementation | not started at registration |
+| Implementation | not started |
 | Result | to be recorded here, below this line, when the criteria have been run |
