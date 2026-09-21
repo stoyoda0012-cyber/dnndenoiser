@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +30,7 @@ import pytest
 import torch
 
 from dnndenoiser.models.network import DenoisingNetwork
+from tests.p1_environment import pinned_environment
 from dnndenoiser.training.selfsupervised import (
     denoise,
     moving_average_targets,
@@ -42,20 +42,6 @@ _FIXTURES = Path(__file__).parent / "fixtures"
 PINNED = json.loads((_FIXTURES / "p1_reference_targets.json").read_text())
 REFERENCE_OUTPUTS = dict(np.load(_FIXTURES / "p1_reference_outputs.npz"))
 ENV = PINNED["_environment"]
-
-_mismatch = [
-    f"{name}: have {have}, pinned {want}"
-    for name, have, want in (
-        ("python", ".".join(map(str, sys.version_info[:2])), ".".join(ENV["python"].split(".")[:2])),
-        ("torch", torch.__version__, ENV["torch"]),
-        ("numpy", np.__version__, ENV["numpy"]),
-    )
-    if have != want
-]
-pinned_environment = pytest.mark.skipif(
-    bool(_mismatch),
-    reason="outside the environment these criteria are pinned to — " + "; ".join(_mismatch),
-)
 
 NET_KW = dict(
     num_features=256, num_hidden_units=100, layer_type="ResNet-FCNN", encoder_output_dim=64

@@ -8,3 +8,9 @@
 recursive-include tests *.py
 recursive-include tests *.json
 recursive-include tests *.npz
+
+# The citation file and the changelog. A distribution that carries neither makes
+# the DOI unreachable for anyone who has only the archive, and leaves a user no
+# way to tell what changed between the version they have and any other.
+include CITATION.cff
+include CHANGELOG.md

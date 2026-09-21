@@ -625,3 +625,37 @@ fixed.
 exception and that one an error in the document rather than in the code. The
 claim may be published in the audited wording above, once findings 1–3 are
 fixed — which they now are.
+
+## Revision 3 — 2026-09-21, from CI
+
+**The tie-break dependence is confirmed across builds, and C1's gate was
+missing.** Revision 1 recorded, as *PLAUSIBLE and unverified* — "I have one
+numpy build" — that the reference's own targets for odd `W` might not be
+reproducible across numpy versions. Linux CI settled it: on `ubuntu-latest` at
+Python 3.10 and 3.12, C1 failed **exactly** the tie-ambiguous cases and passed
+**exactly** the tie-free ones.
+
+| Case | Tie-ambiguous rows | CI |
+|---|---:|---|
+| `a`, `W = 1` | 86 | **failed** |
+| `a`, `W = 2` | 0 | passed |
+| `a`, `W = 5` | 107 | **failed** |
+| `a`, `W = 10` | 0 | passed |
+| `b`, permuted, `W = 5` | 90 | **failed** |
+| `c`, clamp | 0 | passed |
+| `e`, duplicate index | 85 | **failed** |
+
+The correlation is exact, and it promotes that finding from PLAUSIBLE to
+**CONFIRMED**.
+
+This was a defect in the tests, not a revision of a criterion: the Environment
+section already required C1 only in the pinned environment, and the test file
+simply never applied the gate. The document was right and the code was wrong.
+
+The gate is now **computed rather than listed** — `tests/p1_environment.py`
+works out for each `(frame_indices, W)` whether the sort's tie-breaking decides
+any row, and skips only those cases off the pinned build. Ten of C1's fourteen
+tests still run everywhere, including `W = 2`, `W = 10`, the clamp, the error
+cases, the two-frame boundary and both meta-guards; four skip with a reason that
+names the row count. A hand-maintained list of "the odd-W ones" would have gone
+stale the first time a case was added.

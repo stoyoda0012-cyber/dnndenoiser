@@ -23,6 +23,7 @@ import numpy as np
 import pytest
 
 from dnndenoiser.training.selfsupervised import moving_average_targets
+from tests.p1_environment import skip_if_tie_ambiguous_outside_pin
 
 PINNED = json.loads(
     (Path(__file__).parent / "fixtures" / "p1_reference_targets.json").read_text()
@@ -53,6 +54,7 @@ def frames() -> np.ndarray:
 @pytest.mark.parametrize("W", [1, 2, 5, 10])
 def test_c1_case_a_arange_order(frames, W):
     """C1(a) — the paper's W sweep on contiguous acquisition order."""
+    skip_if_tie_ambiguous_outside_pin(np.arange(len(frames)), W)
     got = moving_average_targets(frames, np.arange(len(frames)), W)
     assert got.dtype == np.float64
     assert digest(got) == CASES[f"a_arange_W{W}"]["sha256"]
@@ -66,6 +68,7 @@ def test_c1_case_b_permuted_order(frames):
     passes every other case. This is the one that catches it.
     """
     permuted = np.random.default_rng(7).permutation(len(frames))
+    skip_if_tie_ambiguous_outside_pin(permuted, 5)
     got = moving_average_targets(frames, permuted, 5)
     assert digest(got) == CASES["b_permuted_W5"]["sha256"]
 
@@ -123,6 +126,7 @@ def test_c1_case_e_duplicate_indices_reproduce_the_reference(frames):
     """
     duplicated = np.arange(len(frames))
     duplicated[1] = duplicated[0]
+    skip_if_tie_ambiguous_outside_pin(duplicated, 5)
     got = moving_average_targets(frames, duplicated, 5)
     assert digest(got) == CASES["e_duplicate_index_W5"]["sha256"]
 
