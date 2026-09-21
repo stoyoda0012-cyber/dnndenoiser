@@ -10,6 +10,7 @@ limitations.
 |----------|----------------|
 | [QUICK_START.md](QUICK_START.md) | Installed-CLI workflow: generate → train → infer → evaluate, HDF5 schema, Python API example |
 | [../benchmarks/reference/README.md](../benchmarks/reference/README.md) | The reference measurement: what it measures, how to re-run it, and what its numbers do not support |
+| [preregistration/](preregistration/) | Acceptance criteria fixed **before** the work they judge. Registered first because a criterion written after seeing the result is not a criterion |
 
 ## The supported surface
 
