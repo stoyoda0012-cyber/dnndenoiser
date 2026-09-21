@@ -156,10 +156,11 @@ effective-exposure scaling is made or supported.**
 
 ### Environment
 
-C0, C1, C2, C3 **and C7** are numerical-identity or tight-tolerance claims and
-are required **only** in one environment: CPU, Python 3.12.11, `torch` 2.9.1,
-`numpy` 2.3.3. Elsewhere they are **reported, not required**. C4, C5 and C6 are
-required wherever the suite runs.
+C0, C1, C2, C3, **C6's exactness** and C7 are numerical-identity or
+tight-tolerance claims and are required **only** in one environment: CPU,
+Python 3.12.11, `torch` 2.9.1, `numpy` 2.3.3. Elsewhere they are **reported,
+not required**. C4, C5 and C6's *tolerance* form are required wherever the suite
+runs.
 
 *C7's scope was amended 2026-09-21 (Revision 2). The registered text put it with
 C4–C6, which was an oversight: C7 **is** C2's statistic at 30 epochs, so it
@@ -351,6 +352,14 @@ The reference builds its interpolation matrix in `float32`, clips the source
 index at `n_old − 2`, and returns the input **by identity** when
 `n_old == n_new`. A port that returns a copy, or interpolates in `float64`, is
 not equivalent.
+
+*Amended 2026-09-21 (Revision 4).* `resample` is a `float32` matrix multiply,
+and which order the BLAS sums in is the build's choice — the same mathematics
+written three ways (`@`, `einsum`, per-row) differs by one ULP on a single
+machine. **Exactness is therefore a claim about one build.** C6 is split: the
+result must match the reference **to `atol = 1e-6` on any build**, and
+**exactly on the pinned one**. Shape, dtype, the `n_old − 2` clip and the
+identity return are checked everywhere, since no BLAS has a say in them.
 
 ### C7 — one case where the scheduler fires
 
@@ -659,3 +668,22 @@ tests still run everywhere, including `W = 2`, `W = 10`, the clamp, the error
 cases, the two-frame boundary and both meta-guards; four skip with a reason that
 names the row count. A hand-maintained list of "the odd-W ones" would have gone
 stale the first time a case was added.
+
+## Revision 4 — 2026-09-21, from CI again
+
+Two failures on the release candidate, both defects in what had just been
+written rather than in the port.
+
+| # | Finding | Change |
+|---|---|---|
+| 1 | **C6's exactness was registered as required on every build, and is not.** `resample` is a `float32` `sgemm`; the reduction order is the BLAS implementation's choice, so a pinned digest is a statement about one build. CI failed both `n_new` values on `ubuntu-latest` while the port is exact against the reference locally — the same shape of error as C7's scope in Revision 2, found the same way | C6 split into a tolerance form required everywhere (`atol = 1e-6`, against the reference's array, now pinned alongside its digest) and an exactness form required on the pinned build. A structural test covers what no BLAS decides: shape, dtype, the `n_old − 2` clip, and that each output point is a convex combination |
+| 2 | **The new version-consistency test used `tomllib`**, which arrived in Python 3.11, while `pyproject.toml` declares `requires-python = ">=3.10"` and CI runs 3.10. A test that cannot run on a supported interpreter is not a test of that interpreter | Read by regex instead; no new dependency |
+
+**The pattern worth naming.** Three times now — C7 in Revision 2, C1 in
+Revision 3, C6 here — a criterion turned out to be environment-dependent in a
+way the registered text did not say. Each time the port was correct and the
+*scoping* was wrong. Writing "required wherever the suite runs" is easy; knowing
+which claims survive a different BLAS is not something a single machine can
+tell you. The general rule this settles: **any criterion whose statistic is an
+exact comparison of floating-point results is a claim about one build**, and
+belongs behind the environment pin unless it has a tolerance form as well.

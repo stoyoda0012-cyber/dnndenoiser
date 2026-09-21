@@ -30,7 +30,7 @@ import pytest
 import torch
 
 from dnndenoiser.models.network import DenoisingNetwork
-from tests.p1_environment import pinned_environment
+from tests.p1_environment import IN_PINNED_ENVIRONMENT, pinned_environment
 from dnndenoiser.training.selfsupervised import (
     denoise,
     moving_average_targets,
@@ -199,9 +199,50 @@ def test_c3_paired_snr_across_five_seeds(fixture):
 # --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("n_new", [128, 512])
 def test_c6_resample_matches_the_reference(fixture, n_new):
-    """Every stack whose length is not 256 goes through here."""
+    """Every stack whose length is not 256 goes through here.
+
+    Checked to a tolerance on every build, and exactly on the pinned one.
+    ``resample`` is a float32 matrix multiply and which order the BLAS sums in
+    is the build's choice: locally, the same mathematics written three ways
+    (``@``, ``einsum``, per-row) gives three results differing by one ULP. So
+    an exact digest is a statement about this build, while agreement to a
+    tolerance is a statement about the algorithm, and both are worth making.
+    """
     _, _, test, _ = fixture
-    assert digest(resample(test, n_new)) == PINNED["c6_resampled"][str(n_new)]
+    got = resample(test, n_new)
+    reference = REFERENCE_OUTPUTS[f"c6_resampled_{n_new}"]
+
+    assert got.shape == reference.shape
+    assert got.dtype == np.float32
+    assert np.allclose(got, reference, rtol=0, atol=1e-6), (
+        f"max |difference| = {np.abs(got - reference).max():.3e}"
+    )
+
+    if IN_PINNED_ENVIRONMENT:
+        assert digest(got) == PINNED["c6_resampled"][str(n_new)]
+
+
+def test_c6_resample_structure_holds_on_any_build(fixture):
+    """The parts of ``resample`` that no BLAS gets a say in.
+
+    Shape, dtype, and the clip at ``n_old - 2`` — which is what makes the final
+    output point interpolate from the last interval instead of running off the
+    end. A port that dropped the clip would produce the right shape and fail
+    here rather than only on the pinned build.
+    """
+    from dnndenoiser.training.selfsupervised import _interpolation_matrix
+
+    matrix = _interpolation_matrix(256, 128)
+    assert matrix.dtype == np.float32
+    assert matrix.shape == (128, 256)
+    assert matrix[-1].nonzero()[0].tolist() == [255], (
+        "the last output point must come from the final interval; without the "
+        "clip at n_old-2 the source index runs past the end"
+    )
+    assert np.allclose(matrix.sum(axis=1), 1.0), "each output point is a convex combination"
+
+    _, _, test, _ = fixture
+    assert resample(test, 128).shape == (16, 128)
 
 
 def test_c6_resample_is_a_no_op_without_copying(fixture):

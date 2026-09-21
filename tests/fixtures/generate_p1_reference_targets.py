@@ -101,6 +101,7 @@ def main() -> int:
     ref_ss = importlib.import_module("arhaxpes_denoise.selfsupervised")
     ref_net = importlib.import_module("arhaxpes_denoise.network")
     torch.set_num_threads(1)
+    arrays: dict[str, np.ndarray] = {}
     kw = dict(num_features=256, num_hidden_units=100,
               layer_type="ResNet-FCNN", encoder_output_dim=64)
 
@@ -125,14 +126,22 @@ def main() -> int:
 
     out0 = ref_ss.denoise(ref_ss.train_denoiser(frames, targets, epochs=20, seed=0), test)
     c2 = {"sha256": digest(out0), "max_abs": float(np.abs(out0).max())}
-    arrays = {"c2_output_seed0": out0}
+    arrays["c2_output_seed0"] = out0
 
     c3 = {}
     for seed in (1, 2, 3, 4, 5):
         y = ref_ss.denoise(ref_ss.train_denoiser(frames, targets, epochs=20, seed=seed), test)
         c3[str(seed)] = {"sha256": digest(y), "snr_db": snr(y)}
 
-    c6 = {str(m): digest(ref_ss.resample(test, m)) for m in (128, 512)}
+    c6 = {}
+    for m in (128, 512):
+        resampled = ref_ss.resample(test, m)
+        c6[str(m)] = digest(resampled)
+        # Pinned as an array as well as a digest: `resample` is a float32 matmul,
+        # and which order the BLAS sums in is the build's choice, so the digest
+        # is exact only on the pinned build. The array lets every other build
+        # still check the result to a tolerance instead of checking nothing.
+        arrays[f"c6_resampled_{m}"] = resampled
 
     # C4: the reference's state_dict manifest, plus the real cross-package load
     # performed here (2.6 MB of weights is not committed; the manifest is what

@@ -9,7 +9,6 @@ to be forgotten is the citation, which is the one a reader relies on.
 from __future__ import annotations
 
 import re
-import tomllib
 from pathlib import Path
 
 import dnndenoiser
@@ -18,7 +17,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_the_three_declared_versions_agree():
-    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())["project"]["version"]
+    # Read by regex rather than with tomllib: this project supports Python 3.10
+    # and tomllib arrived in 3.11. A test that cannot run on a supported
+    # interpreter is not a test of that interpreter.
+    pyproject_match = re.search(
+        r"^version\s*=\s*[\"']([^\"']+)[\"']\s*$",
+        (REPO_ROOT / "pyproject.toml").read_text(), re.MULTILINE,
+    )
+    assert pyproject_match, "pyproject.toml has no top-level version"
+    pyproject = pyproject_match.group(1)
 
     citation = re.search(
         r"^version:\s*(\S+)\s*$", (REPO_ROOT / "CITATION.cff").read_text(), re.MULTILINE
