@@ -1,7 +1,9 @@
 # Preregistration — P1: the self-supervised moving-average training method
 
-**Status: registered 2026-09-21; amended 2026-09-21 (Revision 1), still not
-implemented.** Nothing below may be revised to match a result. When a criterion
+**Status: registered 2026-09-21; amended 2026-09-21 (Revision 1); implemented
+and run 2026-09-21 — all eight criteria met. See Result, last section.
+Independent audit under `AGENTS.md` §8 pending; no claim is published until it
+has been done.** Nothing below may be revised to match a result. When a criterion
 turns out to be wrong it is changed *visibly*, with the reason and the date, and
 the change is part of the record — see **Revision log**, last section.
 
@@ -452,5 +454,87 @@ and the register-before-implementation discipline itself.
 | Registered | 2026-09-21 (git `100940d`) |
 | Amended | 2026-09-21, Revision 1, before implementation |
 | Reference | `10.5281/zenodo.22092109` v1.0.0, digests above |
-| Implementation | not started |
-| Result | to be recorded here, below this line, when the criteria have been run |
+| Implementation | `6df2bfb`, `5515dfd`, `471ce84` |
+| Result | below |
+| Audit | **not yet done.** §8 requires it before the claim is published |
+
+## Result — 2026-09-21
+
+Run in the pinned environment: CPU, Python 3.12.11, `torch` 2.9.1, `numpy`
+2.3.3, `torch.set_num_threads(1)` for the training criteria.
+
+**All eight criteria are met.** 52 tests across five files; 1 skipped (the live
+cross-package load, which runs only where the reference is present, and did pass
+there).
+
+| Criterion | Outcome | Measured |
+|---|---|---|
+| **C0** RNG-stream alignment | **met** | parameters bit-identical at all six seeds |
+| **C1** targets exactly equal | **met** | all five cases; `numpy.array_equal` against the pinned reference digests |
+| **C2** trained output, seed 0 | **met** | relative L∞ = **0.000e+00** (bound 1e-4) |
+| **C3** five seeds, paired | **met** | **0.0000 dB** on every seed; paired mean +0.0000 ± 0.0000 dB (bound 0.5) |
+| **C4** weights interchange | **met** | 22 keys, identical shapes, 658,177 parameters; cross-loaded outputs differ by 0.0 |
+| **C5** frame-stack schema | **met** | documented, round-trips, rejects duplicate acquisition indices |
+| **C6** resample path | **met** | exact at 128 and 512 points |
+| **C7** scheduler fires | **met** | relative L∞ = **0.000e+00** at 30 epochs |
+
+### Why C2, C3 and C7 are exact rather than merely inside tolerance
+
+They agree to the bit. That is a fact about this pair of implementations, not
+evidence about ports in general: `dnndenoiser`'s ResNet-FCNN and the deposit's
+`DenoisingNetwork` share a code lineage — the deposit vendored its copy **from
+this project** — so the two consume the random stream identically and the whole
+computation is the same arithmetic in the same order. **C0 is what makes that a
+stated, tested precondition rather than a coincidence**, and it is why the
+criteria gate C2 and C3 behind it. An unrelated reimplementation would have no
+such guarantee, and the tolerances exist for that case.
+
+### What the implementation found that the criteria did not
+
+Recorded because a preregistration that only records its own score is worth less
+than one that records what running it cost:
+
+- **The refusal rule in the CLI was wrong on the first attempt.** It keyed on
+  "differs from the parser default", which lets `--arch` through in silence: the
+  default is `FCNN` while this method is always ResNet-FCNN, so the value a user
+  never touches is *already* the wrong one. It now keys on the flag being
+  present. Two tests hold the distinction.
+- **The pinned `.npz` fixture was matched by a blanket `*.npz` ignore rule** and
+  would have shipped as a test CI cannot run. It has an explicit exception now.
+- **The import guard failed the moment the C4 test imported the reference** —
+  correctly. That test is a legitimate reader under "may read it to be tested
+  against", so it is named in the allowlist rather than the rule being loosened.
+  The guard parses rather than greps, because a substring search flagged the
+  guard's own token list and the port's docstring citation.
+- **A transcription error in the duplicate-index hazard.** It was recorded as
+  "target[0] is exactly frames[1]", which is true at `W = 1` and false at
+  `W = 5`, where the duplicate is one of five averaged neighbours. The test
+  asserts the sharp `W = 1` form.
+- **`--seed` did not exist on the train parser**, though the ported API takes
+  one and construction consumes the random stream.
+
+### The claim this licenses, and nothing stronger
+
+> `dnndenoiser` implements the leave-one-out moving-average self-supervised
+> training target and the ResNet-FCNN training loop of the archived
+> `arhaxpes_denoise` reference implementation (Zenodo
+> `10.5281/zenodo.22092109` v1.0.0). On that deposit's own synthetic fixture —
+> 200 Poisson frames of a single Gaussian core level on a flat background, 16
+> held-out frames, `W = 5`, CPU — the port's targets are exactly equal to the
+> reference's for `W ∈ {1, 2, 5, 10}`; its trained outputs agree with the
+> reference's to a relative L∞ below 1e-4 at a fixed seed in the pinned
+> environment; the two implementations' clean-referenced output SNR differ by at
+> most 0.5 dB on each of five further seeds; and ResNet-FCNN `state_dict`s
+> interchange between the two packages without renaming at
+> `num_features=256, num_hidden_units=100, encoder_output_dim=64`. No measured
+> data was used, and nothing here measures how well either implementation
+> denoises.
+
+Everything under "What this does not claim" still holds and is not relaxed by
+the result. In particular this is **not** a claim about the JVST or SIA papers:
+the deposit is those authors' own distillation of a training script, and only
+the link from the deposit to this port was tested.
+
+**This wording is not yet published.** §8 makes the claim — not only the
+evidence — the audited object, so it goes into `README.md`, `paper/paper.md`,
+`CHANGELOG.md` and the release note after the independent audit, not before.
