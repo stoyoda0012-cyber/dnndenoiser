@@ -89,7 +89,15 @@ def test_only_the_golden_generator_may_read_the_p1_reference():
     """
     import ast
 
-    allowed = {pathlib.Path("tests/fixtures/generate_p1_reference_targets.py")}
+    # The preregistration allows the reference to be *read to be tested
+    # against*, and nothing else. Two files qualify: the script that pins the
+    # golden values, and the C4 test that performs the live cross-package load
+    # when a verified copy is present (it skips otherwise). Both are test-side;
+    # neither is shipped library code.
+    allowed = {
+        pathlib.Path("tests/fixtures/generate_p1_reference_targets.py"),
+        pathlib.Path("tests/test_p1_weight_interchange.py"),
+    }
     skip_dirs = {".git", "build", "dist", "__pycache__", ".ruff_cache", ".pytest_cache"}
     readers = set()
     parsed = 0

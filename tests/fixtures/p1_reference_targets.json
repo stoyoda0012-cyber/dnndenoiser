@@ -317,5 +317,204 @@
         256
       ]
     }
+  },
+  "c0_initial_parameters": {
+    "0": "1f2a4d110bda6964b509c72d7c38f8d459260b27cb16f4a2272d0e2a53982ba2",
+    "1": "7e0afa5a523325bdfeb822217796698f394ee56a3ae50b1ca10a2b346fa7d15f",
+    "2": "4f093ef0b64ef29a0beb3744eaaeb47839419f4ce2fdcd747bef22161025f4d0",
+    "3": "35f214c5db061bef405d806aac4a1fc2ba6837ce6ffd8105c6f78a5fbdb9ffef",
+    "4": "4593f96477578c91d94e3c293f7eb8d803a891d543ded2bfac6e2d925382093e",
+    "5": "d19d997d9480754f6ae3de402d7d8385d02c0216288daf1e06fd8c917c4d29cb"
+  },
+  "c2_trained_output_seed0": {
+    "sha256": "f79805eb398b630a1b76cfcbf8bc859ef39cc7976d84778c421447e4801adbab",
+    "max_abs": 0.8529261350631714
+  },
+  "c3_trained_output_seeds": {
+    "1": {
+      "sha256": "caac6ba8267175b014ad5c763b1bf24e3decf91c1963a6df3ffd3e7bbae1345c",
+      "snr_db": 35.78083113988873
+    },
+    "2": {
+      "sha256": "dd257a6a7397eb9c435be69fd068593c68f4427e1e6673678364728c0da0b0d5",
+      "snr_db": 36.07586572254725
+    },
+    "3": {
+      "sha256": "7a0f97f7913ddeffd7f5bac90c1b23dc32e553dc7b52234c9a45d8e5e4956886",
+      "snr_db": 34.409624829430705
+    },
+    "4": {
+      "sha256": "e9c8cdd6c2367ca69d069b198c6ee4769fa0ccd950d6b4bbf0bc00b74bba80dd",
+      "snr_db": 33.87627677352475
+    },
+    "5": {
+      "sha256": "0cc740350aba41805ffc306ad2160ad2e86570ea78e1e3f98b2d4e844d9b5698",
+      "snr_db": 32.54945828646471
+    }
+  },
+  "c6_resampled": {
+    "128": "0eb0381222272291a785e04e054c732c06e9f856b08ba55f04d3d0b2d435c286",
+    "512": "9a7a9c55db45f459ea45f2f0b465434662c549d1beb5b426ad3e6465e1d7e2c1"
+  },
+  "c4_state_dict_manifest": {
+    "keys": [
+      [
+        "encoder.0.weight",
+        [
+          256,
+          256
+        ]
+      ],
+      [
+        "encoder.0.bias",
+        [
+          256
+        ]
+      ],
+      [
+        "encoder.2.block.0.weight",
+        [
+          256,
+          256
+        ]
+      ],
+      [
+        "encoder.2.block.0.bias",
+        [
+          256
+        ]
+      ],
+      [
+        "encoder.2.block.3.weight",
+        [
+          256,
+          256
+        ]
+      ],
+      [
+        "encoder.2.block.3.bias",
+        [
+          256
+        ]
+      ],
+      [
+        "encoder.3.block.0.weight",
+        [
+          256,
+          256
+        ]
+      ],
+      [
+        "encoder.3.block.0.bias",
+        [
+          256
+        ]
+      ],
+      [
+        "encoder.3.block.3.weight",
+        [
+          256,
+          256
+        ]
+      ],
+      [
+        "encoder.3.block.3.bias",
+        [
+          256
+        ]
+      ],
+      [
+        "encoder.4.block.0.weight",
+        [
+          256,
+          256
+        ]
+      ],
+      [
+        "encoder.4.block.0.bias",
+        [
+          256
+        ]
+      ],
+      [
+        "encoder.4.block.3.weight",
+        [
+          256,
+          256
+        ]
+      ],
+      [
+        "encoder.4.block.3.bias",
+        [
+          256
+        ]
+      ],
+      [
+        "encoder.5.block.0.weight",
+        [
+          256,
+          256
+        ]
+      ],
+      [
+        "encoder.5.block.0.bias",
+        [
+          256
+        ]
+      ],
+      [
+        "encoder.5.block.3.weight",
+        [
+          256,
+          256
+        ]
+      ],
+      [
+        "encoder.5.block.3.bias",
+        [
+          256
+        ]
+      ],
+      [
+        "fc_denoise.weight",
+        [
+          256,
+          256
+        ]
+      ],
+      [
+        "fc_denoise.bias",
+        [
+          256
+        ]
+      ],
+      [
+        "fc_top.weight",
+        [
+          1,
+          256
+        ]
+      ],
+      [
+        "fc_top.bias",
+        [
+          1
+        ]
+      ]
+    ],
+    "parameter_count": 658177,
+    "cross_loaded_outputs_max_abs_diff": 0.0
+  },
+  "c7_trained_output_epochs30_seed0": {
+    "sha256": "633aef590500c8a573d21a6eed651b188db9e762fcfbc4006c1c48e0c46dbaf5",
+    "max_abs": 0.8407233357429504
+  },
+  "_environment": {
+    "note": "C0, C2, C3 and C7 are required only in this environment",
+    "python": "3.12.11",
+    "torch": "2.9.1",
+    "numpy": "2.3.3",
+    "device": "cpu",
+    "torch_num_threads": 1
   }
 }

@@ -47,6 +47,9 @@ env/
 *.h5
 *.hdf5
 *.npz
+# ...but the pinned P1 reference outputs are test data, not a research
+# artifact: the acceptance tests load them and CI has no other copy.
+!tests/fixtures/p1_reference_outputs.npz
 
 # Benchmark results (keep README but ignore data)
 benchmarks/*.pt
