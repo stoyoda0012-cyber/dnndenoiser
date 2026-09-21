@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: >-
   If you use this software, please cite it using the metadata below.
-  A Zenodo DOI will be added at the first tagged release; until then,
+  A Zenodo DOI will be added once this release is archived; until then,
   cite the repository URL and version.
 type: software
 title: >-
@@ -15,6 +15,7 @@ authors:
       Advanced Equipment Division, Vacuum Products Corporation,
       Tokyo, Japan
 version: 0.1.0
+date-released: '2026-09-21'
 license: MIT
 repository-code: 'https://github.com/stoyoda0012-cyber/dnndenoiser'
 keywords:

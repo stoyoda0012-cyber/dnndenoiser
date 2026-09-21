@@ -4,13 +4,22 @@ All notable user-visible changes to `dnndenoiser` will be documented in
 this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and the project intends to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
-once public releases begin.
+and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-21
+
+First public release, published from a single import of the audited tree. The
+Changed and Fixed entries below record work done before that import, against
+the unreleased code; they are kept because they change what the software
+produces, and one of them changes it for a given seed.
+
 ### Added
 
+- First public release: the `dnndenoiser` package and its `dnndenoiser` command
+  (`generate` → `train` → `infer` → `evaluate`), the test suite, the
+  documentation, and `benchmarks/reference/` with its machine-readable record.
 - Changelog and contribution templates for future public development.
 
 ### Changed
@@ -57,4 +66,5 @@ once public releases begin.
   Noise2Noise rests on. The rate is floored at zero, matching the synthetic
   generator and the other training methods.
 
-No public release has been issued from this repository yet.
+[Unreleased]: https://github.com/stoyoda0012-cyber/dnndenoiser/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/stoyoda0012-cyber/dnndenoiser/releases/tag/v0.1.0
