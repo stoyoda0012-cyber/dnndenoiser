@@ -1,5 +1,7 @@
 # DNNDenoiser — XPS Spectral Denoising with Deep Learning
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22867628.svg)](https://doi.org/10.5281/zenodo.22867628)
+
 Deep-learning denoising for X-ray photoelectron spectroscopy (XPS) spectra:
 physics-based synthetic training data, eight 1-D network architectures,
 Noise2Clean / Noise2Noise training, checkpoint inference, and clean-referenced
@@ -193,6 +195,18 @@ what its numbers do and do not support.
 ## Citation
 
 If you use this software, please cite it via [CITATION.cff](CITATION.cff).
+
+Archived on Zenodo:
+
+- **All versions** (concept DOI; resolves to the latest):
+  [10.5281/zenodo.22867628](https://doi.org/10.5281/zenodo.22867628)
+- **v0.1.0**:
+  [10.5281/zenodo.22867629](https://doi.org/10.5281/zenodo.22867629)
+
+When a result depends on this software, **cite the version DOI of the release
+you used**, not the all-versions DOI. `generate` has already changed what it
+produces for a given seed once (see [CHANGELOG.md](CHANGELOG.md)), so which
+release produced a number is part of what makes it reproducible.
 
 ## License
 
