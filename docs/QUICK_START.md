@@ -103,6 +103,40 @@ dataset; it cannot score measured data that has no reference.
 | `denoised` | (n, …, energy) | written by `infer` |
 | `angles` / `times` | optional | written by `generate` for 3D/4D data |
 
+### Frame stacks — `--method moving-average`
+
+A different layout, for training from repeated acquisitions with **no clean
+reference**. Each frame's target is the mean of its `--window` temporally
+nearest *other* frames (leave-one-out).
+
+| Dataset | Shape | Notes |
+|---------|-------|-------|
+| `frames` | (n_frames, energy) | the acquired frames, in any row order |
+| `energy` | (energy,) | energy axis |
+| `frame_index` | (n_frames,) | acquisition order; **integer and unique** |
+
+`frame_index` is what "temporally nearest" is measured on, so a file that
+omits it cannot be told from one whose frames were shuffled. **Duplicate
+indices are rejected**: a frame is excluded from its own neighbourhood by
+position, not by index value, so two frames sharing an index become distance-0
+neighbours of each other and each leaks straight into the other's target.
+
+```bash
+dnndenoiser train -d stack.h5 -o model.pt --method moving-average \
+    --window 5 --epochs 50
+```
+
+The optimiser, schedule, loss and architecture are fixed — they are part of the
+method being reproduced — so `--lr`, `--scheduler`, `--arch` and the rest are
+**refused rather than ignored**. Stacks that are not 256 points are resampled.
+
+**Evaluating this is not straightforward.** A measured stack has no clean
+reference, and the obvious substitute — a mean over the same frames — is *not*
+independent of targets built from subsets of those frames. An SNR computed
+that way is not a held-out result and must not be reported as one. See
+[the preregistration](preregistration/P1-selfsupervised-moving-average.md) for
+what the port does and does not establish.
+
 ## Python API (minimal example)
 
 ```python

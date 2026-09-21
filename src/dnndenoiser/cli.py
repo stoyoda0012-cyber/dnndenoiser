@@ -141,8 +141,138 @@ def cmd_generate(args):
     print("Done.")
 
 
+def _resolve_device(requested):
+    """Resolve ``auto`` to the best available backend."""
+    import torch
+
+    if requested != 'auto':
+        return requested
+    if torch.cuda.is_available():
+        return 'cuda'
+    if torch.backends.mps.is_available():
+        return 'mps'
+    return 'cpu'
+
+
+# Flags this method does not take. Its optimiser, schedule, loss and
+# architecture are the archived reference's and are part of what is being
+# reproduced, so a flag that would change them is refused rather than ignored:
+# silently training something else under the method's name is the failure mode
+# worth spending an error message on.
+#
+# Refused on *presence*, not on value. Comparing against the parser default
+# would let --arch through in silence, because its default is FCNN while this
+# method is always ResNet-FCNN -- so the value a user never touched is already
+# the wrong one, and "you did not change it" is not the question. The question
+# is whether the flag means anything here, and it does not.
+_MOVING_AVERAGE_FIXED = (
+    "--lr", "--scheduler", "--weight-decay", "--arch", "--warmup-epochs",
+    "--lr-drop-period", "--lr-drop-factor", "--hidden-units", "--encoder-dim",
+)
+
+
+def cmd_train_moving_average(args, passed_flags):
+    """Self-supervised training from a frame stack, with no clean reference.
+
+    Each frame's target is the mean of its ``--window`` temporally nearest
+    *other* frames. Acceptance criteria:
+    ``docs/preregistration/P1-selfsupervised-moving-average.md``.
+    """
+    import numpy as np
+    import torch
+
+    from dnndenoiser.data.frame_stack import read_frame_stack
+    from dnndenoiser.training.selfsupervised import (
+        TARGET_LENGTH,
+        moving_average_targets,
+        resample,
+        train_selfsupervised,
+    )
+
+    refused = [flag for flag in _MOVING_AVERAGE_FIXED if flag in passed_flags]
+    if refused:
+        flags = ', '.join(refused)
+        print(
+            f"Error: --method moving-average does not take {flags}. Its optimiser, "
+            "schedule, loss and architecture are those of the method being "
+            "reproduced and are not tunable here; training with different ones "
+            "would not be that method. Drop the flag, or use another --method.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if args.window < 1:
+        print(f"Error: --window must be at least 1, got {args.window}", file=sys.stderr)
+        sys.exit(1)
+
+    print("\nLoading frame stack...")
+    try:
+        stack = read_frame_stack(args.data)
+    except (KeyError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    contiguous = np.array_equal(stack.frame_index, np.arange(stack.n_frames))
+    print(f"  Frames: {stack.n_frames} x {stack.n_energy}")
+    print(f"  Acquisition order: {'contiguous' if contiguous else 'explicit'}")
+
+    frames = np.asarray(stack.frames, dtype=np.float32)
+    if stack.n_energy != TARGET_LENGTH:
+        print(f"  Resampling {stack.n_energy} -> {TARGET_LENGTH} points")
+        frames = resample(frames, TARGET_LENGTH)
+
+    # Element-global min-max, as the method's own pipeline does. The constants go
+    # into the checkpoint because the model's output lives in the same normalised
+    # space and cannot be read back without them.
+    g_min, g_max = float(frames.min()), float(frames.max())
+    if g_max <= g_min:
+        print("Error: the frame stack is constant; there is nothing to normalise "
+              "or denoise", file=sys.stderr)
+        sys.exit(1)
+    normalised = (frames - g_min) / (g_max - g_min)
+
+    window = min(args.window, stack.n_frames - 1)
+    if window != args.window:
+        print(f"  Window clamped to {window} ({stack.n_frames} frames available)")
+    targets = moving_average_targets(normalised, stack.frame_index, window)
+
+    device = _resolve_device(args.device)
+    print(f"Device: {device}")
+    print(f"\nTraining (window={window}, epochs={args.epochs}, batch={args.batch_size})...")
+    model = train_selfsupervised(
+        normalised, targets,
+        epochs=args.epochs, batch_size=args.batch_size, device=device, seed=args.seed,
+    )
+
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "architecture": "ResNet-FCNN",
+            "num_features": TARGET_LENGTH,
+            "num_hidden_units": 100,
+            "encoder_output_dim": 64,
+            "training_method": "moving-average",
+            "window": window,
+            "n_frames": stack.n_frames,
+            "normalisation": {"min": g_min, "max": g_max, "kind": "element-global min-max"},
+            "energy": np.asarray(stack.energy, dtype=np.float32),
+        },
+        args.output,
+    )
+    print(f"\nSaved: {args.output}")
+    print("  Evaluation note: a measured stack has no clean reference. A mean over "
+          "the same frames is not independent of these targets, so any SNR computed "
+          "against it is not a held-out result.")
+    return 0
+
+
 def cmd_train(args):
     """Train denoising model."""
+    if args.method == 'moving-average':
+        # A different data layout and fixed hyperparameters: routed to its own
+        # command rather than threaded through the generic loop, so the knobs
+        # that do not apply cannot silently apply.
+        return cmd_train_moving_average(args, set(sys.argv[1:]))
+
     import torch
     import numpy as np
     import h5py
@@ -176,16 +306,7 @@ def cmd_train(args):
 
     n_features = noisy.shape[-1]
 
-    # Device
-    if args.device == 'auto':
-        if torch.cuda.is_available():
-            device = 'cuda'
-        elif torch.backends.mps.is_available():
-            device = 'mps'
-        else:
-            device = 'cpu'
-    else:
-        device = args.device
+    device = _resolve_device(args.device)
     print(f"Device: {device}")
 
     # Build model directly
@@ -400,16 +521,7 @@ def cmd_infer(args):
     print(f"  Architecture: {arch}")
     print(f"  Features: {n_features}")
 
-    # Device
-    if args.device == 'auto':
-        if torch.cuda.is_available():
-            device = 'cuda'
-        elif torch.backends.mps.is_available():
-            device = 'mps'
-        else:
-            device = 'cpu'
-    else:
-        device = args.device
+    device = _resolve_device(args.device)
     print(f"Device: {device}")
 
     # Build model directly
@@ -658,10 +770,15 @@ Examples:
                              choices=['FCNN', 'ResNet-FCNN', '1D-CNN', 'ResNet-1DCNN', 'GRU', 'LSTM', 'bi-LSTM', 'Transformer'],
                              help='Network architecture')
     train_parser.add_argument('--method', default='noise2clean',
-                             choices=['noise2clean', 'noise2noise'],
+                             choices=['noise2clean', 'noise2noise', 'moving-average'],
                              help='Training method. noise2noise synthesizes a second '
                                   'independent noisy realization from the clean spectra. '
                                   '(noise2self is library-only/experimental and not offered here.)')
+    train_parser.add_argument('--window', type=int, default=5,
+                             help="moving-average only: how many temporally nearest "
+                                  "other frames to average into each target. 5 is the "
+                                  "canonical value; larger is a longer effective "
+                                  "exposure in the target. Clamped to n_frames - 1.")
     train_parser.add_argument('--noise-level', type=float, default=None,
                              help='Required by --method noise2noise: the Poisson level the '
                                   'training data was generated with, in the same units as '
@@ -671,6 +788,10 @@ Examples:
                                   'the data file does not record it. Ignored by noise2clean.')
     train_parser.add_argument('--epochs', type=int, default=30)
     train_parser.add_argument('--batch-size', type=int, default=32)
+    train_parser.add_argument('--seed', type=int, default=None,
+                             help='Seed passed to torch before the model is built. '
+                                  'Construction consumes the random stream, so the '
+                                  'same seed gives the same initial weights.')
     train_parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     train_parser.add_argument('--lr-drop-period', type=int, default=10)
     train_parser.add_argument('--lr-drop-factor', type=float, default=0.1)
