@@ -8,6 +8,48 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **A self-supervised training method that needs no clean reference.**
+  `dnndenoiser` implements the leave-one-out moving-average self-supervised
+  training target and the ResNet-FCNN training loop of the archived
+  `arhaxpes_denoise` reference implementation (Zenodo
+  [10.5281/zenodo.22092109](https://doi.org/10.5281/zenodo.22092109) v1.0.0).
+  On that deposit's own synthetic fixture — 200 Poisson frames of a single
+  Gaussian core level on a flat background, 16 held-out frames, CPU — the
+  port's targets are exactly equal to the reference's for `W ∈ {1, 2, 5, 10}`
+  on contiguous acquisition order, for `W = 5` on a permuted one, and on the
+  window-clamp, error and duplicate-index cases. At `W = 5` its trained outputs
+  are bit-identical to the reference's at seed 0 (relative L∞ 0.0, against a
+  registered bound of 1e-4), and the two implementations' clean-referenced
+  output SNR differ by 0.000 dB on each of five further seeds (registered bound
+  0.5 dB). ResNet-FCNN `state_dict`s interchange between the two packages
+  without renaming at `num_features=256, num_hidden_units=100,
+  encoder_output_dim=64`.
+
+  **The two agree to the bit because they share a code lineage** — the deposit
+  vendored its network from this project — not because an unrelated
+  reimplementation would; the registered tolerances exist for that case. The
+  evidence does not pin the gradient-clip threshold: removing clipping entirely
+  reproduces the reference exactly on this fixture. **No measured data was
+  used, and nothing here measures how well either implementation denoises.**
+
+  Acceptance criteria were registered before the implementation existed and
+  audited twice — once before it was written, once after — in
+  [`docs/preregistration/P1-selfsupervised-moving-average.md`](docs/preregistration/P1-selfsupervised-moving-average.md),
+  which also records what the criteria do *not* establish.
+
+- An HDF5 frame-stack schema (`frames`, `energy`, `frame_index`) for repeated
+  acquisitions, with a reader that rejects duplicate acquisition indices.
+- `train --method moving-average --window W`. Training only; `infer` does not
+  read the frame-stack schema yet.
+- `train --seed`.
+
+### Fixed
+
+- The sdist shipped `tests/` without `tests/fixtures/`, so test collection
+  aborted and no test ran from the released archive.
+
 ## [0.1.0] - 2026-09-21
 
 First public release, published from a single import of the audited tree. The

@@ -166,9 +166,33 @@ def _resolve_device(requested):
 # the wrong one, and "you did not change it" is not the question. The question
 # is whether the flag means anything here, and it does not.
 _MOVING_AVERAGE_FIXED = (
-    "--lr", "--scheduler", "--weight-decay", "--arch", "--warmup-epochs",
-    "--lr-drop-period", "--lr-drop-factor", "--hidden-units", "--encoder-dim",
+    "--arch", "--lr", "--lr-drop-period", "--lr-drop-factor", "--scheduler",
+    "--warmup-epochs", "--weight-decay", "--grad-clip", "--hidden-units",
+    "--encoder-dim", "--noise-level",
 )
+
+
+def _flags_passed(argv, known_options):
+    """Option names actually present in ``argv``, however they were written.
+
+    Three forms all name the same option and a literal membership test sees only
+    the first: ``--lr 0.05``, ``--lr=0.05``, and argparse's unique-prefix
+    abbreviation ``--weight-deca``. A refusal rule that misses two of the three
+    refuses nothing in particular.
+    """
+    passed = set()
+    for token in argv:
+        if not token.startswith("-") or token == "--":
+            continue
+        name = token.split("=", 1)[0]
+        if name in known_options:
+            passed.add(name)
+            continue
+        if name.startswith("--"):
+            matches = [o for o in known_options if o.startswith(name)]
+            if len(matches) == 1:  # argparse accepts a unique prefix
+                passed.add(matches[0])
+    return passed
 
 
 def cmd_train_moving_average(args, passed_flags):
@@ -271,7 +295,9 @@ def cmd_train(args):
         # A different data layout and fixed hyperparameters: routed to its own
         # command rather than threaded through the generic loop, so the knobs
         # that do not apply cannot silently apply.
-        return cmd_train_moving_average(args, set(sys.argv[1:]))
+        return cmd_train_moving_average(
+            args, _flags_passed(sys.argv[1:], args._train_options)
+        )
 
     import torch
     import numpy as np
@@ -693,7 +719,14 @@ def cmd_evaluate(args):
     print("\nDone.")
 
 
-def main():
+def build_parser():
+    """Construct the argument parser.
+
+    Separated from :func:`main` because two things need to inspect it rather
+    than only run it: the moving-average refusal rule, which resolves
+    abbreviated flags against the registered option strings, and the tests that
+    assert what a default actually is.
+    """
     parser = argparse.ArgumentParser(
         description='DNNDenoiser - XPS spectral denoising with deep learning',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -805,7 +838,13 @@ Examples:
     train_parser.add_argument('--hidden-units', type=int, default=100)
     train_parser.add_argument('--encoder-dim', type=int, default=64)
     train_parser.add_argument('--device', default='auto', choices=['auto', 'cpu', 'cuda', 'mps'])
-    train_parser.set_defaults(func=cmd_train)
+    train_parser.set_defaults(
+        func=cmd_train,
+        # Captured here rather than dug out of the subparser later: the
+        # moving-average refusal rule resolves abbreviated flags against the
+        # real option set, and this is the one place that set is known.
+        _train_options={o for a in train_parser._actions for o in a.option_strings},
+    )
 
     # === infer ===
     infer_parser = subparsers.add_parser('infer', help='Run inference (denoising)')
@@ -824,6 +863,11 @@ Examples:
     eval_parser.set_defaults(func=cmd_evaluate)
 
     # Parse args
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
 
     if args.command is None:

@@ -66,6 +66,25 @@ def digest(a: np.ndarray) -> str:
     return hashlib.sha256(np.ascontiguousarray(a).tobytes()).hexdigest()
 
 
+def test_pinned_values_declare_the_reference_they_came_from():
+    """The goldens certify themselves only through the script that writes them.
+
+    ``generate_p1_reference_targets.py`` refuses to run against a copy whose
+    digest is wrong — but it is regenerated in the same act as the file it
+    certifies, so a regeneration against a modified reference, or against the
+    port itself, would produce a green suite and a self-consistent fixture. The
+    digest, DOI and version are restated here as literals taken from the
+    preregistration, so the fixture has to agree with something it did not
+    write.
+    """
+    provenance = PINNED["_provenance"]
+    assert provenance["selfsupervised_sha256"] == (
+        "136f2e112430fbb42e72bc6d6c0f2b9b02d3a828f6774c11bd2392eb4a13cb09"
+    )
+    assert provenance["deposit"] == "10.5281/zenodo.22092109"
+    assert provenance["deposit_version"] == "1.0.0"
+
+
 @pytest.fixture(scope="module")
 def fixture():
     """The preregistration's fixture, rebuilt from its constants."""
@@ -101,6 +120,29 @@ def test_c0_rng_stream_alignment(seed):
     torch.manual_seed(seed)
     params = np.concatenate(
         [v.detach().numpy().ravel() for v in DenoisingNetwork(**NET_KW).state_dict().values()]
+    )
+    assert digest(params) == PINNED["c0_initial_parameters"][str(seed)]
+
+
+@pinned_environment
+@pytest.mark.parametrize("seed", [0, 1, 2, 3, 4, 5])
+def test_c0_alignment_holds_inside_the_training_function(fixture, seed):
+    """The half of C0 that construction alone does not cover.
+
+    The failure C0 exists to catch is a draw taken *before* the model is built,
+    and the likeliest place for one is inside ``train_selfsupervised`` itself --
+    building a DataLoader first would do it. Testing a bare ``DenoisingNetwork``
+    cannot see that: inserting ``torch.randn(1)`` in the training function
+    leaves the construction check passing at all six seeds while C2, C3 and C7
+    fail, which is precisely the misattribution C0 is supposed to prevent.
+
+    Training zero epochs returns the initial weights, so this reaches inside the
+    function without training anything.
+    """
+    frames, targets, _, _ = fixture
+    model = train_selfsupervised(frames, targets, epochs=0, seed=seed)
+    params = np.concatenate(
+        [v.detach().numpy().ravel() for v in model.state_dict().values()]
     )
     assert digest(params) == PINNED["c0_initial_parameters"][str(seed)]
 

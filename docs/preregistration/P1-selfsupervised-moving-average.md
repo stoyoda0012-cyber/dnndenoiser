@@ -71,12 +71,19 @@ The reference is **not vendored into this repository**; it is re-obtained from
 the DOI and checked against these digests. A digest that does not match voids the
 comparison rather than being updated to fit.
 
-**What "reproduces" means here.** An independent reimplementation inside
-`dnndenoiser`. Copying the deposit's module into `src/dnndenoiser/` would satisfy
-C0–C4 trivially and is **not** what is being registered. `AGENTS.md` §3's import
-boundary names `deppro` and `toyomacro` only; `arhaxpes_denoise` is added to the
-prohibition for the duration of this work — the port may read it to be tested
-against, and may not import or vendor it.
+**What "reproduces" means here.** A reimplementation inside `dnndenoiser` that
+does not import or vendor the deposit. `AGENTS.md` §3's import boundary names
+`deppro` and `toyomacro` only; `arhaxpes_denoise` is added to the prohibition
+for the duration of this work — the port may read it to be tested against.
+
+*Amended after the implementation audit:* the registered text said "an
+**independent** reimplementation", and what was written is closer to a faithful
+transcription — `_interpolation_matrix` is the deposit's `_interp_matrix` with
+renamed locals, and the training loop follows it closely. The guard enforces
+the absence of an *import*; it cannot see transcription, so the prohibition is
+narrower than the word "independent" implied. The word is withdrawn rather than
+the practice defended: nothing here establishes that an unrelated
+implementation would agree.
 
 ## The fixture
 
@@ -123,9 +130,11 @@ recorded here so that a pass is not mistaken for evidence about them:
 | `StepLR(step_size=25)` | `epochs=20`, so the decay never fires; learning rate constant at 1e-3 throughout | Omitting the scheduler changes nothing |
 | clip at 4.0 | max gradient norm 0.0464, **0/140** steps bound (86× headroom) | Omitting clipping changes nothing |
 
-C7 adds one case that makes the scheduler fire. The loss function and the clip
-threshold remain **unverified by C0–C7** and are checked by code review against
-the deposit; that limitation is stated, not papered over.
+C7 adds one case that makes the scheduler fire, which is enough to verify it.
+Measured after implementation: **only the clip is genuinely unverified** — a
+port with no clipping at all reproduces the reference to the bit. The loss is
+verified up to the equivalence class that agrees with `0.5 · MSE` inside
+`|r| < 1`. See the corrected bullets under "What this does not claim".
 
 ### Split, leakage, and the regime
 
@@ -147,10 +156,16 @@ effective-exposure scaling is made or supported.**
 
 ### Environment
 
-C0, C1, C2 and C3 are numerical-identity or tight-tolerance claims and are
-required **only** in one environment: CPU, Python 3.12.11, `torch` 2.9.1,
-`numpy` 2.3.3. Elsewhere they are **reported, not required**. C4–C7 are required
-wherever the suite runs.
+C0, C1, C2, C3 **and C7** are numerical-identity or tight-tolerance claims and
+are required **only** in one environment: CPU, Python 3.12.11, `torch` 2.9.1,
+`numpy` 2.3.3. Elsewhere they are **reported, not required**. C4, C5 and C6 are
+required wherever the suite runs.
+
+*C7's scope was amended 2026-09-21 (Revision 2). The registered text put it with
+C4–C6, which was an oversight: C7 **is** C2's statistic at 30 epochs, so it
+carries exactly C2's environment dependence and cannot be required where C2 is
+not. The implementation had already scoped it this way; the document is what was
+wrong.*
 
 This scoping is not caution for its own sake. `benchmarks/reference/report.md`
 records, for this project's own measurements, that reduction order differs
@@ -180,6 +195,15 @@ C0 makes that presupposition explicit and testable instead of hidden. **If C0
 fails, C2 and C3 are not evaluated**: they are reported as inapplicable, and
 equivalence must be argued on C1, C4–C7 and code review. A C0 failure is not by
 itself evidence that the port is wrong.
+
+**What C0 does not catch, measured 2026-09-21 (Revision 2).** C0 tests
+construction, and the example above is a draw *inside the training function*
+before construction. Inserting `torch.randn(1)` there leaves C0 passing at all
+six seeds while C2, C3 and C7 fail — the misattribution C0 exists to prevent,
+undetected. C0 is therefore extended: as well as freshly constructed parameters,
+the parameters returned by `train_selfsupervised(..., epochs=0, seed=s)` must be
+bit-identical to the reference's, which places the check inside the function
+where the draw would happen.
 
 ### C1 — targets are exactly equal
 
@@ -356,11 +380,28 @@ function and the clip threshold remain unexercised; see the fixture's table.
 - **Denoising is preprocessing.** Nothing here shows that peak areas, positions
   or widths survive it. Physically meaningful quantities must be verified
   downstream, not assumed preserved.
+- **The CLI workflow is training only, and is barely covered by the criteria.**
+  `infer` does not read the frame-stack schema — pointed at one it fails with an
+  unhandled `KeyError` — and does not apply the normalisation constants the
+  checkpoint records, so the model's output cannot be returned to counts through
+  the CLI. The element-global min-max the training command applies, its
+  `--window` clamping, and its default device (`auto`, which selects MPS on
+  Apple silicon, outside the environment C0–C3 and C7 are pinned to) are
+  methodological choices **no criterion pins and none compares to the
+  reference**.
 - **One `W`, one fixture, one peak.** `W = 5` only, a single Gaussian core level,
   a single clean spectrum. No statement about W-dependence, effective exposure,
   other line shapes, multi-peak spectra or real backgrounds.
-- **Loss, scheduler and clip are not verified by the criteria** — the fixture
-  cannot discriminate them (measured above). They are checked by code review.
+- **The gradient-clip threshold is not verified by the criteria.** Removing
+  clipping entirely, or setting it to 0.5, reproduces the reference **to the
+  bit** on this fixture — C2, C3 and C7 all pass. It is checked by code review
+  and by nothing else.
+- **The scheduler *is* verified**, by C7: dropping `schedule.step()` leaves C2
+  untouched at 20 epochs and fails C7 at 30.
+- **The loss is verified only up to an equivalence class.** Anything identical
+  to `0.5 · MSE` inside `|r| < 1` passes, because the fixture's residuals never
+  reach `δ = 1.0`; a wrong `δ` or a wrong scale fails C2 and C7. Substituting
+  plain `MSELoss` fails C2 at 1.25e-3.
 
 ## If a criterion fails
 
@@ -399,13 +440,23 @@ as written rather than as interpreted afterwards.
 
 Listed now so the release cannot quietly leave them stale:
 
-| Document | Statement |
-|---|---|
-| `README.md` | header "Noise2Clean / Noise2Noise training" — the enumeration becomes incomplete |
-| `README.md` | the training-methods table gains a row whose "needs clean spectra" answer is *no* |
-| `docs/QUICK_START.md` | troubleshooting: methods "need a `clean` dataset in the training HDF5" |
-| `paper/paper.md` | Summary's method enumeration |
-| `paper/paper.md` | "it does not ingest measured noisy/noisy pairs" — **a manuscript in press; amending it is a separate act from editing a README** |
+*Corrected after the implementation audit: two rows were wrong and three
+statements were missing.*
+
+| Document | Statement | Status |
+|---|---|---|
+| `README.md` header | "Noise2Clean / Noise2Noise training" | incomplete → amend |
+| `README.md` training-methods table | three rows, none of them this method | incomplete → amend |
+| `docs/QUICK_START.md` train section | the method enumeration in the worked example | incomplete → amend |
+| `paper/paper.md` | "The generic self-supervised methods it implements, Noise2Noise and Noise2Self" | incomplete → amend |
+| `paper/paper.md` | "`training` holds the noise2clean / Noise2Noise methods" | incomplete → amend |
+| `paper/paper.md` | "Some capabilities are intentionally narrower than a reader might assume" | **still true, but misleading by omission**: the package now does ingest measured frame stacks. Needs a sentence, not a correction |
+| ~~`docs/QUICK_START.md` troubleshooting~~ | "noise2clean/noise2noise need a `clean` dataset" | **not falsified** — already scoped to those two methods |
+| ~~`paper/paper.md`~~ | "it does not ingest measured noisy/noisy pairs" | **not falsified** — scoped to Noise2Noise, and remains true of it |
+
+`paper/paper.md` is this repository's JOSS draft and is **not** submitted, so
+amending it is ordinary repository work. The papers that are in press are the
+JVST and SIA ones, which are not in this repository and are not touched.
 
 ## Revision log
 
@@ -515,26 +566,62 @@ than one that records what running it cost:
 
 ### The claim this licenses, and nothing stronger
 
+*Audited wording, 2026-09-21.* The registered version of this sentence was
+reviewed clause by clause; three clauses understated what was measured, and one
+omission was structural — the sentence travels into `README.md`, `paper/paper.md`
+and the changelog **without** the subsection above it, and read alone it would
+sound like an independent-reimplementation result. The lineage disclosure now
+travels inside the sentence.
+
 > `dnndenoiser` implements the leave-one-out moving-average self-supervised
 > training target and the ResNet-FCNN training loop of the archived
 > `arhaxpes_denoise` reference implementation (Zenodo
 > `10.5281/zenodo.22092109` v1.0.0). On that deposit's own synthetic fixture —
 > 200 Poisson frames of a single Gaussian core level on a flat background, 16
-> held-out frames, `W = 5`, CPU — the port's targets are exactly equal to the
-> reference's for `W ∈ {1, 2, 5, 10}`; its trained outputs agree with the
-> reference's to a relative L∞ below 1e-4 at a fixed seed in the pinned
-> environment; the two implementations' clean-referenced output SNR differ by at
-> most 0.5 dB on each of five further seeds; and ResNet-FCNN `state_dict`s
+> held-out frames, CPU — the port's targets are exactly equal to the
+> reference's for `W ∈ {1, 2, 5, 10}` on contiguous acquisition order, for
+> `W = 5` on a permuted one, and on the window-clamp, error and duplicate-index
+> cases. At `W = 5` its trained outputs are bit-identical to the reference's at
+> seed 0 (relative L∞ 0.0, against a registered bound of 1e-4), and the two
+> implementations' clean-referenced output SNR differ by 0.000 dB on each of
+> five further seeds (registered bound 0.5 dB). ResNet-FCNN `state_dict`s
 > interchange between the two packages without renaming at
-> `num_features=256, num_hidden_units=100, encoder_output_dim=64`. No measured
-> data was used, and nothing here measures how well either implementation
-> denoises.
+> `num_features=256, num_hidden_units=100, encoder_output_dim=64`. **The two
+> agree to the bit because they share a code lineage — the deposit vendored its
+> network from this project — not because an unrelated reimplementation would;
+> the registered tolerances exist for that case.** The evidence does not pin the
+> gradient-clip threshold: removing clipping entirely reproduces the reference
+> exactly on this fixture. No measured data was used, and nothing here measures
+> how well either implementation denoises.
 
 Everything under "What this does not claim" still holds and is not relaxed by
 the result. In particular this is **not** a claim about the JVST or SIA papers:
 the deposit is those authors' own distillation of a training script, and only
 the link from the deposit to this port was tested.
 
-**This wording is not yet published.** §8 makes the claim — not only the
-evidence — the audited object, so it goes into `README.md`, `paper/paper.md`,
-`CHANGELOG.md` and the release note after the independent audit, not before.
+## Revision 2 — 2026-09-21, after the implementation audit
+
+The audit re-derived all 31 pinned values from the deposit without using this
+repository's generator: **31/31 match**, as do the measured constants and the
+inert-component table. It found no criterion met by a weaker test than the one
+registered, and no overstatement in the recorded Result. It found three
+statements that were false as shipped, and blocked publication until they were
+fixed.
+
+| # | Finding | Change |
+|---|---|---|
+| 1 | **`QUICK_START` claimed flags were "refused rather than ignored"; five of six forms went through silently.** The rule matched literal `sys.argv` tokens, so `--lr=0.05`, `--arch=FCNN` and argparse's abbreviation `--weight-deca` all bypassed it, and `--grad-clip` and `--noise-level` were never in the list — `--grad-clip` names a component this method fixes at 4.0 | Tokens normalised and abbreviations resolved against the real option set; both flags added; `build_parser()` extracted so the option set is knowable; five bypass forms pinned as tests; the sentence made specific |
+| 2 | **The sdist shipped the tests without their fixtures**, so collection aborted and *no* test ran from the released archive — a §10 defect twice over, since it also denies a third party the ability to reproduce the claim | `MANIFEST.in`; the golden generator ships too, since regenerating the pinned values is part of what makes the claim checkable. Rebuilt: 161 passed, 36 skipped, distribution boundary still clean |
+| 3 | **"Loss, scheduler and clip are not verified" was false** and contradicted this document's own C7 paragraph. Measured: dropping the scheduler fails C7; `MSELoss` fails C2 at 1.25e-3; **removing gradient clipping entirely passes every criterion to the bit** | Bullet replaced with what is actually true of each of the three |
+| 4 | **C0 passed while the failure it exists to catch went undetected.** An extra draw *inside* `train_selfsupervised` leaves construction identical; C2, C3 and C7 then fail and would be charged to the port | C0 extended to the parameters returned by `train_selfsupervised(..., epochs=0)`. Verified: the mutation now fails C0 itself |
+| 5 | **C7's environment scope was narrowed in code without a log entry** | Document corrected — C7 *is* C2's statistic and carries its environment dependence. The code was right; the registered text was wrong |
+| 6 | **A meta-guard was vacuous.** Changing the parser's `--arch` default left all eleven CLI tests passing, which would have made the refusal rule's rationale untestable while the Result claimed two tests held it | The guard reads the default out of the parser |
+| 7 | **Nothing asserted the goldens' provenance.** The only check lived in the script regenerated in the same act as the file it certifies | The digest, DOI and version are restated as literals from this document |
+| 8 | **"An independent reimplementation" overstated what was written** — closer to a faithful transcription, and the import guard cannot see transcription | The word withdrawn rather than the practice defended |
+| 9 | **The falsification table had two wrong rows and three missing statements** | Corrected, with the not-falsified rows kept and marked |
+| 10 | **The CLI creates claim surface no criterion touches** — `infer` cannot read the schema, normalisation constants are written but never applied, the default device is outside the pinned environment | Added to "What this does not claim" |
+
+**Verdict recorded:** the criteria were met as written, with C7's scope the single
+exception and that one an error in the document rather than in the code. The
+claim may be published in the audited wording above, once findings 1–3 are
+fixed — which they now are.

@@ -69,6 +69,7 @@ dnndenoiser train -d data.h5 -o model.pt --arch ResNet-FCNN --epochs 50 --lr 0.0
 # Training methods (see README for exact semantics):
 #   noise2clean (default) — supervised, needs 'clean' in the HDF5
 #   noise2noise           — synthesizes a second independent noisy realization from 'clean'
+#   moving-average        — self-supervised from a frame stack; needs no 'clean'
 # noise2noise needs the Poisson level the data was generated with, so that the
 # synthesized realization sits in the same noise regime as the input:
 dnndenoiser train -d data.h5 -o model.pt --method noise2noise --noise-level 1000
@@ -127,8 +128,14 @@ dnndenoiser train -d stack.h5 -o model.pt --method moving-average \
 ```
 
 The optimiser, schedule, loss and architecture are fixed — they are part of the
-method being reproduced — so `--lr`, `--scheduler`, `--arch` and the rest are
-**refused rather than ignored**. Stacks that are not 256 points are resampled.
+method being reproduced — so `--arch`, `--lr`, `--lr-drop-period`,
+`--lr-drop-factor`, `--scheduler`, `--warmup-epochs`, `--weight-decay`,
+`--grad-clip`, `--hidden-units`, `--encoder-dim` and `--noise-level` are
+**refused rather than ignored**, in whichever form they are written (`--lr 0.05`,
+`--lr=0.05`, or an abbreviation argparse would accept). `--epochs`,
+`--batch-size`, `--seed`, `--window` and `--device` still apply.
+
+Stacks that are not 256 points are resampled.
 
 **Evaluating this is not straightforward.** A measured stack has no clean
 reference, and the obvious substitute — a mean over the same frames — is *not*

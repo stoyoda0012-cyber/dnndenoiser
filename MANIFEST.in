@@ -1,0 +1,10 @@
+# The P1 acceptance tests load pinned reference values, and setuptools ships
+# only .py files from tests/ by default. Without these two lines the sdist
+# carries the tests but not what they read, and collection aborts -- so no test
+# runs at all from the released archive, not just the P1 ones.
+# The golden generator lives under tests/fixtures/, which is not a package, so
+# setuptools does not pick up its .py by default. It ships because regenerating
+# the pinned values is part of what makes the claim checkable by a third party.
+recursive-include tests *.py
+recursive-include tests *.json
+recursive-include tests *.npz

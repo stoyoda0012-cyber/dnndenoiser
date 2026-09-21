@@ -4,8 +4,8 @@
 
 Deep-learning denoising for X-ray photoelectron spectroscopy (XPS) spectra:
 physics-based synthetic training data, eight 1-D network architectures,
-Noise2Clean / Noise2Noise training, checkpoint inference, and clean-referenced
-evaluation. Runs on CPU, NVIDIA CUDA, and Apple Silicon (MPS).
+Noise2Clean / Noise2Noise / self-supervised moving-average training, checkpoint
+inference, and clean-referenced evaluation. Runs on CPU, NVIDIA CUDA, and Apple Silicon (MPS).
 
 ## Scope
 
@@ -69,6 +69,7 @@ example.
 | `noise2clean` | yes | yes | Supervised noisy→clean training. Recommended default. |
 | `noise2noise` | yes | yes (to synthesize the pair) | The CLI creates a second, **independent synthetic noisy realization from the clean spectra**. It does not ingest measured noisy/noisy pairs. |
 | noise2self | no (library only) | no | Masking-based self-supervision exists in `dnndenoiser.training.methods` as **experimental code**; it is not wired into the CLI because a correct masked loss (scoring only held-out coordinates) is not implemented there yet. |
+| `moving-average` | yes | **no** | Leave-one-out self-supervision from a **stack of repeated acquisitions**: each frame's target is the mean of its `--window` temporally nearest *other* frames. Takes the [frame-stack schema](docs/QUICK_START.md), not `noisy`/`clean`. Training only — `infer` does not read that schema yet. Its optimiser, schedule, loss and architecture are fixed and flags that would change them are refused. |
 
 ## GPU support
 

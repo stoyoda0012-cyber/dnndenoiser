@@ -91,7 +91,8 @@ multidimensional spectroscopic datasets. These are adjacent rather than
 substitutable: none of them trains a neural denoiser, and none embeds an XPS noise
 and lineshape model. Conversely `dnndenoiser` does not fit peaks or quantify
 composition. The generic self-supervised methods it implements, Noise2Noise
-[@lehtinen2018] and Noise2Self [@batson2019], are domain-agnostic by construction;
+[@lehtinen2018], Noise2Self [@batson2019] and a leave-one-out moving-average
+target over repeated acquisitions, are domain-agnostic by construction;
 what this package adds is an XPS-specific physical generator, a common interface
 across architectures, and an evaluation path that is explicit about requiring a
 clean reference.
@@ -106,7 +107,8 @@ small:
   detector noise, with instrument-dependent quantities supplied by parameter
   injection rather than hardcoded, and writes them as HDF5.
 - `models` holds the architectures behind the common `DenoisingNetwork`
-  interface, and `training` holds the noise2clean / Noise2Noise methods and the
+  interface, and `training` holds the noise2clean / Noise2Noise / moving-average
+  methods and the
   learning-rate schedules.
 - The `dnndenoiser` command drives the `generate → train → infer → evaluate`
   workflow. The training loop and the clean-referenced metrics live there rather
@@ -122,7 +124,11 @@ continuous integration against the real archives, not against configuration file
 
 Some capabilities are intentionally narrower than a reader might assume. Noise2Noise
 in the command line synthesises a second, independent noisy realisation from clean
-spectra; it does not ingest measured noisy/noisy pairs. Noise2Self is present as
+spectra; it does not ingest measured noisy/noisy pairs. The moving-average method
+does train from measured frames and requires no clean reference, but it is exposed
+for training only: inference from a frame stack is not yet wired through the command
+line, and evaluating it on measured data has no independent reference, since a mean
+over the same frames is not independent of targets built from subsets of them. Noise2Self is present as
 library code but is not exposed through the command line, because a correct masked
 loss that scores only held-out coordinates is not yet implemented there.
 Multidimensional (angle- and time-resolved) arrays can be generated and processed,

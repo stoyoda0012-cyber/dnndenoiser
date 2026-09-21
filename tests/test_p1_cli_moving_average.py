@@ -89,13 +89,51 @@ def test_refuses_a_fixed_flag_even_at_its_default_value(monkeypatch, tmp_path, s
 
 
 def test_the_default_arch_is_not_what_this_method_uses(monkeypatch, tmp_path, stack_file):
-    """The trap the refusal rule exists for, stated as a fact about the parser."""
-    from dnndenoiser.cli import main as _  # noqa: F401
+    """The trap the refusal rule exists for, as a fact about the parser.
+
+    The first version of this test asserted only that the checkpoint says
+    ResNet-FCNN, which is true however ``--arch`` is defaulted — changing the
+    parser default to ResNet-FCNN left all eleven CLI tests passing and quietly
+    made the refusal rule's whole justification untestable. It now reads the
+    default out of the parser.
+    """
+    from dnndenoiser.cli import build_parser
+
+    train = build_parser()._subparsers._group_actions[0].choices["train"]
+    assert train.get_default("arch") == "FCNN", (
+        "the refusal rule keys on a flag being *present* rather than on it "
+        "differing from the default, because this default is not what the "
+        "method uses. If the default ever becomes ResNet-FCNN, that rationale "
+        "needs rewriting rather than silently becoming moot."
+    )
+
     out = tmp_path / "m.pt"
     run(monkeypatch, "train", "-d", str(stack_file), "-o", str(out),
         "--method", "moving-average", "--epochs", "1")
-    ckpt = torch.load(out, map_location="cpu", weights_only=False)
-    assert ckpt["architecture"] == "ResNet-FCNN"
+    assert torch.load(out, map_location="cpu", weights_only=False)["architecture"] == "ResNet-FCNN"
+
+
+@pytest.mark.parametrize(
+    "written", ["--lr=0.05", "--arch=FCNN", "--weight-deca", "--grad-clip", "--noise-level"],
+    ids=["equals-form", "equals-form-arch", "abbreviation", "unlisted-clip", "unlisted-noise"],
+)
+def test_refusal_cannot_be_written_around(monkeypatch, tmp_path, stack_file, capsys, written):
+    """Every form that once bypassed the rule.
+
+    A literal ``token in sys.argv`` test saw only ``--lr 0.05``. ``--lr=0.05``,
+    argparse's unique-prefix abbreviations, and two flags that were simply
+    missing from the list all went through silently — ``--grad-clip`` worst of
+    all, since it names a component this method fixes at 4.0, so a user could
+    ask for a different one and get a checkpoint stamped with the method's name.
+    """
+    argv = ["train", "-d", str(stack_file), "-o", str(tmp_path / "m.pt"),
+            "--method", "moving-average", "--epochs", "1", written]
+    if "=" not in written:
+        argv.append("1e-5" if written != "--grad-clip" else "0.001")
+    with pytest.raises(SystemExit) as exit_info:
+        run(monkeypatch, *argv)
+    assert exit_info.value.code == 1
+    assert "does not take" in capsys.readouterr().err
 
 
 def test_rejects_a_stack_with_duplicate_acquisition_indices(monkeypatch, tmp_path, capsys):
