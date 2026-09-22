@@ -141,6 +141,48 @@ def cmd_generate(args):
     print("Done.")
 
 
+# The two training paths wrote the model's shape under different key names.
+# noise2clean/noise2noise used the short spellings; the moving-average path
+# introduced the long ones in v0.1.1. Both are published, so the reader accepts
+# both -- and reads rather than guesses. The previous code defaulted silently,
+# which turned "the checkpoint does not say" into a shape mismatch deep inside
+# load_state_dict instead of a sentence naming the file.
+_CONFIG_KEYS = {
+    'num_features': ('num_features', 'n_features'),
+    'num_hidden_units': ('num_hidden_units', 'hidden_units'),
+    'encoder_output_dim': ('encoder_output_dim', 'encoder_dim'),
+}
+
+
+def checkpoint_model_config(checkpoint, path):
+    """Read the model's shape from a checkpoint, in either key spelling."""
+    config = {}
+    for canonical, spellings in _CONFIG_KEYS.items():
+        for spelling in spellings:
+            if spelling in checkpoint:
+                config[canonical] = checkpoint[spelling]
+                break
+        else:
+            print(
+                f"Error: {path} records no {' or '.join(spellings)}, so the model "
+                f"cannot be rebuilt from it. A checkpoint written by "
+                f"`dnndenoiser train` always carries this; a file that does not "
+                f"was produced some other way.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    if 'architecture' not in checkpoint:
+        print(
+            f"Error: {path} records no architecture. Rebuilding the model would "
+            f"mean guessing which of the eight it is.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    config['architecture'] = checkpoint['architecture']
+    return config
+
+
 def load_checkpoint(path, trust=False):
     """Load a checkpoint, refusing to unpickle unless asked to.
 
@@ -577,13 +619,22 @@ def cmd_infer(args):
     print("\nLoading model...")
     checkpoint = load_checkpoint(args.model, trust=args.trust_checkpoint)
 
-    arch = checkpoint.get('architecture', 'FCNN')
-    n_features = checkpoint.get('n_features', 256)
-    hidden_units = checkpoint.get('hidden_units', 100)
-    encoder_dim = checkpoint.get('encoder_dim', 64)
+    config = checkpoint_model_config(checkpoint, args.model)
+    arch = config['architecture']
+    n_features = config['num_features']
+    hidden_units = config['num_hidden_units']
+    encoder_dim = config['encoder_output_dim']
+
+    # The normalisation the model was trained under, if it recorded one. Without
+    # applying it the model is fed data on a scale it never saw, and its output
+    # is written in a space the file does not name -- wrong twice, silently.
+    normalisation = checkpoint.get('normalisation')
 
     print(f"  Architecture: {arch}")
     print(f"  Features: {n_features}")
+    if normalisation is not None:
+        print(f"  Normalisation: {normalisation.get('kind', 'unknown')}, "
+              f"min={normalisation['min']:.6g} max={normalisation['max']:.6g}")
 
     device = _resolve_device(args.device)
     print(f"Device: {device}")
@@ -617,6 +668,19 @@ def cmd_infer(args):
     else:
         noisy_flat = noisy
 
+    if normalisation is not None:
+        span = normalisation['max'] - normalisation['min']
+        if span <= 0:
+            print(f"Error: the checkpoint's normalisation is degenerate "
+                  f"(min={normalisation['min']:.6g}, max={normalisation['max']:.6g})",
+                  file=sys.stderr)
+            sys.exit(1)
+        noisy_flat = (noisy_flat - normalisation['min']) / span
+        print("  Applied the checkpoint's normalisation to the input.")
+        print("  The constants are the training stack's, not this file's: if "
+              "these spectra sit on a different scale, the model is being fed "
+              "data outside the distribution it was trained on.")
+
     # Inference
     print("\nRunning inference...")
     with torch.no_grad():
@@ -635,6 +699,14 @@ def cmd_infer(args):
             outputs.append(output.cpu().numpy())
 
         denoised_flat = np.concatenate(outputs, axis=0)
+
+    if normalisation is not None:
+        # Back to the input's units. Without this the file would hold numbers in
+        # a normalised space it does not name, next to a `noisy` dataset in
+        # counts, and nothing would say they are not comparable.
+        span = normalisation['max'] - normalisation['min']
+        denoised_flat = denoised_flat * span + normalisation['min']
+        print("  Inverted the normalisation, so the output is in the input's units.")
 
     # Reshape back
     denoised = denoised_flat.reshape(original_shape)

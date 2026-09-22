@@ -8,6 +8,22 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **`infer` applies the normalisation a checkpoint records, and inverts it.**
+  The moving-average path stores the constants it trained under; `infer` read
+  neither. A model trained on data scaled to [0, 1] was fed raw counts, and its
+  output was written beside a `noisy` dataset in counts, in a space the file did
+  not name. Both directions are now applied, and the command states that the
+  constants are the training stack's — applying them to another dataset is an
+  assumption, not a conversion.
+- **`infer` reads the model's shape out of the checkpoint instead of guessing.**
+  The two training paths wrote it under different key names (`n_features` from
+  noise2clean, `num_features` from the moving-average path in v0.1.1) and only
+  the first set was read, so the second fell through to defaults. Both
+  spellings are read now, and a checkpoint that records neither is an error
+  naming the file rather than a shape mismatch inside `load_state_dict`.
+
 ### Security
 
 - **`infer` no longer unpickles a checkpoint unless asked to.** `torch.load`'s
