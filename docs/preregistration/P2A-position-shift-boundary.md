@@ -480,6 +480,16 @@ arms, and both derived series — is **descriptive, is reported without a
 asymmetric at x" may be made about a cell not named above.** A feature seen
 there is a candidate for a new preregistration, not a finding of this one.
 
+**One exception, stated rather than taken.** A descriptive cell may be cited where
+it **bounds the interpretation of a registered claim** — that is, where reading a
+registered result without it would mislead. Such a citation asserts no direction,
+no magnitude, no mechanism and no generalisation; it names the arm and level it
+comes from; and it is accompanied either by a named follow-up registration or by
+an explicit statement that none is committed. Anything beyond that is a finding
+and needs its own registration. This exception is written here because the first
+write-up invented it at the point of use, which is how a self-imposed rule stops
+binding.
+
 ### A consistency anchor, not a prediction
 
 Arm A is the reference benchmark's own primary condition for this architecture,
@@ -992,11 +1002,254 @@ the numbers were never quotable and this is how we find out.
 
 ## Record
 
-**SUPERSEDED — the run this section described was discarded under Revision 4.**
+Run 2026-09-23 from commit `3af3b07` with a clean working tree — the third full
+run, and the first whose apparatus verifies the study's independent variable. 20
+seeds, 4 arms, 25 shifts, 3 noise levels; 34.7 min. The record is
+`benchmarks/boundaries/position_shift/results/position_shift_boundary.json`; the
+rendered report is `report.md` beside it. Two earlier runs were discarded, under
+Revisions 3 and 4, for defects in the apparatus and not in the numbers.
 
-Two independent audits of the completed record found that the apparatus did not verify
-the study's independent variable: nothing inspected the training data of arms B, C or D,
-and the checks that were supposed to were comparing expressions against themselves. The
-measurement has been re-run from a repaired tree and this section is rewritten from the
-new record. The superseded text is preserved in git at commit `4c5ebca`.
+**All thirteen voiding self-checks passed**, including the four repaired in
+Revision 4 that now inspect the training data of every arm: check 4 rebuilt 12
+spectra per arm per seed from the literal peaks, the recorded shift and the
+replayed draws and found them **bit-identical to the pools**; check 8b rebuilt 300
+test spectra per seed; check 10 confirmed arm B's realised shift SD at 0.8777
+against a uniform 0.8660 with all ten deciles occupied; check 12 hashed all four
+arms. The suspect-run rule did not fire. The consistency anchor did not flag at
+any level.
+
+**Why numbers appear in this section at all.** §6 says not to restate a numeric
+result in a second place. This section restates about thirty, because an
+interpretation that cannot name the number that decided a prediction is not
+checkable. The exception carries three conditions. **(1)** The JSON record
+**owns** every number here; where this section and the record disagree, the record
+is right. **(2)** If the measurement is re-run, this section is stale until
+re-derived, and the re-run must say so. **(3)** Unlike `report.md`, nothing
+recomputes these figures — `render_report.py`'s guard does not reach this
+document. That is not hypothetical: the first write-up stated arm A's
+`train_seconds` range as "36.3 to 364.1 seconds" when the record's maximum was
+482.9; an audit caught it. Conditions (1) and (2) are stated rather than assumed
+for that reason.
+
+### Result — seven of eight predictions held; R5b failed
+
+| | Verdict | The number that decided it |
+|---|---|---|
+| **R1** positive control | **PASS** | arm A gains **+11.41 ± 0.24 dB** at Δ = 0; 20/20 seeds |
+| **R2** there is a cliff | **PASS** | **−17.10** and **−17.28 dB** at Δ = ±4.0; 20/20 each |
+| **R3** the cliff is narrow | **PASS** | \|Δ\|\* ≈ **0.47 eV**, against a registered threshold of 1.5 |
+| **R4** the shift is the cause | **PASS** | arm B beats arm A by **+21.8 / +22.8 dB** at \|Δ\| = 1.5; 20/20 |
+| **R5a** density alone costs | **PASS** | A > C by **+4.34 dB**, C > D by **+1.44 dB**; 20/20 each |
+| **R5b** augmentation costs beyond density | **FAIL** | arm B beats arm D by **+4.47 dB**; **0/20** seeds |
+| **R6** the boundary moves | **PASS**, verdict **moved** | arm B's \|Δ\|\* ≈ **1.83 eV**, inside the tested range; 20/20 |
+| **R7** displacement opposite to Δ | **PASS** | **−4.013 / +3.895 eV** at Δ = ±4.0; monotone, no violations |
+
+### R3 was right in direction and badly wrong in magnitude
+
+The registered text called R3 "the prediction most likely to be wrong, and the one
+that matters", set the threshold at 1.5 eV, and said: *if it sits at 0.5 eV the
+warning in the README has to be much louder than anything currently written there.*
+That is the branch the data took. **The boundary is about 0.47 eV** — three times
+narrower than the threshold that would have satisfied the prediction.
+
+**Two significant figures, and why.** The record stores 0.4707 and 0.4743 eV for
+the two directions, but the third digit is not supported. The across-seed spread
+is ±0.012 eV, and re-deriving each seed's crossing under other interpolants on the
+same grid moves the median by a further 0.002 eV (linear 0.4707, cubic spline
+0.4698, PCHIP 0.4686) — a systematic span that seeds cannot reduce. A finer grid
+between 0.25 and 0.75 eV would tighten it and is a separate measurement.
+
+**The two directions are not separated, and the record must not be read as if they
+were.** Paired within seed, negative minus positive is **+0.0007 ± 0.0175 eV with
+9 of 20 seeds on each side**. The pooled across-seed range is 0.447–0.489 eV over
+both directions. So this is not a noisy estimate, and it is not an asymmetric one.
+Self-check 5 records a ≈5× per-peak truncation asymmetry, and any directional
+claim would have to clear it first; none is made.
+
+The gain against shift, arm A at the primary level:
+
+| Δ (eV) | 0 | 0.25 | 0.50 | 0.75 | 1.00 | 2.00 | 4.00 |
+|---|---|---|---|---|---|---|---|
+| gain (dB) | +11.41 | +6.83 | −0.94 | −6.97 | −10.72 | −15.05 | −17.10 |
+
+**The boundary sits below half an electronvolt: at 0.5 eV the denoiser is already
+making the spectrum worse than it found it.** The table shows how steep the
+approach is; those cells are named in no prediction, so they are shown and not
+argued from.
+
+Shifts of this size are not exotic in XPS — charging on poorly conducting samples
+and binding-energy referencing to adventitious carbon are both routinely discussed
+at the few-tenths-of-an-eV scale. **That is context for why this axis was chosen,
+not a measurement made here.** No measured spectrum appears anywhere in this
+record. What the record establishes is that a model trained on one position
+distribution stops helping at a shift smaller than the uncertainty a practitioner
+would ordinarily tolerate *within that distribution*; whether the same holds on
+measured data is untested and is not implied. Note also that arm A is not trained
+at a single frozen position — all arms carry ±0.3 eV per-peak jitter — so the
+boundary is relative to that neighbourhood.
+
+### R5b failed, and what failed was its premise
+
+R5b predicted that arm B, trained across ±1.5 eV, would score **no better** at
+Δ = 0 than arm D, a narrow arm cut to the same position density. Arm B scored
+**4.47 dB better**, in 20 of 20 seeds, *d*<sub>z</sub> = −13.68. It did not fail to
+reach a threshold; it failed in the opposite direction with about as much force as
+twenty seeds can measure.
+
+| at Δ = 0, level 1000 | gain (dB) | versus arm A |
+|---|---|---|
+| A narrow, N = 2304 | +11.41 | — |
+| B augmented ±1.5, N = 2304 | +10.10 | −1.31 |
+| C narrow, N = 461 | +7.07 | −4.34 |
+| D narrow, N = 144 | +5.64 | −5.78 |
+
+*−4.34 and the A→D ordering are the registered R5a comparisons; **−1.31 is
+descriptive**, named in no prediction, and is shown rather than argued from.*
+
+The record can say precisely which step of the design failed. Arm C, cut to one
+fifth of arm A's N, lost 4.34 dB — close to the ≈3.4 dB the design-time
+extrapolation from this repository's training-set-size record predicted, so **that
+extrapolation held**. What did not hold is the **equivalence** the design rested
+on: that cutting N to one fifth stands in for spreading a fixed N over five times
+the position range.
+
+One reading is that cutting N removes information about noise, intensity, width
+and shape at once, while spreading a fixed N dilutes position coverage alone, and
+that this network pays far less for the latter. **That reading is not tested
+here.** No arm separates the two manipulations, and at least two other readings —
+that the density equivalence was miscalculated, or that the augmented pool is an
+easier optimisation problem — fit the same numbers equally well.
+
+What is established is negative and sufficient for the verdict: **arms C and D do
+not bound the cost of augmentation**, so the registered inference from them does
+not hold. Per the registered fallback, *no augmentation cost beyond the density
+penalty was demonstrated — an undecided verdict, not a finding that augmentation
+is free.* The fallback understates what happened, so this is added: the failure
+refutes the premise, and **this record therefore contains no instrument capable of
+attributing arm B's 1.31 dB deficit, in either direction.** The cell that would
+attribute it is an augmented arm at reduced N, which is a new preregistration.
+
+### R6 came out "moved", which was the falsifiable half
+
+Arm B's boundary is about **1.83 eV**, inside the tested range, so the pre-declared
+verdict is *moved*, not *beyond range*. Augmentation relocated the boundary; it did
+not remove it.
+
+| Δ (eV) | 0 | 1.00 | 1.50 | 1.75 | 2.00 | 2.50 | 4.00 |
+|---|---|---|---|---|---|---|---|
+| arm B gain (dB) | +10.10 | +9.90 | +7.83 | +2.03 | −3.95 | −11.35 | −15.86 |
+
+A flat plateau over the range it was trained on, then a cliff of its own. Those
+intermediate cells are descriptive; R4 names arm B at ±1.5 only. Extending the
+sweep from ±3.0 to ±4.0 eV — a Revision 1 change — is what made this verdict
+decidable rather than censored.
+
+**No regularity is claimed across the arms.** Two arms differ in training range,
+and their boundaries differ in the same direction; that is two points, the excess
+over the range is not the same in the two, **arms C and D share arm A's position
+range exactly and have boundaries 22 % and 35 % nearer**, and at the highest noise
+level no arm has a boundary inside the sweep at all. §6 forbids promoting this to a
+law and the record does not support one.
+
+### R7 held, and it is the result a user should be most careful with
+
+The bias-corrected displacement is **−4.013 eV at Δ = +4.0**: the denoised peak
+sits where the network was trained to expect one, regardless of where the real peak
+is. "Exactly" here means −Δ — complete insensitivity to the shift, the whole shift
+absorbed as error — and the +4.0 direction is indistinguishable from it: the
+0.013 eV residual is 0.19 of a grid step and 1.0 across-seed SE. **The −4.0
+direction is not**: +3.895 eV is 0.105 eV short, 1.5 grid steps and 6.9 SE. So the
+pinning is complete in one direction and about 2.6 % incomplete in the other.
+**This document declines to read that difference.** It is not a registered
+comparison, self-check 5 records a truncation asymmetry this record cannot separate
+it from, and nothing here tests either. It is stated so that a reader is not left
+with the +4.0 figure alone. At Δ = +1.0 the network has already pulled back
+0.668 eV, two-thirds of the shift. Monotone in both directions, no violations.
+
+**Comparator (ii)**, the learning-free Gaussian smoother, spans **0.0058 eV across
+all 25 shifts** at σ = 1.0 eV, so the offset that motivated the bias correction is
+shift-*independent* here and a shift-dependent displacement in a trained arm is not
+attributable to truncation, background, envelope asymmetry or oversmoothing. **That
+warrant covers the primary level only**: at the highest noise level the same
+comparator spans 0.468 eV. It remains far too small to account for the −4.00 eV
+displacement discussed below, but that cell is outside the warrant and is not
+claimed to be inside it.
+
+**Comparator (iii)**, arm B on the identical test arrays, was registered alongside
+the smoother and is reported here. Arm B's bias-corrected displacement is +0.001,
+−0.000 and −0.002 eV at Δ = +0.25, +0.75 and +1.25 — under one twentieth of a grid
+step — and turns on only at the edge of its training range: −0.023 at +1.50,
+−0.111 at +1.75, −0.279 at +2.00, −2.841 at +4.00. The registration stated **in
+advance** that a *structural* window effect would give arms A and B the same
+profile. It does not, by a wide margin. **That eliminates the alternative the
+registration named, and no more than that.** No mechanism is claimed: opposite-
+signed displacement remains *consistent with* a learned position prior, and the
+observable still underdetermines it. (This comparator was omitted from the first
+write-up entirely, which an audit called an incomplete record — correctly.)
+
+### A descriptive cell cited under the exception above
+
+At the highest noise level, arm A's gain **stays positive across the whole sweep**
+— all 20 seeds censored, +2.50 dB at Δ = +4.0 — while the bias-corrected
+displacement at that cell is **−4.00 eV**. The record carries the context that
+makes this legible: the input's own SNR there is **−3.55 dB** and the denoised
+output's is **−1.05 dB, still negative**. So this is not "a good denoising score
+with the peak in the wrong place"; it is a metric whose *sign* reads "improved"
+while the output's dominant peak sits four electronvolts from the truth. **The sign
+of an SNR gain carries no information about where the peak ended up.**
+
+This is cited under the exception to the descriptive-only rule: it bounds how R1's
+and R2's numbers may be read, asserts no direction, magnitude, mechanism or
+generalisation, and names its arm and level. **No follow-up measurement is
+committed here.** Until one exists, the disagreement between M1 and M3 at the
+noisiest level stands unresolved and unexplained in this record.
+
+### What this licenses, and nothing stronger
+
+That **this** ResNet-FCNN, trained on **this** synthetic distribution at **this**
+jitter width, size and noise model, loses all benefit at a rigid shift of about
+half an electronvolt at the primary noise level, and that training across a
+±1.5 eV range moves that boundary to about 1.8 eV at a cost this design cannot
+attribute. The claim-scope list in the record applies unamended.
+
+The consistency anchor licenses one thing beyond agreement: the Δ = 0 column here
+**is** the reference benchmark's own primary condition for this architecture,
+agreeing at every level well inside the flag, so the boundary is measured from the
+operating point that record describes and not from a baseline private to this
+study. It licenses nothing about the other architectures in that record, which were
+not trained here.
+
+### Four things worth recording about the run itself
+
+**The measurement reproduced across three runs.** The two discarded runs and this
+one produce boundary values agreeing to **0.0e+00 eV** in every arm and gains
+agreeing to 1e-5 dB, although the three differed in wall clock by a factor of five
+(30.9, 162.7 and 34.7 minutes) because the machine throttled. What a reader can
+check: the within-run determinism diagnostic, and that re-running the committed
+script reproduces this record. What a reader **cannot** check: that the earlier
+runs existed or what they contained — a voided run writes no record, so those
+artefacts no longer exist, and the cross-run comparison rests on comparisons made
+at the time.
+
+**Self-check 6's realised margin is thinner than the pre-run estimate.** Revision 2
+reported worst spans of 0.104 / 0.107 / 0.107 dB over six draws; this run's maxima
+over twenty seeds are **0.138 / 0.160 / 0.202 dB**, so the primary level used 80 %
+of its 0.2 dB tolerance. That is the maximum over more draws, and 0.16 dB of
+input-SNR drift against a 28 dB gain swing is immaterial — but the margin is 1.25×,
+not 2×, and that is better stated than left to a reader who diffs the two.
+
+**The grid step.** This document registered R7's monotonicity tolerance as "one
+grid step, 0.069412 eV", which is span/255 in float64. The energy axis is float32,
+so the realised step is **0.069427490234375** and that is what the tolerance was
+evaluated against. R7 had no violations under either value.
+
+**Kaplan–Meier.** The record now stores the convention beside the number: KM
+returns t<sub>(10)</sub> and `np.median` the midpoint of t<sub>(10)</sub> and
+t<sub>(11)</sub>, which differ by 5.3e-4 eV here. Revision 3's claim that they
+coincide exactly was wrong; see Revision 4.
+
+Nothing from this record goes into the README, the package documentation or any
+release note until this section has been through a further independent audit — the
+two that produced Revision 4 did not clear it, and they were auditing a version of
+this text that has since changed substantially.
 

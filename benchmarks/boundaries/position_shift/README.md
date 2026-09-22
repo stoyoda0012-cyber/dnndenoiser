@@ -190,13 +190,22 @@ of actual gates is not overstated.
 
 ## Status
 
-**No record is published here at present.** The first two runs were discarded —
-the first because a self-check turned out to be inert, the second because two
-independent audits found that the apparatus did not verify the study's
-independent variable at all: nothing inspected the training data of the
-augmented arm or of the density controls. Both are documented in the
-preregistration's revision log. The apparatus has been repaired and the
-measurement re-run; this README describes the repaired design.
+A record is published here, from the **third** full run. The first two were
+discarded: the first because a self-check turned out to be inert, the second
+because two independent audits found that the apparatus did not verify the
+study's independent variable at all — nothing inspected the training data of the
+augmented arm or of the density controls, and the checks that were supposed to
+were comparing expressions against themselves. Both are documented in the
+preregistration's revision log, with the wrong pools that the repaired checks are
+now verified to catch.
+
+All three runs produced the same boundary values to `0.0e+00 eV`. The numbers were
+never what was wrong; the claim "all self-checks passed" was.
+
+**The record has not yet been cleared for outward-facing quotation.** The
+preregistration's Record section is awaiting a further independent audit
+(`AGENTS.md` §8), and until it is cleared no number from here goes into the
+package README, the documentation or a release note.
 
 ## Things about a record from this design that are easy to misread
 
