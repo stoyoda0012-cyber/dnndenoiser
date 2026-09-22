@@ -324,8 +324,9 @@ count are identical for `p=0.1` and `p=0.5`. The permissible sentence is "these
 two ResNet-FCNN definitions are `state_dict`-compatible at `(256, 100, 64)`".
 
 *(The registered text justified C4 by an SIA statement about trained weights.
-That paper is in press and the criterion does not test what the sentence
-described; see the revision log.)*
+The criterion does not test what that sentence described; see the revision log.
+The paper has since been published — `10.1002/sia.70123`, 2026-09-21 — which
+makes the statement citable but does not make C4 test it.)*
 
 ### C5 — a documented frame-stack schema
 
@@ -464,8 +465,8 @@ statements were missing.*
 | ~~`paper/paper.md`~~ | "it does not ingest measured noisy/noisy pairs" | **not falsified** — scoped to Noise2Noise, and remains true of it |
 
 `paper/paper.md` is this repository's JOSS draft and is **not** submitted, so
-amending it is ordinary repository work. The papers that are in press are the
-JVST and SIA ones, which are not in this repository and are not touched.
+amending it is ordinary repository work. The JVST and SIA papers are published
+and are not in this repository; they are not touched.
 
 ## Revision log
 

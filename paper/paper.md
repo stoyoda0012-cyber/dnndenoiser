@@ -145,7 +145,7 @@ unavailable.
 The package originated as the denoising component of hard-XPS depth-profiling work.
 It underpins a published measurement-methodology paper on denoising strategies for
 angle-resolved hard-XPS [@toyoda2026jvst], and a companion study of cross-exposure
-transferability and the failure boundaries of self-supervised denoising is in press
+transferability and the failure boundaries of self-supervised denoising
 [@toyoda2026sia]. Its research value rests on
 making that kind of study repeatable by others: because the noise model, the peak
 structure, the position/width/intensity jitter, and the training method are all explicit
