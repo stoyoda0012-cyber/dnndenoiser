@@ -732,6 +732,34 @@ def cmd_infer(args):
     print("Done.")
 
 
+def compute_snr(signal, reference):
+    """Truth-referenced SNR in dB: ``10*log10(mean(ref^2) / mean((signal-ref)^2))``.
+
+    The reference is the truth, not an estimate of it, so this needs synthetic
+    data or a measured clean spectrum — there is no reference-free SNR for a
+    measured one (``AGENTS.md`` §5). Background counts as signal: the statistic
+    is over the whole spectrum, not the peak.
+
+    Noise power is floored at ``1e-10`` rather than added to, so the value is
+    exact wherever it is meaningful and only the degenerate case is guarded.
+    Perfect reconstruction therefore reports a large finite number set by that
+    floor, not infinity.
+    """
+    import numpy as np
+
+    noise = signal - reference
+    signal_power = np.mean(reference ** 2, axis=-1)
+    noise_power = np.maximum(np.mean(noise ** 2, axis=-1), 1e-10)
+    return 10 * np.log10(signal_power / noise_power)
+
+
+def compute_mse(signal, reference):
+    """Mean squared error per sample, over the last axis."""
+    import numpy as np
+
+    return np.mean((signal - reference) ** 2, axis=-1)
+
+
 def cmd_evaluate(args):
     """Evaluate denoising results."""
     import numpy as np
@@ -767,20 +795,6 @@ def cmd_evaluate(args):
         clean = clean.reshape(-1, clean.shape[-1])
 
     print(f"Samples: {len(noisy)}")
-
-    # Compute metrics
-    def compute_snr(signal, reference):
-        """Compute SNR in dB."""
-        noise = signal - reference
-        signal_power = np.mean(reference ** 2, axis=-1)
-        noise_power = np.mean(noise ** 2, axis=-1)
-        # Avoid division by zero
-        noise_power = np.maximum(noise_power, 1e-10)
-        return 10 * np.log10(signal_power / noise_power)
-
-    def compute_mse(signal, reference):
-        """Compute MSE."""
-        return np.mean((signal - reference) ** 2, axis=-1)
 
     # Input metrics (noisy vs clean)
     snr_input = compute_snr(noisy, clean)

@@ -1,40 +1,24 @@
-"""Unit tests for evaluation metrics."""
+"""The evaluation metrics — the ones that ship, not copies of them.
 
+This file used to define its own ``compute_snr``, ``compute_mse`` and
+``compute_psnr`` under the heading "standalone implementations for testing", and
+test those. It was therefore not a test of the metrics at all:
+
+- its ``compute_snr`` divided by ``noise_power + 1e-10`` while the shipped one
+  floors with ``np.maximum(noise_power, 1e-10)``. Near perfect reconstruction
+  the two disagree by up to 0.41 dB, and no test could have seen it;
+- ``compute_psnr`` was tested and **is not part of the package at all**.
+
+The shipped metrics were nested inside ``cmd_evaluate``, which is why a copy was
+reachable and the real thing was not. They are module-level now and imported
+here. A test of a metric has to be a test of the metric that runs.
+"""
 import pytest
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from dnndenoiser.cli import compute_mse, compute_snr
 
-
-# =============================================================================
-# Metric Functions (standalone implementations for testing)
-# =============================================================================
-
-def compute_snr(signal: np.ndarray, reference: np.ndarray) -> np.ndarray:
-    """Compute SNR in dB: 10*log10(signal_power / noise_power)."""
-    noise = signal - reference
-    signal_power = np.mean(reference ** 2, axis=-1)
-    noise_power = np.mean(noise ** 2, axis=-1)
-    return 10 * np.log10(signal_power / (noise_power + 1e-10))
-
-
-def compute_mse(signal: np.ndarray, reference: np.ndarray) -> np.ndarray:
-    """Compute Mean Squared Error per sample."""
-    return np.mean((signal - reference) ** 2, axis=-1)
-
-
-def compute_psnr(signal: np.ndarray, reference: np.ndarray, data_range: float = 1.0) -> np.ndarray:
-    """Compute Peak Signal-to-Noise Ratio in dB."""
-    mse = compute_mse(signal, reference)
-    return 10 * np.log10(data_range ** 2 / (mse + 1e-10))
-
-
-# =============================================================================
-# Tests
-# =============================================================================
 
 class TestMetrics:
     """Test SNR, MSE, PSNR metric computations."""
@@ -48,7 +32,6 @@ class TestMetrics:
     def test_perfect_reconstruction(self, clean_signal):
         """Identical signals should give very high SNR/PSNR, zero MSE."""
         assert np.all(compute_snr(clean_signal, clean_signal) > 50)
-        assert np.all(compute_psnr(clean_signal, clean_signal) > 50)
         assert np.all(compute_mse(clean_signal, clean_signal) == 0)
 
     @pytest.mark.parametrize("noise_std", [0.1, 0.5, 1.0, 2.0])
@@ -73,7 +56,6 @@ class TestMetrics:
         noisy = clean_signal + 0.5 * np.random.randn(*clean_signal.shape)
         assert compute_snr(noisy, clean_signal).shape == (50,)
         assert compute_mse(noisy, clean_signal).shape == (50,)
-        assert compute_psnr(noisy, clean_signal).shape == (50,)
 
 
 class TestSNRGain:
@@ -99,3 +81,38 @@ class TestSNRGain:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+
+
+class TestTheFloorConvention:
+    """The 1e-10 floor is a stated convention, so it is tested as one.
+
+    Flooring rather than adding is what keeps the statistic exact wherever it
+    is meaningful. The previous copy added, and disagreed with the shipped
+    metric by up to 0.41 dB just where a denoiser is doing best.
+    """
+
+    def test_floor_leaves_meaningful_values_exact(self):
+        reference = np.array([[1.0, 2.0, 3.0, 4.0]])
+        signal = reference + 0.01  # noise power 1e-4, far above the floor
+        expected = 10 * np.log10(np.mean(reference**2) / 1e-4)
+        assert compute_snr(signal, reference)[0] == pytest.approx(expected)
+
+    def test_floor_only_guards_the_degenerate_case(self):
+        reference = np.array([[1.0, 2.0, 3.0, 4.0]])
+        perfect = compute_snr(reference, reference)[0]
+        assert np.isfinite(perfect), "the floor exists so this is not infinity"
+        assert perfect == pytest.approx(10 * np.log10(np.mean(reference**2) / 1e-10))
+
+    def test_adding_instead_of_flooring_would_differ_where_it_matters(self):
+        """Records the size of the defect this file used to hide."""
+        reference = np.array([[1.0, 2.0, 3.0, 4.0]])
+        noise = np.array([[1.0, -1.0, 1.0, -1.0]]) * 3.16e-6  # noise power ~1e-11
+        signal = reference + noise
+
+        floored = compute_snr(signal, reference)[0]
+        noise_power = np.mean(noise**2)
+        added = 10 * np.log10(np.mean(reference**2) / (noise_power + 1e-10))
+        assert abs(floored - added) > 0.1, (
+            "the two conventions must be measurably different here, or this "
+            "test is not holding anything"
+        )

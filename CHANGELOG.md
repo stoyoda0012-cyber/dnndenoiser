@@ -10,6 +10,17 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **The evaluation metrics are importable, and are what the tests test.**
+  `compute_snr` and `compute_mse` were nested inside `cmd_evaluate`, so
+  `tests/test_evaluation.py` carried its own copies and tested those. The
+  copies were not the same function: the test's `compute_snr` divided by
+  `noise_power + 1e-10` where the shipped one floors with
+  `np.maximum(noise_power, 1e-10)`, and the two disagree by up to 0.41 dB near
+  perfect reconstruction — exactly where a denoiser is doing best. A third
+  copy, `compute_psnr`, was tested and is not part of the package at all. The
+  metrics are now `dnndenoiser.cli.compute_snr` / `compute_mse`, the tests
+  import them, and the floor convention is tested as the convention it is.
+
 - **`infer` applies the normalisation a checkpoint records, and inverts it.**
   The moving-average path stores the constants it trained under; `infer` read
   neither. A model trained on data scaled to [0, 1] was fed raw counts, and its
