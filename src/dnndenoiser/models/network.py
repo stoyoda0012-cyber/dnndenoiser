@@ -161,6 +161,25 @@ class SpectralTransformer(nn.Module):
         # Input projection: (batch, num_features) -> (batch, seq_len, d_model)
         # Treat spectrum as sequence of patches
         self.patch_size = 8  # Each patch covers 8 energy points
+
+        # Checked here rather than left to the first forward pass. The reshape
+        # into patches cannot divide a spectrum that is not a whole number of
+        # them, and the failure it produces -- "shape '[2, 31, 8]' is invalid
+        # for input of size 500" -- names neither the constraint nor the
+        # architecture. Raising at construction means a user learns before
+        # training starts rather than after it does.
+        if num_features % self.patch_size != 0:
+            lower = (num_features // self.patch_size) * self.patch_size
+            upper = lower + self.patch_size
+            raise ValueError(
+                f"the Transformer reads the spectrum as patches of "
+                f"{self.patch_size} points, so num_features must be a multiple "
+                f"of {self.patch_size}; got {num_features}. The nearest usable "
+                f"lengths are {lower} and {upper} — resample the spectra, or "
+                f"choose an architecture without this constraint (every other "
+                f"one in this package accepts any length)."
+            )
+
         self.seq_len = num_features // self.patch_size
         self.input_proj = nn.Linear(self.patch_size, d_model)
 

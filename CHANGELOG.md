@@ -10,6 +10,16 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **The Transformer refuses an unusable spectrum length at construction.** It
+  reads the spectrum as patches of 8 points, so `num_features` must be
+  divisible by 8. That used to surface on the first forward pass as
+  `RuntimeError: shape '[2, 31, 8]' is invalid for input of size 500`, naming
+  neither the constraint nor the architecture — after the model was built and
+  training set up. It is now a `ValueError` at construction that names the
+  patch size, the nearest usable lengths, and the fact that every other
+  architecture accepts any length. Documented in the README's architecture
+  table.
+
 - **The evaluation metrics are importable, and are what the tests test.**
   `compute_snr` and `compute_mse` were nested inside `cmd_evaluate`, so
   `tests/test_evaluation.py` carried its own copies and tested those. The

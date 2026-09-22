@@ -166,3 +166,64 @@ class TestDeviceCompatibility:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+
+
+class TestTransformerLengthConstraint:
+    """The Transformer needs a spectrum length divisible by its patch size.
+
+    It reads the spectrum as patches of 8 points, so the reshape in ``forward``
+    cannot divide a length that is not a whole number of them. That used to
+    surface as ``RuntimeError: shape '[2, 31, 8]' is invalid for input of size
+    500`` on the first forward pass — after the model was built, after training
+    had been set up, and naming neither the constraint nor the architecture.
+    """
+
+    @pytest.mark.parametrize("num_features", [256, 128, 64, 8])
+    def test_multiples_of_the_patch_size_are_accepted(self, num_features):
+        model = DenoisingNetwork(
+            num_features=num_features, num_hidden_units=100,
+            layer_type="Transformer", encoder_output_dim=64,
+        )
+        out, _ = model(torch.randn(2, num_features))
+        assert out.shape == (2, num_features)
+
+    @pytest.mark.parametrize("num_features", [255, 250, 100, 33, 1])
+    def test_other_lengths_are_refused_at_construction(self, num_features):
+        with pytest.raises(ValueError) as exc:
+            DenoisingNetwork(
+                num_features=num_features, num_hidden_units=100,
+                layer_type="Transformer", encoder_output_dim=64,
+            )
+        message = str(exc.value)
+        assert "multiple of 8" in message
+        assert str(num_features) in message
+        assert "nearest usable" in message, "an error that does not say what to do instead"
+
+    def test_the_suggested_lengths_actually_work(self):
+        """A suggestion that does not work is worse than none."""
+        import re
+
+        with pytest.raises(ValueError) as exc:
+            DenoisingNetwork(
+                num_features=250, num_hidden_units=100,
+                layer_type="Transformer", encoder_output_dim=64,
+            )
+        suggested = [int(n) for n in re.findall(r"\b(\d+) and (\d+)\b", str(exc.value))[0]]
+        assert suggested == [248, 256]
+        for n in suggested:
+            model = DenoisingNetwork(
+                num_features=n, num_hidden_units=100,
+                layer_type="Transformer", encoder_output_dim=64,
+            )
+            assert model(torch.randn(1, n))[0].shape == (1, n)
+
+    @pytest.mark.parametrize(
+        "arch",
+        ["FCNN", "ResNet-FCNN", "1D-CNN", "ResNet-1DCNN", "GRU", "LSTM", "bi-LSTM"],
+    )
+    def test_no_other_architecture_has_the_constraint(self, arch):
+        """The error tells the user every other architecture takes any length."""
+        model = DenoisingNetwork(
+            num_features=100, num_hidden_units=100, layer_type=arch, encoder_output_dim=64,
+        )
+        assert model(torch.randn(2, 100))[0].shape == (2, 100)

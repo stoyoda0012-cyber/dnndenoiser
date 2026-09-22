@@ -101,16 +101,21 @@ counts at the default configuration (256 energy points, 100 hidden units,
 encoder output 64) — a property of the model, reproducible with
 `sum(p.numel() for p in DenoisingNetwork(...).parameters())`.
 
-| Architecture | Parameters | Suggested LR |
-|-------------|-----------|--------------|
-| FCNN | 37K | 0.01 |
-| ResNet-1DCNN | 92K | 0.001 |
-| 1D-CNN | 152K | 0.01 |
-| GRU | 194K | 0.01 |
-| LSTM | 250K | 0.01 |
-| bi-LSTM | 580K | 0.01 |
-| ResNet-FCNN | 658K | 0.001 |
-| Transformer | 862K | 0.001 |
+| Architecture | Parameters | Suggested LR | Input length |
+|-------------|-----------|--------------|--------------|
+| FCNN | 37K | 0.01 | any |
+| ResNet-1DCNN | 92K | 0.001 | any |
+| 1D-CNN | 152K | 0.01 | any |
+| GRU | 194K | 0.01 | any |
+| LSTM | 250K | 0.01 | any |
+| bi-LSTM | 580K | 0.01 | any |
+| ResNet-FCNN | 658K | 0.001 | any |
+| Transformer | 862K | 0.001 | **must be divisible by 8** |
+
+The Transformer reads the spectrum as patches of 8 energy points, so its input
+length has to be a whole number of them; it refuses anything else at
+construction, naming the nearest usable lengths. No other architecture here has
+a length constraint.
 
 The suggested learning rates are the per-architecture settings the reference
 measurement used; they are starting points, not tuned optima. The CLI does
