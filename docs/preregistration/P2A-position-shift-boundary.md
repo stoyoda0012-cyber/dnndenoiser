@@ -746,6 +746,68 @@ both raised the same hole by different routes, both are named.
     edge-proximity control inside ±1.5 eV. → stated, and its limit — that it
     does not extend beyond ±1.5 — stated with it.
 
+### Revision 2 — 2026-09-22, forced by implementation, before any result existed
+
+Three registered items did not survive contact with the code. All three were found
+by the smoke test, which runs two seeds at two epochs on tiny pools: **no
+gain-versus-shift, boundary or displacement value had been computed when these
+were written**, and the run that produced the record was started afterwards.
+
+30. **Self-check 4's exactness form was not implementable.** It registered
+    `max_k(mu_k − mu_k^literal − jitter_k) − min_k(...) == 0` *exactly*. But
+    `(284.8 + delta) - 284.8` is not `delta` in binary floating point for an
+    arbitrary delta, and the augmented arm's shifts are arbitrary: the check
+    failed on a **correct** pool at the first smoke test, reporting
+    `-1.0006910861176266 != -1.0006910861175995`. The implemented form is
+    `centre_k == literal_k + delta`, evaluated as that expression — exact,
+    testing the same property (one shift common to every peak), and still failing
+    on a pool built with per-peak jitter, where each peak would carry its own
+    offset. Inter-peak spacing preservation, which the registered text also
+    required exactly, is likewise a floating-point residual and is now bounded at
+    1e-9 eV and recorded rather than asserted equal.
+
+31. **Self-check 8 was ambiguous about what "sample index" means, and vacuous as
+    written.** Two faults, both surfaced by the smoke test:
+
+    - *Ambiguity.* Arms C and D hold fewer samples per noise level than arms A
+      and B, so equal **flat** indices point at different levels. The check
+      failed on correct pools, reporting arm C's sample 154 against arm A's.
+      Arms are now keyed on `(level_index, sample_index)`, which is what
+      "the same per-sample seed sequence, and for C and D how many samples are
+      kept" meant.
+    - *Vacuity.* As registered, the check compared replayed per-peak draws
+      between arms — but when the batch seeds match, that compares a replay
+      against itself and passes whatever the generator did. A **new self-check
+      8b, replay faithfulness**, rebuilds a sample of spectra from the replayed
+      draws alone, with every random variation switched off, and requires them to
+      be **bit-identical** to what the generator produced. Without it, check 8
+      verified a model of the generator against itself. This is the same class of
+      defect the audits found elsewhere in this document, found here by running
+      the code.
+
+32. **Self-check 6's tolerance was calibrated at one test-set size and applied at
+    all of them.** The registered tolerances (0.2 / 0.2 / 0.35 dB) were measured
+    at `n_test = 512`, where most of the statistic's spread is Monte-Carlo rather
+    than signal — the deterministic signal-power variation is about 0.03 dB
+    against a measured span near 0.10 dB. At the smoke test's `n_test = 64` the
+    span reached 0.357 dB and voided a correct run. The allowance is now scaled
+    by `sqrt(512 / n_test)` and **equals the registered value exactly at the
+    registered size**, so the registered design point is unchanged and only
+    off-design runs are affected.
+
+    Re-measured at the registered size over the full **25-point** sweep with six
+    independent draws, before the run: worst spans **0.104 / 0.107 / 0.107 dB**
+    against tolerances 0.2 / 0.2 / 0.35 dB. Revision 1's figures were measured
+    over 21 points, before the sweep was extended to ±4.0 eV.
+
+Two further implementation notes, recorded but not revisions, because they change
+nothing the document fixed: a negative-zero key collision (`-1.0 * 0.0` formats as
+`-0.00` and keyed the origin twice) was an ordinary coding bug; and the
+learning-free smoother comparator, computed on this run's own spectra, reproduced
+the design-time offsets quoted in Revision 1 (+0.051 / +0.201 / +0.467 eV at
+sigma = 0.5 / 1.0 / 2.0 eV against +0.06 / +0.21 / +0.48), which is a check on
+that figure rather than a change to it.
+
 ## Record
 
 *(Empty until the run. The result section goes here, including any prediction
