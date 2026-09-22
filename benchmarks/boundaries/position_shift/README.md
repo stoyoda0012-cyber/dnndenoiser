@@ -164,7 +164,40 @@ nearest-duplicate statistic, each arm's realised shift distribution, and the
 per-shift values from checks 5, 6 and 7. They are listed separately so the count
 of actual gates is not overstated.
 
+## What the record says, in one paragraph
+
+Read `report.md` for the numbers; it is generated and they are not repeated here
+(`AGENTS.md` §6). In outline: the boundary for a model trained at one
+calibration sits **well under one electronvolt** — a shift of the size a
+practitioner would not think twice about is enough to make the denoiser worse
+than doing nothing. Training across a ±1.5 eV range moves the boundary out by
+roughly a factor of four and does **not** remove it: that model has a flat
+plateau over the range it saw and its own cliff just outside it. Seven of the
+eight registered predictions held. The one that failed, R5b, failed because its
+premise did not survive contact with the data — see the preregistration's
+Record section, which says what that costs the interpretation.
+
 ## Things about this record that are easy to misread
+
+- **A positive SNR gain does not mean the peak is in the right place.** The
+  record contains a cell where the gain is comfortably positive *and* the
+  denoised peak sits about four electronvolts from the truth, at the noisiest
+  level, where the input is so poor that a smooth wrong answer still scores well.
+  This is `AGENTS.md` §5's "model estimate, not a measurement" as a measured
+  number. It is also **outside every registered prediction** and carries no
+  inferential claim here — it is a caution and a candidate for a new
+  preregistration.
+- **The half-electronvolt figure is not a property of XPS.** It is a property of
+  the training distribution. The same architecture trained across a wider
+  position range has a boundary several times further out, in this same record.
+  What generalises is the *shape* — a model is valid just past the position
+  range it was trained on, and not beyond — not the number.
+- **R5b's failure is not evidence that augmentation is free.** The registered
+  fallback is an undecided verdict, and the reason is that the density controls
+  turned out to be *N* controls: cutting the training-set size removes
+  information about noise, intensity and width as well as position, so it is a
+  harsher handicap than spreading a fixed N over a wider range. Attributing
+  augmentation's cost needs a design this one does not have.
 
 - **The boundary is a property of the training distribution, not of XPS.**
   Whatever |Δ|\* the record reports is a property of *this* peak set, *this*

@@ -61,7 +61,12 @@ from dnndenoiser.models.network import DenoisingNetwork
 
 RECORD_VERSION = "1"
 PREREGISTRATION = "docs/preregistration/P2A-position-shift-boundary.md"
-PREREGISTRATION_COMMITS = {"registered": "06fa8c0", "revision_1": "ef25766"}
+PREREGISTRATION_COMMITS = {
+    "registered": "06fa8c0",
+    "revision_1": "ef25766",   # after two independent audits, before implementation
+    "revision_2": "736e540",   # forced by implementation, before any result existed
+    "revision_3": "36d8694",   # self-check 7 was a tautology; first full run discarded
+}
 
 # --------------------------------------------------------------------------------------
 # Pinned design constants. Every one of these is fixed in the preregistration.

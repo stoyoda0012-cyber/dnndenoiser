@@ -869,5 +869,168 @@ and that is the one thing this directory exists to prevent. Discarding it costs
 
 ## Record
 
-*(Empty until the run. The result section goes here, including any prediction
-that failed.)*
+Run 2026-09-22 on the machine named in the record's `environment`, from commit
+`36d8694` with a clean working tree. 20 seeds, 4 arms, 25 shifts, 3 noise
+levels; 162.7 min wall clock. The record is
+`benchmarks/boundaries/position_shift/results/position_shift_boundary.json` and
+the rendered report is `report.md` beside it. **All numbers below come out of
+that record**; none is typed here that is not also in it.
+
+**All twelve voiding self-checks passed.** The suspect-run rule did not fire.
+The consistency anchor did not flag at any level.
+
+### Result — seven of eight predictions held; R5b failed
+
+| | Verdict | The number that decided it |
+|---|---|---|
+| **R1** positive control | **PASS** | arm A gains **+11.41 ± 0.24 dB** at Δ = 0; 20/20 seeds |
+| **R2** there is a cliff | **PASS** | **−17.10** and **−17.28 dB** at Δ = ±4.0; 20/20 each; Holm *p* = 1.3e-44 |
+| **R3** the cliff is narrow | **PASS** | \|Δ\|\* = **0.471 / 0.474 eV**, against a registered threshold of 1.5 |
+| **R4** the shift is the cause | **PASS** | arm B beats arm A by **+21.8 / +22.8 dB** at \|Δ\| = 1.5; 20/20 |
+| **R5a** density alone costs | **PASS** | A > C by **+4.34 dB**, C > D by **+1.44 dB**; 20/20 each |
+| **R5b** augmentation costs beyond density | **FAIL** | arm B beats arm D by **+4.47 dB**; **0/20** seeds |
+| **R6** the boundary moves | **PASS**, verdict **moved** | arm B's \|Δ\|\* = **1.833 / 1.826 eV**, inside the tested range; 20/20 seeds larger |
+| **R7** displacement opposite to Δ | **PASS** | **−4.013 / +3.895 eV** at Δ = ±4.0; monotone, largest decrease **0.0000 eV** |
+
+### R3 was right in direction and badly wrong in magnitude
+
+The registered text called R3 "the prediction most likely to be wrong, and the
+one that matters", set the threshold at 1.5 eV, and said: *if it sits at 0.5 eV
+the warning in the README has to be much louder than anything currently written
+there.* That is the branch the data took. The boundary is **0.47 eV** — three
+times narrower than the threshold that would have satisfied the prediction.
+
+At the primary level, arm A's mean gain against shift:
+
+| Δ (eV) | 0 | 0.25 | 0.50 | 0.75 | 1.00 | 2.00 | 4.00 |
+|---|---|---|---|---|---|---|---|
+| gain (dB) | +11.41 | +6.83 | **−0.94** | −6.97 | −10.72 | −15.05 | −17.10 |
+
+**A quarter of an electronvolt costs 4.6 dB. Half an electronvolt and the
+denoiser is making the spectrum worse than it found it.** In XPS a 0.5 eV
+charging shift or calibration offset is not an edge case; it is a Tuesday. The
+across-seed range of the boundary is 0.448–0.489 eV over twenty seeds, so this
+is not a noisy estimate.
+
+### R5b failed, and what failed was its premise
+
+R5b predicted that arm B, trained across ±1.5 eV, would score **no better** at
+Δ = 0 than arm D, a narrow arm cut to the same position density. Arm B scored
+**4.47 dB better**, in 20 of 20 seeds, *d*<sub>z</sub> = −13.68. The prediction
+did not merely fail to reach its threshold; it failed in the opposite direction
+with about as much force as this design can measure.
+
+Arms C and D exist because an independent audit showed R5, as first registered,
+could not separate "augmentation costs accuracy" from "arm B had one fifth the
+training density at equal N". The audit was right that the confound existed. The
+data now says the correction **over-corrects**, because the two handicaps are not
+equivalent:
+
+| at Δ = 0, level 1000 | gain (dB) | versus arm A |
+|---|---|---|
+| A narrow, N = 2304 | +11.41 | — |
+| B augmented ±1.5, N = 2304 | +10.10 | −1.31 |
+| C narrow, N = 461 | +7.07 | −4.34 |
+| D narrow, N = 144 | +5.64 | −5.78 |
+
+Cutting N removes information about everything at once — noise, intensity,
+width, shape. Spreading a fixed N over a wider position range dilutes only
+position coverage, and this network evidently pays far less for that. **Arms C
+and D are an N control, not a density control**, and the registered inference
+from them does not hold.
+
+Per the registered fallback, the verdict is the one fixed in advance: *no
+augmentation cost beyond the density penalty was demonstrated — an undecided
+verdict, not a finding that augmentation is free.* The A-versus-B difference of
+1.31 dB is a **descriptive** cell, not a registered comparison, and carries no
+*p*-value here. A design that could attribute it is a new preregistration, not a
+reinterpretation of this one.
+
+### R6 came out "moved", which was the falsifiable half
+
+Arm B's boundary is **1.83 eV**, 3.9× arm A's, and it is **inside** the tested
+range — so the pre-declared verdict is *moved*, not *beyond range*. Augmentation
+relocated the boundary; it did not remove it. Arm B's own profile shows the
+shape:
+
+| Δ (eV) | 0 | 1.00 | 1.50 | 1.75 | 2.00 | 2.50 | 4.00 |
+|---|---|---|---|---|---|---|---|
+| arm B gain (dB) | +10.10 | +9.90 | +7.83 | **+2.03** | −3.95 | −11.35 | −15.86 |
+
+A flat plateau across the range it was trained on, then a cliff of its own
+within about 0.3 eV of that range's edge. Extending the sweep from ±3.0 to
+±4.0 eV — one of Revision 1's changes — is what made this verdict decidable
+rather than censored.
+
+### R7 held, and it is the result a user should be most careful with
+
+The bias-corrected displacement is **−4.013 eV at Δ = +4.0**: the denoised peak
+sits essentially exactly where the network was trained to expect one, regardless
+of where the real peak is. At Δ = +1.0 it has already pulled back 0.668 eV,
+two-thirds of the shift. Monotone in \|Δ\| in both directions, with a largest
+decrease of **0.0000 eV** against a one-grid-step tolerance.
+
+Comparator (ii), the learning-free Gaussian smoother, measured on this run's own
+spectra, spans **0.0058 eV across all 25 shifts** at σ = 1.0 eV. So the offset
+that motivated the bias correction is shift-*independent* on this data too, and
+a shift-dependent displacement in a trained arm is not attributable to
+truncation, to the background, to the envelope's asymmetry or to oversmoothing.
+No mechanism is claimed: opposite-signed displacement is *consistent with* a
+learned position prior and the observable underdetermines it.
+
+### A descriptive observation that is not a finding of this record
+
+At the highest noise level, arm A's gain **stays positive across the whole
+sweep** — all 20 seeds censored, +2.50 dB at Δ = +4.0 — while the displacement
+at that cell is **−4.00 eV**. A metric that says "improved by 2.5 dB" and an
+output whose main peak is four electronvolts from the truth, in the same cell.
+
+This is the clearest instance in the record of `AGENTS.md` §5's rule that a
+denoised spectrum is a model estimate and not a measurement. It is also
+**outside every registered prediction**: level 10000 is descriptive, and under
+this document's own descriptive-only rule no inferential claim may be made about
+it. It is stated as a caution and as a candidate for a **new** preregistration.
+
+The same applies to a regularity visible across arms — each arm's boundary
+falls just outside the position range it was trained on (arm A ±0.3 → 0.47; arm
+B ±1.8 → 1.83; arms C and D, at narrower effective coverage, earlier still).
+Four arms is not a test of that, and §6 forbids promoting an empirical
+regularity to a law.
+
+### What this licenses, and nothing stronger
+
+That **this** ResNet-FCNN, trained on **this** synthetic distribution at **this**
+jitter width, size and noise model, loses all benefit at a rigid shift of about
+half an electronvolt, and that training across a ±1.5 eV range moves that
+boundary to about 1.8 eV at a cost this design cannot attribute. Everything in
+the claim-scope list above still applies, unamended — in particular that nothing
+here is about measured spectra, that the background does not travel with the
+peaks, and that beyond ±1.5 eV no arm has the corresponding edge proximity
+in-distribution, so degradation there is not separable from window-edge effects.
+
+Nothing from this record goes into the README, the package documentation or any
+release note until it has had its own independent audit under `AGENTS.md` §8.
+
+### Two things worth recording about the run itself
+
+**The measurement reproduced exactly.** The first full run — discarded under
+Revision 3 because self-check 7 was inert — produced **bit-identical** boundary
+values (difference 0.00e+00 eV in every arm) and gains agreeing to the printed
+precision. The two runs differed in wall clock by a factor of five, 30.9 against
+162.7 minutes, because the machine throttled: arm A's `train_seconds` ranges
+from 36.3 to 364.1 seconds for identical work within the second run. The record
+stores `train_seconds` per run, so this is visible rather than inferred. It
+bears on nothing measured — the RNG streams, the models and the inputs are fixed
+per seed and are independent of how fast the machine ran — and it is recorded
+because the claim "discarding the first run cost only time" is otherwise an
+assertion rather than a checked fact.
+
+**Erratum in the record's own metadata.** `design.preregistration.commits` names
+`registered` and `revision_1` only. That constant was not updated when Revisions
+2 and 3 were written, so the field understates which version of this document the
+run was made against. The producing commit is `36d8694`, which **contains
+Revision 3**; the git commit, not that field, is the run's provenance. The
+constant is corrected for future runs in the commit that adds this section, and
+this record is not re-run for it: the field feeds no computation, and a 163-minute
+re-measurement that would reproduce the same numbers bit-for-bit is not a
+proportionate response to a stale string. Saying so here is.
