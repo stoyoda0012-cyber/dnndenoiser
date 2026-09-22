@@ -522,46 +522,68 @@ def check_translation_equivariance() -> dict:
     """Self-check 7. Is the shifted spectrum actually a TRANSLATE of the unshifted one?
 
     Self-checks 3 and 4 inspect peak CENTRES and would pass on a spectrum that is not a
-    translate at all. The background is the reason it is not exactly one:
-    `linear_background` is evaluated on the fixed absolute energy axis, so it does not
-    move with the peaks. The exact translate is obtained by evaluating the unshifted
-    spectrum on a grid displaced by -delta, which moves the background with it; the
-    residual between the two is precisely the part of this manipulation that is not a
-    rigid translation of the whole spectrum.
+    translate at all. This one compares the spectra.
+
+    It compares against `np.roll` of the unshifted spectrum at shifts that are INTEGER
+    multiples of the energy step, over the interior of the window so nothing wraps. That
+    is the only comparison here that is independent of the generator: the registered
+    shift values are not grid-aligned, and re-evaluating the generator on a displaced
+    grid -- the first implementation -- computes the *identical expression* on both
+    sides and therefore returns exactly zero at every shift whatever the generator does.
+    It was a tautology, it is recorded as one in Revision 3, and this replaces it.
+
+    The residual it measures is real and is the linear background: `linear_background`
+    returns `level + slope * (x - x[0])`, a ramp pinned to the WINDOW, so a peak moving
+    along it sits on a different background level. At the sweep's edge that is
+    slope * delta = 0.001 * 4.0 = 0.4% of peak height. The background does not travel
+    with the peaks -- which is why this manipulation is "peaks shift under a stationary
+    background" and not a full-spectrum translate.
     """
     deterministic = {"intensity_variation": 0.0, "position_jitter": 0.0,
                      "width_variation": 0.0, "normalize": True}
     reference = make_generator(0.0, NOISE_LEVELS[0], **deterministic)
     baseline, _ = reference.generate_single(np.random.default_rng(0))
+    step = float(reference.energy[1] - reference.energy[0])
     scale = float(np.max(baseline))
-    per_delta = {}
+    guard = 5  # points excluded at each end so np.roll's wrap is never compared
+
+    offsets = sorted({int(round(delta / step)) for delta in DELTAS} - {0})
+    per_offset = {}
     worst = 0.0
-    for delta in DELTAS:
-        shifted = make_generator(delta, NOISE_LEVELS[0], **deterministic)
-        actual, _ = shifted.generate_single(np.random.default_rng(0))
-        translate_generator = make_generator(
-            0.0, NOISE_LEVELS[0],
-            energy_range=(ENERGY_RANGE[0] - delta, ENERGY_RANGE[1] - delta), **deterministic)
-        translate, _ = translate_generator.generate_single(np.random.default_rng(0))
-        residual = float(np.max(np.abs(actual - translate)) / scale)
+    for offset in offsets:
+        delta = offset * step
+        shifted, _ = make_generator(delta, NOISE_LEVELS[0], **deterministic).generate_single(
+            np.random.default_rng(0))
+        rolled = np.roll(baseline, offset)
+        interior = slice(abs(offset) + guard, len(baseline) - abs(offset) - guard)
+        residual = float(np.max(np.abs(shifted[interior] - rolled[interior])) / scale)
         worst = max(worst, residual)
         if residual > TOL_TRANSLATION_EQUIVARIANCE:
             raise SelfCheckFailure(
-                f"translation equivariance at delta={delta}: residual {residual:.5f} "
-                f"exceeds {TOL_TRANSLATION_EQUIVARIANCE}"
+                f"translation equivariance at {offset} grid points ({delta:+.4f} eV): "
+                f"residual {residual:.5f} exceeds {TOL_TRANSLATION_EQUIVARIANCE}"
             )
-        per_delta[f"{delta:+.2f}"] = residual
+        per_offset[f"{offset:+d}"] = {"delta_eV": delta, "residual": residual}
     return {
         "what_it_measures": (
-            "max|clean(delta) - translate(clean(0), delta)| / max(clean(0)), where the "
-            "translate is the unshifted spectrum evaluated on a grid displaced by -delta. "
-            "Non-zero because the linear background is evaluated on the fixed absolute "
-            "energy axis and therefore does NOT move with the peaks."
+            "max|clean(n*step) - roll(clean(0), n)| / max(clean(0)) over the window "
+            "interior, at integer grid offsets spanning the registered sweep. Non-zero "
+            "because linear_background is level + slope*(x - x[0]), a ramp pinned to the "
+            "window: a peak moving along it sits on a different background level, which "
+            "is slope*delta = 0.4% of peak height at the edge of the sweep."
         ),
+        "why_integer_offsets": (
+            "the registered shift values are not grid-aligned, and the only alternatives "
+            "are interpolating (whose error would exceed the effect) or re-evaluating "
+            "the generator on a displaced grid, which computes the same expression on "
+            "both sides and cannot fail -- see Revision 3"
+        ),
+        "grid_step_eV": step,
+        "guard_points_excluded_each_end": guard,
         "tolerance": TOL_TRANSLATION_EQUIVARIANCE,
         "worst_residual": worst,
         "passed": True,
-        "per_delta_residual": per_delta,
+        "per_grid_offset": per_offset,
     }
 
 
@@ -1387,10 +1409,11 @@ CLAIM_SCOPE = {
         "D bound the density penalty at one architecture and one recipe",
         "anything about other augmentation widths: one width (+/-1.5 eV) was tested, so "
         "R6 is a statement about that width and not about augmentation in general",
-        "a full-spectrum translate: the linear background is evaluated on the fixed "
-        "absolute energy axis and does NOT move with the peaks, so this manipulation is "
-        "'peaks shift under a stationary background'. Self-check 7 bounds the resulting "
-        "departure from a pure translate; it does not remove it",
+        "a full-spectrum translate: linear_background is level + slope*(x - x[0]), a "
+        "ramp pinned to the WINDOW, so it does not travel with the peaks and a peak "
+        "moving along it sits on a different background level. This manipulation is "
+        "therefore 'peaks shift under a stationary background'. Self-check 7 measures "
+        "the departure from a pure translate and bounds it; it does not remove it",
         "separation of degradation from window-edge effects beyond |delta| = 1.5 eV. "
         "Inside that range arm B IS an edge-proximity control, because it saw those edge "
         "distances in training; beyond it no arm did",

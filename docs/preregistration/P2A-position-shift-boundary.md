@@ -514,11 +514,15 @@ Written before the numbers exist, so that it cannot be trimmed to fit them.
   C and D bound the density penalty at one architecture and one recipe.
 - **Nothing about other augmentation widths.** One width (±1.5 eV) is tested, so
   R6 is a statement about that width, not about augmentation in general.
-- **The background does not move with the peaks.** `linear_background` is
-  evaluated on the fixed absolute energy axis, so this manipulation is *"peaks
-  shift under a stationary background"*, not the full-spectrum translate a real
-  charging shift produces. Self-check 7 bounds the resulting departure from a
-  pure translate at 1 % of peak height; it does not remove it.
+- **The background does not move with the peaks.** `linear_background` returns
+  `level + slope * (x - x[0])` — a ramp pinned to the **window**, not to the
+  absolute energy axis, but either way it does not travel with the peaks, so a
+  peak moving along it sits on a different background level. This manipulation
+  is therefore *"peaks shift under a stationary background"*, not the
+  full-spectrum translate a real charging shift produces. Self-check 7 bounds
+  the departure at 1 % of peak height; measured, it reaches 0.46 % at the edge
+  of the sweep. It is bounded, not removed. (The mechanism stated in Revision 1
+  was wrong; see Revision 3.)
 - **Window-edge effects are controlled only inside ±1.5 eV.** There, arm B *is*
   an edge-proximity control: it has seen those edge distances in training, so if
   R4 holds, edge proximity is excluded as the cause at 1.5 eV and therefore for
@@ -707,7 +711,8 @@ both raised the same hole by different routes, both are named.
     the nearest-neighbour statistic and "written into the record" clauses cannot
     fail. → split into **twelve voiding checks** and a **diagnostics** list.
 20. **What moves with Δ besides the peaks was uncontrolled.** (B) The background
-    is evaluated on the fixed absolute axis and does not move; the normalisation
+    does not move with the peaks — by the mechanism corrected in Revision 3,
+    not the one stated here; the normalisation
     constant drifts monotonically 0.9967 → 1.0023 across the sweep; edge
     proximity in FWHM is 5.00 at Δ = 0 and 2.86 at +3.0; per-peak truncation is
     **5× asymmetric**. The input-SNR check sees the aggregate and is blind to
@@ -807,6 +812,60 @@ learning-free smoother comparator, computed on this run's own spectra, reproduce
 the design-time offsets quoted in Revision 1 (+0.051 / +0.201 / +0.467 eV at
 sigma = 0.5 / 1.0 / 2.0 eV against +0.06 / +0.21 / +0.48), which is a check on
 that figure rather than a change to it.
+
+### Revision 3 — 2026-09-22, from the first full run's own record
+
+The first full run completed, all twelve self-checks reporting pass. Inspecting
+the record before writing it up showed that **one of the twelve could not fail**.
+
+33. **Self-check 7 was a tautology.** It compared the shifted spectrum against
+    "the unshifted spectrum evaluated on a grid displaced by −Δ". Both sides
+    expand to the same expression — the peak term to `f(e_i − Δ − mu_k)` and the
+    background to a function of the grid index alone — so the residual was
+    **exactly 0.000e+00 at all 25 shifts**, and would have been whatever the
+    generator did. A gate that cannot fail was being counted among twelve that
+    void the record, which makes the record's description of itself false. This
+    is precisely the defect class the two audits were commissioned to find, and
+    it was introduced *while implementing one of their findings*.
+
+    Replaced with a comparison against `np.roll` of the unshifted spectrum at
+    shifts that are **integer multiples of the energy step**, over the window
+    interior so nothing wraps. That comparison is independent of the generator.
+    The registered shift values are not grid-aligned, and the alternatives —
+    interpolating, or re-evaluating the generator on a displaced grid — either
+    carry more error than the effect or reproduce the tautology.
+
+    Measured with the replacement: the residual is **real and grows with |Δ|**,
+    reaching **0.46 % of peak height at +4.03 eV** and 0.40 % at −4.03 eV,
+    inside the registered 1 % tolerance. So the tolerance was right and the
+    design is unaffected; what was wrong was that nothing had checked it.
+
+34. **Revision 1 stated the wrong mechanism for that residual, and this document
+    and the record repeated it.** Revision 1 said, following audit B, that "the
+    background is evaluated on the fixed absolute energy axis and does not move
+    with the peaks". The source says otherwise:
+
+    ```python
+    def linear_background(x, level=0.1, slope=0.0):
+        return level + slope * (x - x[0])
+    ```
+
+    It is a ramp pinned to the **window**, not to the absolute energy axis. The
+    *conclusion* stands — the ramp does not travel with the peaks, so a peak
+    moving along it sits on a different background level — and the magnitude
+    follows from the slope directly: `slope × Δ = 0.001 × 4.0 = 0.4 %` of peak
+    height, which is what the replacement check measures. Audit B's number was
+    right; its explanation was not, and neither was this document's. Corrected
+    in the claim-scope list, in `benchmarks/boundaries/position_shift/README.md`
+    and in the script's `claim_scope`.
+
+**The first full run's record is discarded and the measurement re-run**, from a
+tree whose self-check 7 is the replacement. Its numbers were not wrong — the
+seven-of-eight prediction outcome and every boundary value are unaffected by a
+check that returned a constant — but a record that advertises twelve voiding
+self-checks while one of them is inert is making a false statement about itself,
+and that is the one thing this directory exists to prevent. Discarding it costs
+31 minutes.
 
 ## Record
 

@@ -135,9 +135,13 @@ fails; a broken measurement is not reinterpreted as a finding.
    because its noise is not paired across shifts (see below).
 7. **Translation equivariance** — checks 3 and 4 inspect peak *centres* and would
    pass on a spectrum that is not a translate at all. This bounds the departure
-   from a true translate, which is non-zero because the linear background is
-   evaluated on the fixed absolute energy axis and **does not move with the
-   peaks**.
+   from a true translate, which is non-zero because `linear_background` returns
+   `level + slope * (x - x[0])` — a ramp pinned to the **window**, so it does
+   not travel with the peaks and a peak moving along it sits on a different
+   background level. The comparison is against `np.roll` at integer grid
+   offsets, because re-evaluating the generator on a displaced grid computes the
+   identical expression on both sides and cannot fail; the first implementation
+   did exactly that and is recorded as a tautology in Revision 3.
 8. **Pairing integrity**, and **8b replay faithfulness** — that the arms and the
    shifts really do share their per-peak draws, and that the replay used to check
    it reproduces the generator bit-for-bit. Without 8b, check 8 would be comparing
