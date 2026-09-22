@@ -10,6 +10,19 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **Packaging metadata: the license and the project URLs were both absent.** An
+  installed copy declared no licence terms and offered no route back to the
+  source, the changelog or the archive. `license = "MIT"`, `license-files` and
+  five `[project.urls]` entries now reach the wheel's `METADATA`; the archive
+  URL is the concept DOI, so it does not go stale at the next release.
+
+- **CI actions are pinned to commit SHAs, and the workflow is read-only.** Every
+  action was on a movable tag, so `@v4` meant "whatever that repository decides
+  v4 is when CI next runs"; `openjournals-draft-action` was on `@master`, with
+  no release to pin to at all. The workflow also declared no `permissions`,
+  taking whatever the repository default grants. It is `contents: read` now, and
+  a job that ever needs more has to say so where it can be seen.
+
 - **The Transformer refuses an unusable spectrum length at construction.** It
   reads the spectrum as patches of 8 points, so `num_features` must be
   divisible by 8. That used to surface on the first forward pass as

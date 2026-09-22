@@ -44,3 +44,32 @@ def test_the_changelog_has_a_section_for_this_version():
     assert f"## [{dnndenoiser.__version__}]" in changelog, (
         f"CHANGELOG.md has no '## [{dnndenoiser.__version__}]' section"
     )
+
+
+def test_packaging_metadata_carries_the_license_and_the_urls():
+    """Metadata that a user or an index needs, and that rots silently.
+
+    A distribution with no license field leaves its terms to be guessed, and
+    one with no URLs gives an installed copy no route back to the source, the
+    changelog or the archive. Asserted against ``pyproject.toml`` rather than
+    against a built wheel so the check is cheap enough to always run; the
+    wheel's own ``METADATA`` was verified by hand when these were added.
+    """
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text()
+
+    assert re.search(r'^license\s*=\s*["\']MIT["\']', pyproject, re.MULTILINE), (
+        "no license declared: the terms would be left to be guessed"
+    )
+    assert re.search(r"^license-files\s*=", pyproject, re.MULTILINE), (
+        "the LICENSE file must travel with the distribution"
+    )
+    assert "[project.urls]" in pyproject
+
+    for name in ("Homepage", "Repository", "Changelog", "Archive"):
+        assert re.search(rf"^{name}\s*=", pyproject, re.MULTILINE), f"no {name} URL"
+
+    # The archive URL is the concept DOI, which resolves to the latest release;
+    # a version DOI here would go stale at the next one.
+    assert "10.5281/zenodo.22867628" in pyproject, (
+        "the Archive URL should be the concept DOI, not a version DOI"
+    )

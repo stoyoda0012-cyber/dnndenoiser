@@ -7,6 +7,8 @@ name = "dnndenoiser"
 version = "0.1.1"
 description = "Deep-learning denoiser for XPS (X-ray photoelectron spectroscopy) spectra"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "Satoshi Toyoda" }]
 keywords = ["XPS", "denoising", "spectroscopy", "neural network", "PyTorch"]
@@ -24,6 +26,14 @@ dependencies = [
     "torch>=2.0",
     "h5py>=3.8",
 ]
+
+[project.urls]
+Homepage = "https://github.com/stoyoda0012-cyber/dnndenoiser"
+Repository = "https://github.com/stoyoda0012-cyber/dnndenoiser"
+Documentation = "https://github.com/stoyoda0012-cyber/dnndenoiser/blob/main/docs/README.md"
+Changelog = "https://github.com/stoyoda0012-cyber/dnndenoiser/blob/main/CHANGELOG.md"
+# The concept DOI, which always resolves to the latest archived release.
+Archive = "https://doi.org/10.5281/zenodo.22867628"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.4", "ruff>=0.4"]
