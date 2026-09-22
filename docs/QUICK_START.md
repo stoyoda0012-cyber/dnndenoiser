@@ -137,6 +137,15 @@ method being reproduced — so `--arch`, `--lr`, `--lr-drop-period`,
 
 Stacks that are not 256 points are resampled.
 
+### Loading a checkpoint safely
+
+`infer` does not unpickle a checkpoint by default. `torch.load`'s full
+unpickler runs code from the file, so a checkpoint someone sent you is a
+script someone sent you. Files written by v0.1.2 and later need nothing
+special; a checkpoint from v0.1.0 or v0.1.1 stored its energy axis as a NumPy
+array and needs `--trust-checkpoint`, which reaches the unpickler. Use it only
+on files you produced or otherwise trust.
+
 **Evaluating this is not straightforward.** A measured stack has no clean
 reference, and the obvious substitute — a mean over the same frames — is *not*
 independent of targets built from subsets of those frames. An SNR computed

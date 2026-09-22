@@ -141,6 +141,42 @@ def cmd_generate(args):
     print("Done.")
 
 
+def load_checkpoint(path, trust=False):
+    """Load a checkpoint, refusing to unpickle unless asked to.
+
+    ``torch.load`` defaults to a full unpickle, which **executes code from the
+    file**. A denoiser CLI invites exactly the risky case: checkpoints are the
+    natural thing to pass around, and ``infer -m someone-elses-model.pt`` would
+    run whatever that file says to run.
+
+    So loading is restricted by default, and the unpickler is reached only by
+    asking for it. Checkpoints this version writes hold nothing that needs it.
+    Those written by v0.1.0 and v0.1.1 stored the energy axis as a NumPy array,
+    which the restricted loader rejects — the error names the flag rather than
+    leaving the user to find it.
+    """
+    import torch
+
+    if trust:
+        return torch.load(path, map_location='cpu', weights_only=False)
+    try:
+        return torch.load(path, map_location='cpu', weights_only=True)
+    except Exception as exc:
+        print(
+            f"Error: {path} cannot be loaded without unpickling it, which runs "
+            f"code from the file.\n"
+            f"  Underlying cause: {type(exc).__name__}: {str(exc).splitlines()[0]}\n"
+            f"  Checkpoints written by dnndenoiser v0.1.2 and later do not need "
+            f"this; v0.1.0 and v0.1.1 stored the energy axis as a NumPy array, "
+            f"which the restricted loader refuses.\n"
+            f"  If you produced this file yourself, or you otherwise trust its "
+            f"origin, re-run with --trust-checkpoint. Do not use it on a file "
+            f"you were given.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
 def _resolve_device(requested):
     """Resolve ``auto`` to the best available backend."""
     import torch
@@ -278,7 +314,9 @@ def cmd_train_moving_average(args, passed_flags):
             "window": window,
             "n_frames": stack.n_frames,
             "normalisation": {"min": g_min, "max": g_max, "kind": "element-global min-max"},
-            "energy": np.asarray(stack.energy, dtype=np.float32),
+            # A tensor, not a NumPy array: an array makes the whole checkpoint
+            # unloadable without unpickling it, and nothing else here needs that.
+            "energy": torch.as_tensor(np.asarray(stack.energy, dtype=np.float32)),
         },
         args.output,
     )
@@ -537,7 +575,7 @@ def cmd_infer(args):
 
     # Load model checkpoint
     print("\nLoading model...")
-    checkpoint = torch.load(args.model, map_location='cpu', weights_only=False)
+    checkpoint = load_checkpoint(args.model, trust=args.trust_checkpoint)
 
     arch = checkpoint.get('architecture', 'FCNN')
     n_features = checkpoint.get('n_features', 256)
@@ -853,6 +891,11 @@ Examples:
     infer_parser.add_argument('-o', '--output', required=True, help='Output HDF5')
     infer_parser.add_argument('--batch-size', type=int, default=256)
     infer_parser.add_argument('--device', default='auto', choices=['auto', 'cpu', 'cuda', 'mps'])
+    infer_parser.add_argument(
+        '--trust-checkpoint', action='store_true',
+        help='Load the checkpoint with the full unpickler, which RUNS CODE from '
+             'the file. Needed for checkpoints written by v0.1.0 and v0.1.1. Use '
+             'it only on files you produced or otherwise trust.')
     infer_parser.set_defaults(func=cmd_infer)
 
     # === evaluate ===

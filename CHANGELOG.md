@@ -8,6 +8,20 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Security
+
+- **`infer` no longer unpickles a checkpoint unless asked to.** `torch.load`'s
+  full unpickler executes code from the file, and the CLI invites the risky
+  case: `infer -m someone-elses-model.pt` would have run whatever that file said
+  to run. v0.1.0 and v0.1.1 both shipped with it unconditional. Loading is now
+  restricted by default; the unpickler is reached only with
+  `--trust-checkpoint`, whose help says what accepting it means.
+
+  Checkpoints written from this version on need no flag. Those from v0.1.0 and
+  v0.1.1 stored the energy axis as a NumPy array, which the restricted loader
+  refuses — the error names the flag rather than leaving it to be found. The
+  energy axis is now stored as a tensor.
+
 ## [0.1.1] - 2026-09-21
 
 ### Added
