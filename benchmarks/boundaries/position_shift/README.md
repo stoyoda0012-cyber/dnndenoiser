@@ -30,12 +30,23 @@ decision rules were, and what a failed prediction means.
 
 The rule that keeps this honest is the reference benchmark's: **numbers are never
 typed by hand**, and nor is anything else in `report.md`. `render_report.py`
-recomputes, from the per-run raw numbers, everything it is about to render — the
-aggregate means, the across-seed standard deviations, the degradation series, the
-bias-corrected displacements, the boundary medians and censored counts, and every
-prediction's sign count and one-sided binomial *p* — and refuses to render if any
-of them disagrees. It reports all disagreements together rather than stopping at
-the first.
+rebuilds, from the record's `runs` array alone, every aggregate field and the
+whole `boundaries` and `predictions` trees — including each verdict, sign count,
+test statistic and Holm-adjusted *p* — and refuses to render if any of it
+disagrees. It reports all disagreements together rather than stopping at the
+first.
+
+Two things about that guard, stated because its first version claimed more than
+it did. The aggregate half is an independent recomputation; the trees are a
+consistency check against the measurement module's own functions, so it catches an
+edited or stale record but not an error inside those functions. The self-check
+figures, the environment and the consistency anchor are **not** derivable from
+`runs` and are not verified — the report says so where it prints them.
+
+The claim is under test, not asserted: `tests/test_position_shift_boundary_record.py`
+tampers with a copy of the record one field at a time and requires the guard to
+reject each one. It exists because an audit tamper-tested the first guard and it
+accepted 25 of 30 edits, including flipping a prediction's verdict.
 
 ## What it measures
 
@@ -110,7 +121,7 @@ manipulation.
 
 ## Self-checks that void the record
 
-Twelve, each with a stated failure condition. The record is not written if one
+Thirteen, each with a stated failure condition. The record is not written if one
 fails; a broken measurement is not reinterpreted as a finding.
 
 1. **Parameter count** — read from the reference record, not typed here.
@@ -119,11 +130,16 @@ fails; a broken measurement is not reinterpreted as a finding.
    plus Δ. The baseline is a literal because `get_peak_set` returns the shared
    module-level object: a check that re-read its baseline through it would
    compare a mutated registry against a result produced from the same mutation.
-4. **Training-pool rigidity** — the same, on a 5 % sample of *every* arm's pool,
-   plus an end-of-run comparison of `PEAK_SETS` against the literals. This is the
-   check that fails on a pool built with per-peak jitter instead of a rigid
-   shift — the manipulation this study puts out of scope, and the one that an
-   audit showed would otherwise have satisfied every prediction.
+4. **Training-pool rigidity** — each sampled training spectrum, in *every* arm, is
+   reconstructed from the literal peaks, the shift the pool recorded for it, and
+   the per-peak draws replayed from the generator's own RNG at the pinned jitter,
+   and must be **bit-identical to the spectrum in the pool**. Plus an end-of-run
+   comparison of `PEAK_SETS` against the literals. The first version of this check
+   re-derived a peak set from the recorded shift and compared it against the same
+   expression, never touching the pool; an audit built the wrong pool it was
+   written to catch and it passed. The repaired check is verified to fail on that
+   pool, on a shift recorded but never applied, and on a shift applied at the
+   wrong jitter width.
 5. **Truncation, total and per peak** — the pseudo-Voigt tails put about 1.6 % of
    the nominal peak area outside this window at *every* shift, zero included.
    What the cap on |Δ| controls is the *change*. Per-peak figures are recorded
@@ -142,20 +158,28 @@ fails; a broken measurement is not reinterpreted as a finding.
    offsets, because re-evaluating the generator on a displaced grid computes the
    identical expression on both sides and cannot fail; the first implementation
    did exactly that and is recorded as a tautology in Revision 3.
-8. **Pairing integrity**, and **8b replay faithfulness** — that the arms and the
-   shifts really do share their per-peak draws, and that the replay used to check
-   it reproduces the generator bit-for-bit. Without 8b, check 8 would be comparing
-   one model of the generator against itself.
-9. **Argmax well-posedness and reference identity** — the array inspected is
-   asserted to be the same object the SNR metric divides by, which is what
-   establishes that the metric scores the Δ-matched truth rather than the
-   unshifted one.
-10. **Augmentation actually happened.**
+8. **Pairing integrity** — that the arms share their per-sample generator seeds,
+   keyed on `(level, sample)` because the arms hold different numbers of samples
+   per level. It establishes seeding; check 4 establishes that the data follows.
+   **8b test-family rigidity** — test spectra are reconstructed from the
+   shift-independent family seed and required bit-identical, so it fails if a
+   family was drawn from a different seed, if the sweep is not rigid, or if the
+   jitter width moved. It replaces a loop whose body never used the shift variable.
+9. **Argmax well-posedness and reference identity** — the clean references peak at
+   `284.8 + Δ`, and the array inspected is asserted to be the one the SNR metric
+   actually received, which `snr_db` records. The check runs *after* the metric.
+   The first version asserted a variable against itself at the call site and could
+   not fail, while the record advertised that it had.
+10. **Augmentation actually happened** — the narrow arms drew no shift; the
+    augmented arm's realised SD matches the uniform SD and all ten deciles of its
+    range are occupied. Min, max and mean alone are satisfied by an arm that was
+    never augmented at all, which an audit demonstrated.
 11. **Noise-model identity** — field by field against the literals. The
     Gaussian-approximation boolean is `False` at level 10000, so the three levels
     do not share a code path, and an implementation that set it everywhere would
     change the noise model with no other check noticing.
-12. **Leakage** — byte-identity and stream-base disjointness. Stated limitation:
+12. **Leakage** — byte-identity across **all four arms** and stream-base
+    disjointness. Stated limitation:
     byte-identity can only detect a collision in the Δ = 0 column, because at any
     other shift a collided spectrum is shifted and no longer identical.
 
@@ -164,50 +188,35 @@ nearest-duplicate statistic, each arm's realised shift distribution, and the
 per-shift values from checks 5, 6 and 7. They are listed separately so the count
 of actual gates is not overstated.
 
-## What the record says, in one paragraph
+## Status
 
-Read `report.md` for the numbers; it is generated and they are not repeated here
-(`AGENTS.md` §6). In outline: the boundary for a model trained at one
-calibration sits **well under one electronvolt** — a shift of the size a
-practitioner would not think twice about is enough to make the denoiser worse
-than doing nothing. Training across a ±1.5 eV range moves the boundary out by
-roughly a factor of four and does **not** remove it: that model has a flat
-plateau over the range it saw and its own cliff just outside it. Seven of the
-eight registered predictions held. The one that failed, R5b, failed because its
-premise did not survive contact with the data — see the preregistration's
-Record section, which says what that costs the interpretation.
+**No record is published here at present.** The first two runs were discarded —
+the first because a self-check turned out to be inert, the second because two
+independent audits found that the apparatus did not verify the study's
+independent variable at all: nothing inspected the training data of the
+augmented arm or of the density controls. Both are documented in the
+preregistration's revision log. The apparatus has been repaired and the
+measurement re-run; this README describes the repaired design.
 
-## Things about this record that are easy to misread
+## Things about a record from this design that are easy to misread
 
-- **A positive SNR gain does not mean the peak is in the right place.** The
-  record contains a cell where the gain is comfortably positive *and* the
-  denoised peak sits about four electronvolts from the truth, at the noisiest
-  level, where the input is so poor that a smooth wrong answer still scores well.
-  This is `AGENTS.md` §5's "model estimate, not a measurement" as a measured
-  number. It is also **outside every registered prediction** and carries no
-  inferential claim here — it is a caution and a candidate for a new
-  preregistration.
-- **The half-electronvolt figure is not a property of XPS.** It is a property of
-  the training distribution. The same architecture trained across a wider
-  position range has a boundary several times further out, in this same record.
-  What generalises is the *shape* — a model is valid just past the position
-  range it was trained on, and not beyond — not the number.
-- **R5b's failure is not evidence that augmentation is free.** The registered
-  fallback is an undecided verdict, and the reason is that the density controls
-  turned out to be *N* controls: cutting the training-set size removes
-  information about noise, intensity and width as well as position, so it is a
-  harsher handicap than spreading a fixed N over a wider range. Attributing
-  augmentation's cost needs a design this one does not have.
+Written from the design, not from a result. Result-specific cautions go here once
+a record is published and audited.
 
 - **The boundary is a property of the training distribution, not of XPS.**
   Whatever |Δ|\* the record reports is a property of *this* peak set, *this*
   ±0.3 eV per-peak jitter, *this* architecture, *this* training-set size and
   *this* noise model. One point was measured in each of those spaces.
 - **Augmentation "working" is not augmentation being free, and not augmentation
-  being right.** The design measures its price (arms C and D) and looks for its
-  own edge (the sweep runs past its training range). Calibrating the instrument
-  is a different kind of answer to a calibration error and this record does not
-  compare the two.
+  being right.** The sweep runs past the augmented arm's training range so that
+  its own edge is visible. Its *price* is a different question, and arms C and D
+  do **not** answer it: they were designed to, and the first run's R5b failed
+  0/20 in the opposite direction, which refutes the premise that cutting N to a
+  matched position density is an equal handicap. Cutting N removes information
+  about noise, intensity and width as well as position. Nothing in this design
+  bounds augmentation's cost in either direction. Calibrating the instrument is a
+  different kind of answer to a calibration error again, and nothing here
+  compares the two.
 - **Beyond |Δ| = 1.5 eV, degradation is not separable from window-edge effects.**
   Inside that range arm B *is* an edge-proximity control, because it saw those
   edge distances in training. Beyond it, no arm did.

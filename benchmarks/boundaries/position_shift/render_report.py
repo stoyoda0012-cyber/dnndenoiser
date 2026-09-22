@@ -5,13 +5,29 @@ typed by hand**, and nor is anything else in the generated report. Every line of
 `report.md` comes out of here, so a paragraph added to that file by hand is dropped the
 next time it is regenerated.
 
-Before rendering anything this script recomputes, from the per-run raw numbers, every
-quantity it is about to display -- the aggregate means, the across-seed standard
-deviations, the degradation series, the bias-corrected displacements, the boundary
-medians and censored counts, and each prediction's sign count and one-sided binomial
-p -- and refuses to render if any of them disagrees with the record. It reports every
-disagreement together rather than stopping at the first, because stopping at the first
-hides how much of a record is wrong.
+Before rendering anything this script rebuilds, from the record's `runs` array alone,
+everything downstream of it -- every aggregate field, the whole `boundaries` tree and the
+whole `predictions` tree including each verdict, sign count, test statistic and
+Holm-adjusted p -- and refuses to render if any of it disagrees with what the record
+stores. It reports every disagreement together rather than stopping at the first, because
+stopping at the first hides how much of a record is wrong.
+
+What each half establishes, stated because an earlier version of this docstring claimed
+more than the code did. The aggregate half is an INDEPENDENT recomputation: the arithmetic
+is written here, not imported. The boundaries and predictions half is a CONSISTENCY check
+-- it imports the measurement script's own `boundary_table` and `evaluate_predictions` and
+re-derives those trees from `runs`, so it catches a record that has been edited, truncated
+or left stale relative to its raw data, but it cannot catch an error inside those
+functions. The self-check figures, the environment and the consistency anchor are not
+derivable from `runs` at all; they are rendered as stored and are NOT verified here, and
+the report says so.
+
+An independent audit tamper-tested the previous guard field by field: it accepted 25 of
+30 edits, including flipping a prediction's PASS to FAIL, rewriting a boundary median and
+changing a Holm p from 1.3e-44 to 0.9. The verdict table -- the most consequential thing
+this file prints -- was copied from the record unverified.
+`tests/test_position_shift_boundary_record.py` now performs that tamper test on every
+field this guard claims to cover.
 
 Usage:
 
@@ -23,10 +39,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from math import comb
 from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import position_shift_boundary as measurement  # noqa: E402
 
 DEFAULT_RECORD = Path(__file__).resolve().parent / "results" / "position_shift_boundary.json"
 DEFAULT_REPORT = Path(__file__).resolve().parent / "report.md"
@@ -113,62 +133,63 @@ def verify(record: dict) -> dict:
                     problems.append(f"{tag}.n_seeds: recomputed {len(got['gain'])}, "
                                     f"record says {stored['n_seeds']}")
 
-    # Boundary medians and censored counts, recomputed from the per-seed curves.
-    positive_abs = sorted({abs(d) for d in deltas})
-    for level, per_arm in record["boundaries"].items():
-        for arm, per_direction in per_arm.items():
-            for direction, stored in per_direction.items():
-                sign = 1.0 if direction == "positive" else -1.0
-                n_seeds = len(series[(arm, level, dkey(0.0))]["gain"])
-                crossings, censored, defined = [], 0, 0
-                for seed_index in range(n_seeds):
-                    curve = [series[(arm, level, dkey(sign * d))]["gain"][seed_index]
-                             for d in positive_abs]
-                    if curve[0] < 0.0:
-                        continue
-                    defined += 1
-                    crossing = None
-                    for i in range(len(curve) - 1):
-                        if curve[i] >= 0.0 > curve[i + 1]:
-                            g0, g1 = curve[i], curve[i + 1]
-                            crossing = (positive_abs[i] + (positive_abs[i + 1] - positive_abs[i])
-                                        * g0 / (g0 - g1)) if g0 != g1 else positive_abs[i + 1]
-                            break
-                    if crossing is None:
-                        censored += 1
-                    else:
-                        crossings.append(crossing)
-                tag = f"boundaries[{level}][{arm}][{direction}]"
-                if bool(stored.get("defined")) != (defined > 0):
-                    problems.append(f"{tag}.defined disagrees")
-                    continue
-                if not stored.get("defined"):
-                    continue
-                if stored.get("n_censored") != censored:
-                    problems.append(f"{tag}.n_censored: recomputed {censored}, "
-                                    f"record says {stored.get('n_censored')}")
-                allowed = (defined + 1) // 2 - 1
-                expected = (float(np.median(sorted(crossings) + [float('inf')] * censored))
-                            if censored <= allowed else None)
-                _disagree(problems, f"{tag}.median_first_crossing_eV",
-                          expected, stored.get("median_first_crossing_eV"))
+    # Everything downstream of `runs`: the whole boundaries and predictions trees,
+    # re-derived with the measurement script's own functions and deep-diffed. This is
+    # what catches an edited verdict, a rewritten median or a doctored p-value -- none
+    # of which the previous field-by-field guard looked at.
+    indexed = measurement.index_runs(record["runs"])
+    rebuilt_boundaries = {
+        str(level): measurement.boundary_table(indexed["snr_gain_db_mean"], str(level))
+        for level in levels
+    }
+    rebuilt_predictions = measurement.evaluate_predictions(indexed, rebuilt_boundaries)
+    for level_table in rebuilt_boundaries.values():
+        for arm_table in level_table.values():
+            for direction_summary in arm_table.values():
+                direction_summary.pop("_per_seed_raw", None)
 
-    # Every prediction's sign count and one-sided binomial p.
-    level = str(design["inference"]["primary_level"])
-    for name, prediction in record["predictions"].items():
-        for holder, label in _sign_holders(prediction):
-            sign = holder["sign"]
-            recomputed_p = binomial_one_sided(sign["n_favouring"], sign["n_seeds"])
-            _disagree(problems, f"predictions[{name}]{label}.one_sided_binomial_p",
-                      recomputed_p, sign["one_sided_binomial_p"])
-            if sign["passed"] != (sign["n_favouring"] >= sign["k_required"]):
-                problems.append(f"predictions[{name}]{label}.passed disagrees with its own rule")
+    _deep_diff(problems, "boundaries", rebuilt_boundaries, record["boundaries"])
+    _deep_diff(problems, "predictions", rebuilt_predictions, record["predictions"])
+    _deep_diff(problems, "suspect_run_rule",
+               measurement.suspect_run_rule(rebuilt_predictions), record["suspect_run_rule"])
 
     if problems:
         raise RecordDisagreement(
             "the record disagrees with itself; nothing was rendered:\n  - "
             + "\n  - ".join(problems))
-    return {"series": series, "levels": levels, "deltas": deltas, "positive_abs": positive_abs}
+    return {"series": series, "levels": levels, "deltas": deltas,
+            "positive_abs": sorted({abs(d) for d in deltas})}
+
+
+def _deep_diff(problems: list, path: str, expected, stored) -> None:
+    """Compare two nested structures, collecting every disagreement rather than raising."""
+    if isinstance(expected, dict):
+        if not isinstance(stored, dict):
+            problems.append(f"{path}: recomputed a mapping, record has {type(stored).__name__}")
+            return
+        for key in set(expected) | set(stored):
+            if key not in expected:
+                problems.append(f"{path}.{key}: present in the record, not in the recomputation")
+            elif key not in stored:
+                problems.append(f"{path}.{key}: recomputed, absent from the record")
+            else:
+                _deep_diff(problems, f"{path}.{key}", expected[key], stored[key])
+    elif isinstance(expected, (list, tuple)):
+        if not isinstance(stored, list) or len(stored) != len(expected):
+            problems.append(f"{path}: sequence length differs")
+            return
+        for i, (a, b) in enumerate(zip(expected, stored)):
+            _deep_diff(problems, f"{path}[{i}]", a, b)
+    elif isinstance(expected, bool) or isinstance(stored, bool):
+        if bool(expected) != bool(stored):
+            problems.append(f"{path}: recomputed {expected!r}, record says {stored!r}")
+    elif isinstance(expected, (int, float)) and isinstance(stored, (int, float)):
+        if expected != expected and stored != stored:
+            return
+        if abs(float(expected) - float(stored)) > max(TOLERANCE, abs(float(expected)) * 1e-9):
+            problems.append(f"{path}: recomputed {expected!r}, record says {stored!r}")
+    elif expected != stored:
+        problems.append(f"{path}: recomputed {expected!r}, record says {stored!r}")
 
 
 def _sign_holders(prediction: dict):
@@ -290,7 +311,14 @@ def render(record: dict, computed: dict) -> str:
     add("| | Verdict | Statement |")
     add("|---|---|---|")
     for name, prediction in record["predictions"].items():
-        verdict = "**PASS**" if prediction["passed"] else "**FAIL**"
+        # R6 carries a three-valued verdict. "undecided" -- its augmented arm having no
+        # crossing inside the tested range -- is explicitly NOT a falsification in the
+        # registered design, and must never render as FAIL.
+        three_way = prediction.get("verdict")
+        if three_way in ("undecided", "not defined"):
+            verdict = f"**{three_way.upper()}**"
+        else:
+            verdict = "**PASS**" if prediction["passed"] else "**FAIL**"
         add(f"| {name} | {verdict} | {prediction['statement']} |")
     add("")
     add("### Evidence")
@@ -364,41 +392,56 @@ def render(record: dict, computed: dict) -> str:
 
     add("## Self-checks")
     add("")
-    add("Each of these has a stated failure condition and voids the record. "
-        "Diagnostics are listed separately below because they cannot fail.")
+    add("Thirteen gates, each with a stated failure condition, each voiding the record. "
+        "Diagnostics are listed separately below because they cannot fail. The figures in "
+        "this section are stored, not recomputed: they are not derivable from the raw runs, "
+        "and `render_report.py`'s guard does not cover them.")
     add("")
     checks = record["self_checks"]
+    per_seed = checks["4_8_10_12_per_seed"]
     add("| Check | Result |")
     add("|---|---|")
     add(f"| 1 parameter count | {checks['1_parameter_count']['observed']} "
-        f"(expected from the reference record) |")
-    add(f"| 2, 3 grid invariance and test-sweep rigidity | "
-        f"{checks['2_and_3_grid_and_test_sweep_rigidity']['n_deltas_checked']} shifts, "
-        f"grid bit-identical, baselines are literals |")
+        f"(expected read from the reference record) |")
+    add(f"| 2 grid invariance | bit-identical at all "
+        f"{checks['2_and_3_grid_and_test_sweep_rigidity']['n_deltas_checked']} shifts |")
+    add("| 3 test-sweep peak-set construction | every centre equals its literal plus Δ. "
+        "A run-time unit test of the peak-set constructor and of the registry staying "
+        "unmutated — it does not inspect generated spectra; check 8b does that |")
+    add(f"| 4 training-pool rigidity | "
+        f"{per_seed[0]['4_training_pool_rigidity'][arms[0]]['n_reconstructed_and_compared']} "
+        f"spectra per arm per seed rebuilt from the literal peaks, the recorded shift and "
+        f"the replayed draws, and required bit-identical to the pool |")
     add(f"| 5 truncation | absolute retention at Δ=0 "
         f"{checks['5_truncation']['absolute_retained_fraction_at_delta_zero'] * 100:.3f} %; "
-        f"every shift within {checks['5_truncation']['tolerance_total_relative']:.0%} of it |")
+        f"every shift within {checks['5_truncation']['tolerance_total_relative']:.0%} of it, "
+        f"each peak within {checks['5_truncation']['tolerance_per_peak_relative']:.0%} |")
     add("| 6 input-SNR invariance | worst span "
         + ", ".join(f"{k} → {v['max']:.3f} dB"
                     for k, v in checks["6_input_snr_invariance"]["measured_span_db_per_level"].items())
         + " |")
     add(f"| 7 translation equivariance | worst residual "
-        f"{checks['7_translation_equivariance']['worst_residual']:.5f} of peak height, "
-        f"tolerance {checks['7_translation_equivariance']['tolerance']} |")
+        f"{checks['7_translation_equivariance']['worst_residual']:.5f} of peak height against "
+        f"a tolerance of {checks['7_translation_equivariance']['tolerance']}, compared with "
+        f"`np.roll` at integer grid offsets |")
+    add(f"| 8 pairing integrity | "
+        f"{per_seed[0]['8_pairing_integrity']['n_samples_compared']} samples per seed, keyed on "
+        f"{per_seed[0]['8_pairing_integrity']['arms_keyed_on']} |")
+    add(f"| 8b test-family rigidity | "
+        f"{per_seed[0]['8b_test_family_rigidity_spectra_checked']} test spectra per seed "
+        f"rebuilt from the shift-independent family seed and required bit-identical |")
     add(f"| 9 argmax well-posedness and reference identity | worst fraction "
-        f"{checks['9_argmax_well_posedness_and_reference_identity']['worst_fraction_observed']:.4f}, "
-        f"compared against "
-        f"{checks['9_argmax_well_posedness_and_reference_identity']['compared_against']} |")
-    add(f"| 11 noise-model identity | field-by-field against the literals; "
+        f"{checks['9_argmax_well_posedness_and_reference_identity']['worst_fraction_observed']:.4f} "
+        f"against {checks['9_argmax_well_posedness_and_reference_identity']['compared_against']}; "
+        f"identity asserted against the array the metric received |")
+    aug = per_seed[0]["10_augmentation"]["B_augmented_2304"]
+    add(f"| 10 augmentation | narrow arms all-zero; augmented SD {aug['sd']:.4f} against a "
+        f"uniform {aug['expected_uniform_sd']:.4f}, "
+        f"{aug['deciles_occupied_of_10']}/10 deciles occupied |")
+    add(f"| 11 noise-model identity | field by field against the literals; "
         f"{checks['11_noise_model_identity']['note']} |")
-    per_seed = checks["4_8_10_12_per_seed"]
-    add(f"| 4 training-pool rigidity | {len(per_seed)} seeds × {len(arms)} arms, 5 % sampled |")
-    add(f"| 8, 8b pairing integrity and replay faithfulness | "
-        f"{per_seed[0]['8_pairing_integrity']['n_tuples_compared']} tuples per seed; "
-        f"{per_seed[0]['8b_replay_faithfulness']['n_spectra_rebuilt_from_replayed_draws']} "
-        f"spectra rebuilt from replayed draws and required to be bit-identical |")
-    add("| 10 augmentation | narrow arms all-zero; augmented within its range |")
-    add(f"| 12 leakage | 0 identical spectra; near-duplicate ratio "
+    add(f"| 12 leakage | 0 identical spectra across "
+        f"{len(per_seed[0]['12_leakage']['arms_hashed'])} arms; near-duplicate ratio "
         f"{per_seed[0]['12_leakage']['near_duplicate_analysis']['ratio_median_test_over_train']:.3f} |")
     add("")
     determinism = record["diagnostics"].get("repeat_run_determinism")

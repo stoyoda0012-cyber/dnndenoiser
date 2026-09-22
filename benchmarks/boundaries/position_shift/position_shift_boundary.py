@@ -158,6 +158,9 @@ CONSISTENCY_ANCHOR_SD_MULTIPLE = 3.0
 QUICK_OVERRIDES = {"n_seeds": 2, "n_test_per_level": 64, "epochs_cap": 2}
 
 
+_LAST_SNR_REFERENCE = None
+
+
 class SelfCheckFailure(RuntimeError):
     """Raised when a self-check fails. The record is not written."""
 
@@ -183,6 +186,11 @@ def snr_db(estimate: np.ndarray, reference: np.ndarray) -> np.ndarray:
     Definition unchanged from `benchmarks/reference/reference_benchmark.py`, so the
     delta = 0 column is readable next to that record.
     """
+    # Recorded so self-check 9 can assert, at run time, that the array it inspected is
+    # the array M1 actually divided by. The previous implementation asserted
+    # `clean is clean` at the call site and could not fail.
+    global _LAST_SNR_REFERENCE
+    _LAST_SNR_REFERENCE = reference
     estimate = np.asarray(estimate, dtype=np.float64)
     reference = np.asarray(reference, dtype=np.float64)
     signal_power = np.mean(reference**2, axis=-1)
@@ -375,7 +383,14 @@ def check_parameter_count(reference_record: dict) -> dict:
 
 
 def check_grid_and_rigidity() -> dict:
-    """Self-checks 2 and 3: grid invariance, and rigidity of the test sweep.
+    """Self-checks 2 and 3: grid invariance, and the test sweep's peak-set construction.
+
+    Scope, stated after an audit pointed out the first version overstated it: check 3
+    compares `shifted_peak_set(delta)`'s centres against the literals plus delta, which
+    is a run-time UNIT TEST of that constructor and of `PEAK_SETS` staying unmutated. It
+    does not inspect a generated spectrum, so it cannot tell whether the test families
+    were actually built with it -- self-check 8b does that, by reconstructing test
+    spectra and requiring bit-identity. Revision 4.
 
     Rigidity is checked against the LITERAL nominal centres. A check that re-read its
     baseline through `get_peak_set` would compare a mutated registry against a result
@@ -423,32 +438,66 @@ def check_grid_and_rigidity() -> dict:
     }
 
 
-def check_pool_rigidity(pools: dict, rng: np.random.Generator) -> dict:
-    """Self-check 4. Rigidity of every TRAINING pool, on a random 5% of each.
+def check_pool_rigidity(pools: dict, rng: np.random.Generator, n_samples: int = 12) -> dict:
+    """Self-check 4. Was every training pool built from a RIGID shift, at the pinned jitter?
 
-    The registered text's point: a pool built with `position_jitter = 1.8` would be
-    trained on NON-rigid shifts -- the manipulation this study puts out of scope -- and
-    every other check would pass. This is the one that fails.
+    This reconstructs each sampled training spectrum from first principles -- the literal
+    nominal peaks, the shift the pool recorded for that sample, and the per-peak draws
+    replayed from the generator's own RNG at the pinned jitter width -- and requires the
+    reconstruction to be **bit-identical to the spectrum actually in the pool**.
+
+    That is the whole point, and the previous implementation missed it. It re-derived a
+    peak set from the recorded shift and compared it against the same expression, never
+    touching `pool["clean"]`. An independent audit built the exact wrong pool that
+    Revision 1 created this check to catch -- arm B generated with
+    `position_jitter=1.8`, i.e. the per-peak (non-rigid) manipulation this study puts out
+    of scope -- and it passed this check along with 8, 8b and 10, while differing from
+    the correct pool by 0.93 in spectrum units. Recorded as Revision 4.
+
+    Because the reconstruction ties together the literal peaks, the recorded shift, the
+    jitter width and the realised data, it fails on all of: a non-rigid pool, a pool
+    whose recorded shift is not the shift applied, a per-call `position_jitter` override,
+    and a mutated `PEAK_SETS`. It subsumes the old check 8b, which compared a
+    reconstruction against a regeneration rather than against the pool.
     """
     report = {}
-    for arm, pool in pools.items():
-        n = len(pool["shifts"])
-        sample = rng.choice(n, size=max(1, int(np.ceil(0.05 * n))), replace=False)
+    for arm in ARM_ORDER:
+        pool = pools[arm]
+        n = len(pool["batch_seeds"])
+        sample = rng.choice(n, size=min(n_samples, n), replace=False)
         for index in sample:
-            delta = pool["shifts"][index]
-            generator = make_generator(delta, NOISE_LEVELS[0])
-            centres = np.array([p.mu for p in generator.peak_set.peaks], dtype=np.float64)
-            expected = np.array([c + delta for c in NOMINAL_CENTRES], dtype=np.float64)
-            if not np.all(centres - expected == 0.0):
+            index = int(index)
+            delta = float(pool["shifts"][index])
+            level = pool["levels"][index]
+            sample_seed = sample_seeds_of_batch(pool["batch_seeds"][index], 1)[0]
+            draws = replay_sample_draws(sample_seed)
+
+            kwargs = dict(GENERATOR_CONFIG_KWARGS)
+            kwargs.update(intensity_variation=0.0, position_jitter=0.0, width_variation=0.0)
+            rebuilt, _ = SyntheticGenerator(
+                peak_set=_realised_peak_set(delta, draws),
+                noise_config=noise_config(level),
+                config=GeneratorConfig(**kwargs),
+            ).generate_single(np.random.default_rng(0))
+            if GENERATOR_CONFIG_KWARGS["normalize"] and rebuilt.max() > 0:
+                rebuilt = rebuilt / rebuilt.max()
+            rebuilt = rebuilt.astype(np.float32)
+
+            actual = pool["clean"][index]
+            if not np.array_equal(actual, rebuilt):
                 raise SelfCheckFailure(
-                    f"{arm} sample {index}: centres {centres.tolist()} differ from "
-                    f"literal+delta {expected.tolist()}, so the training shift is either "
-                    "not rigid or not the shift that was recorded"
+                    f"{arm} sample {index}: the training spectrum in the pool is not what "
+                    f"a rigid shift of {delta:+.4f} eV applied to the literal peaks, with "
+                    f"per-peak jitter {POSITION_JITTER}, produces. Max abs difference "
+                    f"{float(np.max(np.abs(actual - rebuilt))):g}. The pool is either not "
+                    "rigidly shifted, not shifted by the amount it recorded, or not at "
+                    "the pinned jitter width."
                 )
-        if GENERATOR_CONFIG_KWARGS["position_jitter"] != POSITION_JITTER:
-            raise SelfCheckFailure("position_jitter is not 0.3 in the generator config")
-        report[arm] = {"n_samples": int(n), "n_checked": int(len(sample)),
-                       "position_jitter": POSITION_JITTER, "passed": True}
+        report[arm] = {
+            "n_samples": int(n), "n_reconstructed_and_compared": int(len(sample)),
+            "position_jitter": POSITION_JITTER, "bit_identical_to_pool": True,
+            "passed": True,
+        }
     live = get_peak_set(PEAK_SET_ID)
     live_centres = [p.mu for p in live.peaks]
     if live_centres != list(NOMINAL_CENTRES):
@@ -456,6 +505,11 @@ def check_pool_rigidity(pools: dict, rng: np.random.Generator) -> dict:
             f"PEAK_SETS['{PEAK_SET_ID}'] was mutated during the run: {live_centres}"
         )
     report["registry_unmutated"] = {"centres": live_centres, "passed": True}
+    report["what_it_verifies"] = (
+        "each sampled training spectrum is bit-identical to a reconstruction from the "
+        "literal peaks + the recorded rigid shift + the replayed per-peak draws at the "
+        "pinned jitter. It inspects pool['clean'], not a re-derivation of the shift."
+    )
     return report
 
 
@@ -605,58 +659,20 @@ def _realised_peak_set(delta: float, draws: list) -> PeakSet:
     )
 
 
-def check_replay_faithfulness(pools: dict, rng: np.random.Generator, n_samples: int = 8) -> dict:
-    """Is the replay in `replay_sample_draws` actually what the generator did?
+def check_pairing_integrity(pools: dict) -> dict:
+    """Self-check 8. Do the arms share their per-sample generator seeds?
 
-    Self-check 8 compares replayed per-peak draws between arms. That comparison is only
-    worth anything if the replay models the generator faithfully, so this rebuilds a
-    handful of spectra from the replayed draws alone -- with every random variation
-    switched off -- and requires them to be bit-identical to what the generator produced.
-    Without this step, check 8 would be comparing one model of the generator against
-    itself and would pass whatever the generator did.
-    """
-    deterministic = {"intensity_variation": 0.0, "position_jitter": 0.0, "width_variation": 0.0}
-    checked = 0
-    for arm in ARM_ORDER:
-        pool = pools[arm]
-        for index in rng.choice(len(pool["batch_seeds"]), size=min(n_samples, len(pool["batch_seeds"])),
-                                replace=False):
-            batch_seed = pool["batch_seeds"][index]
-            delta = float(pool["shifts"][index])
-            level = pool["levels"][index]
-            sample_seed = sample_seeds_of_batch(batch_seed, 1)[0]
-            draws = replay_sample_draws(sample_seed)
+    Keyed on `(level_index, sample_index)`, because arms C and D hold fewer samples per
+    level and equal flat indices point at different levels.
 
-            actual, _ = make_generator(delta, level).generate_single(
-                np.random.default_rng(sample_seed))
-            kwargs = dict(GENERATOR_CONFIG_KWARGS)
-            kwargs.update(deterministic)
-            rebuilt, _ = SyntheticGenerator(
-                peak_set=_realised_peak_set(delta, draws),
-                noise_config=noise_config(level),
-                config=GeneratorConfig(**kwargs),
-            ).generate_single(np.random.default_rng(0))
-            if not np.array_equal(actual, rebuilt):
-                raise SelfCheckFailure(
-                    f"{arm} sample {index}: the replayed draws do not reproduce the "
-                    f"generator's spectrum (max abs diff "
-                    f"{float(np.max(np.abs(actual - rebuilt))):g})"
-                )
-            checked += 1
-    return {"n_spectra_rebuilt_from_replayed_draws": checked, "bit_identical": True,
-            "passed": True}
-
-
-def check_pairing_integrity(pools: dict, seed_index: int, n_test: int) -> dict:
-    """Self-check 8. Do the arms, and the shifts, actually share their per-peak draws?
-
-    If one arm consumed a shift draw from the sample RNG where another did not, every
-    per-peak jitter, intensity and width would differ and the pairing that R4, R5 and R6
-    rest on would be silently broken -- while every other self-check still passed.
-
-    The arms are keyed on (level_index, sample_index), not on flat position: arms C and D
-    hold fewer samples per level, so equal flat indices point at different levels. The
-    first smoke test failed here, on a correct pair of pools, for exactly that reason.
+    Scope, stated honestly: this establishes that the arms were SEEDED identically. That
+    the resulting DATA differs only by the rigid shift is established by self-check 4,
+    which reconstructs each sampled spectrum from the shared seed and compares it to the
+    pool bit-for-bit. Two things this check used to do were removed in Revision 4 because
+    neither could fail: comparing `replay_sample_draws` of two seeds already asserted
+    equal, and a loop over all 25 shifts whose body never used the shift variable and so
+    re-evaluated the same expression 25 times. Between them they contributed 3600 of the
+    12327 tuples the old record advertised as compared.
     """
     reference_arm = ARM_ORDER[0]
     reference = dict(zip(pools[reference_arm]["keys"], pools[reference_arm]["batch_seeds"]))
@@ -671,45 +687,71 @@ def check_pairing_integrity(pools: dict, seed_index: int, n_test: int) -> dict:
                     f"{arm} sample {key} uses batch seed {batch_seed}, {reference_arm} "
                     f"uses {reference[key]}: streams desynchronised"
                 )
-            sample_seed = sample_seeds_of_batch(batch_seed, 1)[0]
-            reference_seed = sample_seeds_of_batch(reference[key], 1)[0]
-            if replay_sample_draws(sample_seed) != replay_sample_draws(reference_seed):
-                raise SelfCheckFailure(f"{arm} sample {key}: per-peak draws differ")
             compared += 1
+    return {"n_samples_compared": int(compared), "arms_keyed_on": "(level_index, sample_index)",
+            "what_it_verifies": "identical seeding across arms; self-check 4 verifies the data",
+            "passed": True}
 
-    # The same question across the shift sweep: one batch seed per (seed, level), reused
-    # at every shift, so the per-peak draws are identical and only the rigid shift differs.
-    baseline_draws = {}
-    for level_index in range(len(NOISE_LEVELS)):
-        seeds = sample_seeds_of_batch(test_batch_seed(seed_index, level_index), n_test)
-        baseline_draws[level_index] = [replay_sample_draws(s) for s in seeds[: min(16, n_test)]]
-    for delta in DELTAS:
-        for level_index in range(len(NOISE_LEVELS)):
-            seeds = sample_seeds_of_batch(test_batch_seed(seed_index, level_index), n_test)
-            again = [replay_sample_draws(s) for s in seeds[: len(baseline_draws[level_index])]]
-            if again != baseline_draws[level_index]:
-                raise SelfCheckFailure(
-                    f"test per-peak draws differ at delta={delta}, level index {level_index}"
-                )
-            compared += len(again)
-    return {"n_tuples_compared": int(compared * len(NOMINAL_CENTRES)),
-            "arms_keyed_on": "(level_index, sample_index)", "passed": True}
+
+def check_test_family_rigidity(clean: np.ndarray, seed_index: int, level_index: int,
+                               level: float, delta: float, n_check: int = 4) -> int:
+    """Self-check 8b. Is the TEST family at this shift the paired family, rigidly shifted?
+
+    Reconstructs a few test spectra from the literal peaks, this shift, and the per-peak
+    draws replayed from the family's own batch seed -- which is shift-independent by
+    construction of `test_batch_seed` -- and requires bit-identity with the array being
+    scored. It therefore fails if the family at this shift was drawn from a different
+    seed (breaking the pairing across the sweep), if the sweep is not rigid, or if the
+    jitter width moved.
+
+    This replaces a loop that compared the same expression against itself at all 25
+    shifts. Recorded as Revision 4.
+    """
+    batch_seed = test_batch_seed(seed_index, level_index)
+    sample_seeds = sample_seeds_of_batch(batch_seed, len(clean))
+    kwargs = dict(GENERATOR_CONFIG_KWARGS)
+    kwargs.update(intensity_variation=0.0, position_jitter=0.0, width_variation=0.0)
+    for index in range(min(n_check, len(clean))):
+        draws = replay_sample_draws(sample_seeds[index])
+        rebuilt, _ = SyntheticGenerator(
+            peak_set=_realised_peak_set(delta, draws),
+            noise_config=noise_config(level),
+            config=GeneratorConfig(**kwargs),
+        ).generate_single(np.random.default_rng(0))
+        if GENERATOR_CONFIG_KWARGS["normalize"] and rebuilt.max() > 0:
+            rebuilt = rebuilt / rebuilt.max()
+        if not np.array_equal(clean[index], rebuilt.astype(np.float32)):
+            raise SelfCheckFailure(
+                f"test family at delta={delta:+.2f}, level {level}, seed {seed_index}, "
+                f"sample {index}: not the paired family rigidly shifted (max abs diff "
+                f"{float(np.max(np.abs(clean[index] - rebuilt.astype(np.float32)))):g})"
+            )
+    return min(n_check, len(clean))
 
 
 def check_argmax_well_posed_and_reference_identity(
-    clean: np.ndarray, scored_reference: np.ndarray, energy: np.ndarray, delta: float
+    clean: np.ndarray, energy: np.ndarray, delta: float
 ) -> float:
-    """Self-check 9. Argmax well-posedness AND the identity of M1's reference.
+    """Self-check 9. Argmax well-posedness, and that M1 divided by THIS array.
+
+    Two things, both now able to fail.
 
     The registered wording was ambiguous: read as "within 0.5 eV of 284.8" it scores
     0.0000 at delta = +/-3 and would void every run; read as "284.8 + delta" it scores
-    1.0000. It is the second, and the identity assertion is what makes this check also
-    the guarantee that M1 divides by the DELTA-MATCHED truth rather than the unshifted one.
+    1.0000. It is the second.
+
+    The identity half was asserted as `scored_reference is not clean` with the caller
+    passing the same variable twice -- it could not fail, while the record advertised
+    `reference_identity_asserted: true`. It now compares against the array `snr_db`
+    actually last received, which is recorded inside that function, so scoring against
+    the unshifted reference would be detected. Recorded as Revision 4.
     """
-    if scored_reference is not clean:
+    if _LAST_SNR_REFERENCE is None:
+        raise SelfCheckFailure("self-check 9 ran before any SNR was computed")
+    if _LAST_SNR_REFERENCE is not clean:
         raise SelfCheckFailure(
-            "the array inspected for argmax well-posedness is not the same object "
-            "passed to M1 as the reference"
+            "M1 was given a different array as its reference than the one inspected "
+            "here: the metric is not scoring the delta-matched truth"
         )
     fraction = float(np.mean(np.abs(argmax_energy(clean, energy) - (DOMINANT_CENTRE + delta)) <= 0.5))
     if fraction < MIN_ARGMAX_WELL_POSED:
@@ -739,16 +781,36 @@ def check_augmentation(pools: dict) -> dict:
             continue
         sigma = 2 * halfwidth / np.sqrt(12.0)
         tolerance = 5.0 * sigma / np.sqrt(n)
+        realised_sd = float(np.std(shifts, ddof=1)) if n > 1 else 0.0
+        # Deciles of the range that contain at least one draw. A uniform pool fills all
+        # ten for any n this study uses; an unaugmented pool fills one.
+        occupied = int(len(np.unique(np.clip(
+            ((shifts + halfwidth) / (2 * halfwidth) * 10).astype(int), 0, 9))))
         if shifts.min() < -halfwidth or shifts.max() > halfwidth:
             raise SelfCheckFailure(f"{arm} drew a shift outside +/-{halfwidth}")
         if abs(float(np.mean(shifts))) > tolerance:
             raise SelfCheckFailure(
                 f"{arm} shift mean {np.mean(shifts):.4f} exceeds 5*sigma/sqrt(n) = {tolerance:.4f}"
             )
+        # Without these two, an arm B that was never augmented -- all shifts exactly
+        # zero -- satisfies min, max and mean, and passes a check named "augmentation
+        # actually happened". An audit demonstrated exactly that. Revision 4.
+        sd_tolerance = 5.0 * sigma / np.sqrt(2.0 * (n - 1)) if n > 1 else float("inf")
+        if abs(realised_sd - sigma) > sd_tolerance:
+            raise SelfCheckFailure(
+                f"{arm} shift SD {realised_sd:.4f} is not the uniform SD {sigma:.4f} "
+                f"within {sd_tolerance:.4f}: the shifts were not drawn as registered"
+            )
+        if occupied < 10:
+            raise SelfCheckFailure(
+                f"{arm} shifts occupy only {occupied} of 10 deciles of (+/-{halfwidth})"
+            )
         report[arm] = {
             "n": int(n), "halfwidth": halfwidth,
             "min": float(shifts.min()), "max": float(shifts.max()),
-            "mean": float(np.mean(shifts)), "tolerance_5sigma_over_sqrt_n": float(tolerance),
+            "mean": float(np.mean(shifts)), "sd": realised_sd, "expected_uniform_sd": float(sigma),
+            "sd_tolerance": float(sd_tolerance), "deciles_occupied_of_10": occupied,
+            "tolerance_5sigma_over_sqrt_n": float(tolerance),
             "passed": True,
         }
     return report
@@ -814,10 +876,15 @@ def check_leakage(pools: dict, delta_zero_test: dict) -> dict:
     if train_seeds & test_seeds:
         raise SelfCheckFailure("train and test RNG stream bases collide")
 
-    report = {"stream_bases_disjoint": True, "collisions_clean": 0, "collisions_noisy": 0}
+    report = {"stream_bases_disjoint": True, "collisions_clean": 0, "collisions_noisy": 0,
+              "arms_hashed": list(ARM_ORDER)}
     train_clean = pools[ARM_ORDER[0]]["clean"]
-    clean_hashes = _row_hashes(train_clean)
-    noisy_hashes = _row_hashes(pools[ARM_ORDER[0]]["noisy"])
+    # Every arm's spectra go into the hash sets. The previous implementation hashed arm A
+    # only while the registered text said "in any arm". Revision 4.
+    clean_hashes, noisy_hashes = set(), set()
+    for arm in ARM_ORDER:
+        clean_hashes |= _row_hashes(pools[arm]["clean"])
+        noisy_hashes |= _row_hashes(pools[arm]["noisy"])
     neighbour = []
     for payload in delta_zero_test.values():
         report["collisions_clean"] += len(_row_hashes(payload["clean"]) & clean_hashes)
@@ -1002,11 +1069,17 @@ def boundary_statistics(abs_deltas, gains) -> dict:
 def kaplan_meier_median(crossings, censored_count: int, bound: float):
     """KM median of |delta|*, treating non-crossing as right-censoring at `bound`.
 
-    Registered as the censoring-aware estimator. It is reported with the observation
-    that, because every censoring time here is administrative and falls at `bound` --
-    beyond every observed event -- the Kaplan-Meier estimate coincides exactly with the
-    order-statistic median. The registered estimator therefore adds no information in
-    this design. That is recorded rather than quietly dropped.
+    Registered as the censoring-aware estimator.
+
+    With administrative censoring beyond every event it reduces to the order-statistic
+    estimator UP TO THE EVEN-n MIDPOINT CONVENTION, and not further: this returns the
+    first event time with S(t) <= 0.5, which at n = 20 with no prior censoring is
+    t_(10), while `summarise_boundary` reports `np.median`, the midpoint of t_(10) and
+    t_(11). An earlier version of this docstring claimed the two coincide *exactly*; an
+    independent audit showed they differ in every defined cell of the record -- by about
+    5e-4 eV, against an inter-seed range of 4e-2 -- so the claim was false and the
+    numbers disagreed with it. Neither estimator is wrong; the coincidence was.
+    Recorded as Revision 4. Both are reported, and the convention is stated beside them.
     """
     events = sorted(float(x) for x in crossings)
     n = len(events) + censored_count
@@ -1055,6 +1128,11 @@ def summarise_boundary(per_seed: list, n_seeds: int) -> dict:
         "min_first_crossing_eV": float(min(crossings)) if crossings else None,
         "max_first_crossing_eV": float(max(crossings)) if crossings else None,
         "kaplan_meier_median_eV": kaplan_meier_median(crossings, censored, DELTA_MAX),
+        "kaplan_meier_convention": (
+            "first event time with S(t) <= 0.5, i.e. t_(ceil(n/2)); `median_first_"
+            "crossing_eV` is np.median, the midpoint of the two central order "
+            "statistics at even n. The two differ by one midpoint convention, not by "
+            "censoring, which is administrative and beyond every event here."),
         "median_sustained_crossing_eV": (
             float(np.median([s["sustained_crossing"] for s in defined
                              if s["sustained_crossing"] is not None]))
@@ -1324,8 +1402,24 @@ def evaluate_predictions(indexed: dict, boundaries: dict) -> dict:
                              "an UNDECIDED verdict, not a falsification of R6."),
             "not defined": "the gain at delta = 0 is already negative at this level",
         },
+        # Three-valued. The registered text is explicit that "beyond range" is an
+        # UNDECIDED verdict and that calling it a falsification "would be a category
+        # error" -- but `passed` is boolean and the renderer printed FAIL from it, so
+        # the outcome the design went to trouble to protect would have been rendered as
+        # a failed prediction. Both directions came out "moved", so it did not bite.
+        # Revision 4.
+        "verdict": (
+            "moved" if any(v.get("first_part_passed") and v.get("verdict") == "moved"
+                           for v in per_direction.values())
+            else "undecided" if any(v.get("verdict") == "beyond range"
+                                    for v in per_direction.values())
+            else "not defined" if all(not v.get("defined") for v in per_direction.values())
+            else "failed"),
         "passed": any(v.get("first_part_passed") and v.get("verdict") == "moved"
                       for v in per_direction.values()),
+        "passed_is_not_the_whole_verdict": (
+            "read `verdict`: 'undecided' is not a falsification of R6 and must not be "
+            "rendered as FAIL"),
     }
 
     # R7 -- bias-corrected argmax displacement opposite in sign to delta.
@@ -1410,8 +1504,22 @@ CLAIM_SCOPE = {
         "a general position-shift threshold for XPS denoising: |delta|* is a property of "
         "THIS peak set, THIS jitter width, THIS architecture, THIS training-set size and "
         "THIS noise model, and one point was measured in each of those spaces",
-        "anything about other training-set sizes, for any claim including R5: arms C and "
-        "D bound the density penalty at one architecture and one recipe",
+        "anything about other training-set sizes. Arms C and D were DESIGNED to bound "
+        "the density penalty and the result shows they do not: R5b failed 0/20 in the "
+        "opposite direction, so they are N controls, not density controls. They bound "
+        "the cost of cutting N at one architecture and one recipe, and NOTHING here "
+        "bounds the cost of augmentation in either direction",
+        "a boundary at any noise level other than the primary one: |delta|* is not "
+        "defined at the lowest noise level, where the gain at zero shift is already "
+        "negative, and no arm crosses zero inside the tested sweep at the highest. The "
+        "boundary reported here is a single-noise-level quantity",
+        "that |delta|* is determined by the training position range. Arms C and D share "
+        "arm A's position range exactly -- all three draw zero rigid shift at the same "
+        "per-peak jitter -- and have nearer boundaries, so training-set size moves the "
+        "boundary at fixed range",
+        "that augmentation is safe inside its training range in general. Arm B's "
+        "plateau is one augmentation width, one architecture and one noise level, in "
+        "two quantities",
         "anything about other augmentation widths: one width (+/-1.5 eV) was tested, so "
         "R6 is a statement about that width and not about augmentation in general",
         "a full-spectrum translate: linear_background is level + slope*(x - x[0]), a "
@@ -1723,6 +1831,7 @@ def run(args) -> dict:
     argmax_well_posed = {}
     smoother_by_delta = {}
     determinism = None
+    test_family_checked = 0
 
     for seed_index in range(n_seeds):
         seed_started = time.perf_counter()
@@ -1732,9 +1841,7 @@ def run(args) -> dict:
         checks = {
             "4_training_pool_rigidity": check_pool_rigidity(
                 pools, np.random.default_rng(777 + seed_index)),
-            "8_pairing_integrity": check_pairing_integrity(pools, seed_index, n_test),
-            "8b_replay_faithfulness": check_replay_faithfulness(
-                pools, np.random.default_rng(31337 + seed_index)),
+            "8_pairing_integrity": check_pairing_integrity(pools),
             "10_augmentation": check_augmentation(pools),
         }
 
@@ -1755,12 +1862,15 @@ def run(args) -> dict:
             input_snr_here = []
             for delta in DELTAS:
                 clean, noisy, energy = draw_test(seed_index, level_index, level, delta, n_test)
-                fraction = check_argmax_well_posed_and_reference_identity(
-                    clean, clean, energy, delta)
-                argmax_well_posed[dkey(delta)] = min(
-                    argmax_well_posed.get(dkey(delta), 1.0), fraction)
+                test_family_checked += check_test_family_rigidity(
+                    clean, seed_index, level_index, level, delta)
 
                 snr_in = snr_db(noisy, clean)
+                # AFTER the metric, not before: check 9 asserts on the array snr_db was
+                # actually given. Calling it first would assert on nothing.
+                fraction = check_argmax_well_posed_and_reference_identity(clean, energy, delta)
+                argmax_well_posed[dkey(delta)] = min(
+                    argmax_well_posed.get(dkey(delta), 1.0), fraction)
                 input_snr_here.append(float(np.mean(snr_in)))
                 clean_argmax = argmax_energy(clean, energy)
 
@@ -1810,6 +1920,7 @@ def run(args) -> dict:
             input_snr_spans[str(level)].append(float(span))
 
         checks["12_leakage"] = check_leakage(pools, delta_zero_test)
+        checks["8b_test_family_rigidity_spectra_checked"] = int(test_family_checked)
         checks["9_argmax_well_posedness_worst_fraction"] = float(min(argmax_well_posed.values()))
         per_seed_checks.append(checks)
         print(f"  seed {seed_index + 1}/{n_seeds} done in "
@@ -1832,7 +1943,10 @@ def run(args) -> dict:
     }
     self_checks["9_argmax_well_posedness_and_reference_identity"] = {
         "compared_against": "284.8 + delta, not 284.8",
-        "reference_identity_asserted": True,
+        "reference_identity_asserted_against": (
+            "the array snr_db actually last received, recorded inside that function; "
+            "the previous implementation compared a variable against itself"),
+        "n_test_spectra_reconstructed_by_check_8b": int(test_family_checked),
         "minimum_fraction_required": MIN_ARGMAX_WELL_POSED,
         "worst_fraction_observed": float(min(argmax_well_posed.values())),
         "per_delta_worst": argmax_well_posed,
