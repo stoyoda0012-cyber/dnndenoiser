@@ -58,6 +58,17 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   spellings are read now, and a checkpoint that records neither is an error
   naming the file rather than a shape mismatch inside `load_state_dict`.
 
+### Added
+
+- **[`docs/FROM_THE_PAPERS.md`](docs/FROM_THE_PAPERS.md)** — a route from the
+  published JVST A and SIA papers to a reader's own measurements: read the files
+  with `toyomacro`, put the frames in the frame-stack layout, train the
+  self-supervised method on them, and take the depth-profile metrics from the
+  papers' Zenodo deposit rather than from here. It is as explicit about what is
+  *not* available — the inversion solver, the trained weights and the ~60 GB of
+  raw frames were not deposited — as about what is, so the papers' figures
+  cannot be reproduced end to end from public artifacts and the page says so.
+
 ### Security
 
 - **`infer` no longer unpickles a checkpoint unless asked to.** `torch.load`'s

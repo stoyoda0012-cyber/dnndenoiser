@@ -198,6 +198,14 @@ See [docs/](docs/) for the quick-start guide, and
 [benchmarks/reference/](benchmarks/reference/) for the reference measurement and
 what its numbers do and do not support.
 
+## Applying this to your own measurements
+
+If you arrived from the JVST A or Surface and Interface Analysis paper,
+[docs/FROM_THE_PAPERS.md](docs/FROM_THE_PAPERS.md) is the route: which piece
+lives where, how to get your frames into the layout the self-supervised method
+trains from, why evaluating it on measured data is the hard part, and what the
+papers did **not** deposit — so you do not discover that by trying.
+
 ## Citation
 
 If you use this software, please cite it via [CITATION.cff](CITATION.cff).
