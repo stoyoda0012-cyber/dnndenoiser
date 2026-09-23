@@ -22,6 +22,7 @@ Nothing in this directory is distributed in the sdist or wheel (`AGENTS.md` §3)
 | `results/position_shift_boundary.json` | **The primary record.** The only place numbers live. |
 | `render_report.py` | Regenerates the Markdown report *from* a record. |
 | `report.md` | Generated output of `render_report.py --write`. Do not edit by hand. |
+| `record_citations.py` | What every number quoted in the preregistration's Record section means and how it is derived from the record. Checked by `tests/test_p2a_record_citations.py`. |
 
 `../../../docs/preregistration/P2A-position-shift-boundary.md` is the registered
 design. It was fixed, audited and revised **before** any of this was implemented,
@@ -121,7 +122,12 @@ manipulation.
 
 ## Self-checks that void the record
 
-Thirteen, each with a stated failure condition. The record is not written if one
+Thirteen, each with a stated failure condition. Every one except check 6 is also
+**shown to fail**: `tests/test_position_shift_boundary_gates.py` gives each a correct
+input it must accept and a named wrong input it must reject, with the rejection
+pinned to the reason the gate exists for. Check 6 is written inline in `run()` and is
+exercised only by full runs. Rejecting one constructed failure is not proof that a
+gate catches every failure; each test names the one it covers. The record is not written if one
 fails; a broken measurement is not reinterpreted as a finding.
 
 1. **Parameter count** — read from the reference record, not typed here.
@@ -191,20 +197,19 @@ of actual gates is not overstated.
 ## Status
 
 A record is published here, from the **third** full run. The first two were
-discarded: the first because a self-check turned out to be inert, the second
-because two independent audits found that the apparatus did not verify the
-study's independent variable at all — nothing inspected the training data of the
-augmented arm or of the density controls, and the checks that were supposed to
-were comparing expressions against themselves. Both are documented in the
-preregistration's revision log, with the wrong pools that the repaired checks are
-now verified to catch.
+discarded: the first because a self-check was inert, the second because two
+independent audits found the apparatus did not verify the study's independent
+variable — nothing inspected the training data of the augmented arm or the density
+controls, and the checks meant to were comparing expressions against themselves. The
+preregistration's revision log documents both, and the gate tests now reproduce the
+wrong inputs that got through.
 
-All three runs produced the same boundary values to `0.0e+00 eV`. The numbers were
-never what was wrong; the claim "all self-checks passed" was.
+All three runs gave the same boundary values. The numbers were never what was wrong;
+the claim "all self-checks passed" was.
 
-**The record has not yet been cleared for outward-facing quotation.** The
-preregistration's Record section is awaiting a further independent audit
-(`AGENTS.md` §8), and until it is cleared no number from here goes into the
+**Not yet cleared for outward-facing quotation.** Two things remain: an independent
+review of the claims the preregistration's Record section makes, and a person's
+decision about what may be published. Until both, no number from here goes into the
 package README, the documentation or a release note.
 
 ## Things about a record from this design that are easy to misread
