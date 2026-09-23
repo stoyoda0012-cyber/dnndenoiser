@@ -206,6 +206,19 @@ def _sign_holders(prediction: dict):
 # --------------------------------------------------------------------------------------
 
 
+def _registration_line(record: dict) -> str:
+    provenance = record.get("provenance")
+    if provenance:
+        reg = provenance["registration"]
+        clean = "clean" if provenance["working_tree_clean"] else "DIRTY"
+        return (f"(first registered `{(reg['first_commit'] or '?')[:7]}`, last revised before "
+                f"this run at `{(reg['last_commit_before_run'] or '?')[:7]}`; code run from "
+                f"`{provenance['code_commit'][:7]}`, working tree {clean})")
+    commits = record["design"]["preregistration"].get("commits", {})
+    return ("(an older record: its registration commits were a hand-typed list, "
+            f"{', '.join(commits.values())}, which omits later revisions)")
+
+
 def _fmt(value, digits=2, dash="--"):
     return dash if value is None else f"{value:.{digits}f}"
 
@@ -235,8 +248,7 @@ def render(record: dict, computed: dict) -> str:
         f"{record['total_wall_clock_seconds'] / 60:.1f} min wall clock")
     add("")
     add(f"Registered design: `{design['preregistration']['document']}` "
-        f"(registered `{design['preregistration']['commits']['registered']}`, "
-        f"Revision 1 `{design['preregistration']['commits']['revision_1']}`). "
+        + _registration_line(record) + ". "
         "Predictions were fixed before implementation.")
     add("")
     add("**What this report's guard verifies, and what it does not.** Before rendering, "

@@ -36,6 +36,7 @@ import argparse
 import hashlib
 import json
 import platform
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -61,12 +62,11 @@ from dnndenoiser.models.network import DenoisingNetwork
 
 RECORD_VERSION = "1"
 PREREGISTRATION = "docs/preregistration/P2A-position-shift-boundary.md"
-PREREGISTRATION_COMMITS = {
-    "registered": "06fa8c0",
-    "revision_1": "ef25766",   # after two independent audits, before implementation
-    "revision_2": "736e540",   # forced by implementation, before any result existed
-    "revision_3": "36d8694",   # self-check 7 was a tautology; first full run discarded
-}
+# The registration's version is READ FROM GIT at run time -- see `provenance_record`.
+# A hand-maintained constant of registration commits used to live here; it was not
+# updated at Revision 3 or at Revision 4, so two records named the wrong version of the
+# document they were made against. Revision 6.
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # --------------------------------------------------------------------------------------
 # Pinned design constants. Every one of these is fixed in the preregistration.
@@ -1566,6 +1566,66 @@ CLAIM_SCOPE = {
 }
 
 
+def _h5py_version():
+    try:
+        import h5py
+    except ImportError:
+        return None
+    return h5py.__version__
+
+
+def _git(*args: str) -> str:
+    return subprocess.run(["git", *args], cwd=REPO_ROOT, check=True,
+                          capture_output=True, text=True).stdout.strip()
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def provenance_record(quick: bool) -> dict:
+    """What was run, against what, read from git and the filesystem -- never typed.
+
+    Three separate facts, because they answer different questions: the CODE commit (what
+    ran), whether the working tree was clean (whether that commit is really what ran),
+    and the REGISTRATION document's own version (what the run was made against). The
+    last is not implied by the first: the document changes after a run, when its Record
+    section is written.
+
+    A full run from a tree with uncommitted or untracked changes is refused: the record
+    would name a commit that is not what ran. A quick smoke run proceeds and records the
+    tree as dirty. Nothing here holds an absolute path -- the interpreter's location in
+    particular is not recorded, only whether it is a virtual environment.
+    """
+    status = _git("status", "--porcelain", "--untracked-files=normal")
+    clean = status == ""
+    if not clean and not quick:
+        raise SelfCheckFailure(
+            "refusing a full run from a working tree with uncommitted or untracked "
+            "changes; the record would name a commit that is not what ran:\n" + status)
+    document = REPO_ROOT / PREREGISTRATION
+    lockfile = REPO_ROOT / "uv.lock"
+    touching = _git("log", "--format=%H", "--", PREREGISTRATION).split()
+    script = Path(__file__).resolve()
+    return {
+        "how_recorded": "read from git and the filesystem at run time; nothing here is typed",
+        "code_commit": _git("rev-parse", "HEAD"),
+        "working_tree_clean": clean,
+        "working_tree_changes_if_dirty": status.splitlines() if not clean else [],
+        "script": {"path": script.relative_to(REPO_ROOT).as_posix(), "sha256": _sha256(script)},
+        "registration": {
+            "document": PREREGISTRATION,
+            "sha256_at_run": _sha256(document),
+            "first_commit": touching[-1] if touching else None,
+            "last_commit_before_run": touching[0] if touching else None,
+            "commits_before_run": touching,
+        },
+        "lockfile": ({"path": "uv.lock", "sha256": _sha256(lockfile)}
+                     if lockfile.exists() else None),
+        "in_virtual_environment": sys.prefix != sys.base_prefix,
+    }
+
+
 def environment_record(device: str) -> dict:
     record = {
         "device_requested_resolved_to": device,
@@ -1575,6 +1635,7 @@ def environment_record(device: str) -> dict:
         "torch": torch.__version__,
         "numpy": np.__version__,
         "scipy": scipy.__version__,
+        "h5py": _h5py_version(),
     }
     if device == "cuda" and torch.cuda.is_available():
         record["cuda_device_name"] = torch.cuda.get_device_name(0)
@@ -1585,7 +1646,7 @@ def design_record(n_seeds: int, n_test_per_level: int, epochs_cap) -> dict:
     return {
         "preregistration": {
             "document": PREREGISTRATION,
-            "commits": PREREGISTRATION_COMMITS,
+            "version": "see provenance.registration, read from git at run time",
             "predictions_fixed_before_implementation": True,
         },
         "manipulated": {
@@ -1813,6 +1874,7 @@ def run(args) -> dict:
     device = resolve_device(args.device)
     n_seeds = args.seeds
     n_test = args.n_test_per_level
+    provenance = provenance_record(args.quick)
     reference_record, reference_path = read_reference_record()
 
     print(f"device={device}  seeds={n_seeds}  deltas={len(DELTAS)}  "
@@ -2002,6 +2064,7 @@ def run(args) -> dict:
         "record_version": RECORD_VERSION,
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "script": str(Path(__file__).name),
+        "provenance": provenance,
         "claim_scope": CLAIM_SCOPE,
         "environment": environment_record(device),
         "design": design_record(n_seeds, n_test, args.epochs_cap),

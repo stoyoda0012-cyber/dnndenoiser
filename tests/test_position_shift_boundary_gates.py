@@ -22,6 +22,7 @@ output of that script at its producing commit.
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import numpy as np
@@ -360,3 +361,57 @@ def test_12_rejects_a_training_spectrum_in_the_test_set(P, arm):
     test[1000.0]["noisy"][0] = pools[arm]["noisy"][0]
     with pytest.raises(P.SelfCheckFailure, match=r"byte-identical to a training"):
         P.check_leakage(pools, test)
+
+
+# --------------------------------------------------------------------------------------
+# provenance -- read from git at run time; a full run from a dirty tree is refused
+# --------------------------------------------------------------------------------------
+
+def _fake_git(status: str, touching=("c" * 40, "b" * 40, "a" * 40)):
+    def fake(*args):
+        if args[0] == "status":
+            return status
+        if args[0] == "rev-parse":
+            return "d" * 40
+        if args[0] == "log":
+            return "\n".join(touching)
+        raise AssertionError(f"unexpected git call {args}")
+    return fake
+
+
+def test_provenance_accepts_a_clean_tree_and_reads_the_registration_from_git(P, monkeypatch):
+    monkeypatch.setattr(P, "_git", _fake_git(""))
+    record = P.provenance_record(quick=False)
+    assert record["working_tree_clean"] is True
+    assert record["code_commit"] == "d" * 40
+    # git log lists newest first: the first registration is the LAST line.
+    assert record["registration"]["first_commit"] == "a" * 40
+    assert record["registration"]["last_commit_before_run"] == "c" * 40
+
+
+@pytest.mark.parametrize("label,status", [
+    ("a modified tracked file", " M benchmarks/boundaries/position_shift/position_shift_boundary.py"),
+    ("an untracked file", "?? uv.lock"),
+])
+def test_provenance_refuses_a_full_run_from_a_dirty_tree(P, monkeypatch, label, status):
+    monkeypatch.setattr(P, "_git", _fake_git(status))
+    with pytest.raises(P.SelfCheckFailure, match=r"refusing a full run"):
+        P.provenance_record(quick=False)
+
+
+def test_provenance_lets_a_quick_run_proceed_and_says_the_tree_was_dirty(P, monkeypatch):
+    monkeypatch.setattr(P, "_git", _fake_git("?? scratch.txt"))
+    record = P.provenance_record(quick=True)
+    assert record["working_tree_clean"] is False
+    assert record["working_tree_changes_if_dirty"] == ["?? scratch.txt"]
+
+
+def test_provenance_carries_no_developer_specific_path(P):
+    """Against the real repository. The interpreter's location in particular is an
+    absolute path and must not appear; only whether it is a virtual environment."""
+    spec = importlib.util.spec_from_file_location(
+        "_tracked_paths", REPO_ROOT / "tests" / "test_tracked_paths.py")
+    guard = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(guard)
+    text = json.dumps(P.provenance_record(quick=True))
+    assert not [t for t in guard.forbidden_tokens() if t in text], text
