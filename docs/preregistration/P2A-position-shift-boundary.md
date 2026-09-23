@@ -1279,6 +1279,33 @@ Nothing measured changes, and no prediction or decision rule changes.
     docstring of `tests/test_tracked_paths.py` said the path sat in three unpublished
     commits; it was two, as item 54 says.
 
+75. **Errors in earlier commit messages, which stay in the published history.** The
+    unpublished history is published as it stands, by the owner's decision taken before
+    publication, so a commit message cannot be corrected in place. Those that state as fact what the records do
+    not support are listed here, each with where the correct statement is.
+    - `4c5ebca` says the wall clocks differed "because the machine throttled";
+      throttling was not measured (item 72). It says R5b failed "because cutting N
+      removes information about noise, intensity and width" and that arms C and D "are
+      an N control, not a density control"; that is an untested reading, demoted in the
+      next commit and removed in item 72. It says the denoised peak at a 4 eV shift sits
+      "where the network was trained to expect one", a mechanism removed in item 66, and
+      that extending the sweep to ±4.0 eV "is what made that decidable", which item 66
+      corrects.
+    - `05d3be7` gives the boundary's spread as "+/-0.012 eV"; the across-seed SDs are
+      those under *Two significant figures, and why* in the Record section. It says the
+      two directions split "9/20 each way"; the split the record gives is under *The two
+      directions are not separated*, and the same sentence in the Record section was
+      changed in Revision 5 without being listed there. It says arm B's displacement is
+      "under a twentieth of a grid step inside its training range"; set against the
+      grid step under *Units*, `report.md`'s comparator (iii) table shows that this holds
+      in both directions only out to |Δ| = 1.0 eV, and that at ±1.5 eV, the edge of that
+      range, the displacement is about a third of a step.
+    - `4c5ebca` and `05d3be7` say "four volts" where four electronvolts is meant. Each
+      commits a record carrying the one-field edit Revision 6 describes, without saying
+      so; `b09b5d1` is the first commit that does.
+    - `cc88d14` says a local ref "still holds the pre-rewrite P2-A record"; that was true
+      when written, and the ref was deleted before publication.
+
 
 ## Record
 
@@ -1379,8 +1406,9 @@ between 0.25<!--n:reg--> and 0.75<!--n:reg--> eV would tighten it and is a separ
 measurement.
 
 **The two directions are not separated.** Paired within seed, negative minus positive
-is +0.0007<!--r:R3.dir.mean--> ± 0.0175<!--r:R3.dir.sd--> eV, with the seeds split on
-both sides, and the across-seed range over both directions is
+is +0.0007<!--r:R3.dir.mean--> ± 0.0175<!--r:R3.dir.sd--> eV; the negative-direction
+crossing is the farther in 9<!--r:R3.dir.n.neg.farther--> seeds and the nearer in
+11<!--r:R3.dir.n.neg.nearer-->. The across-seed range over both directions is
 0.447<!--r:R3.range.lo-->–0.489<!--r:R3.range.hi--> eV. Self-check 5 records a
 per-peak truncation asymmetry that any directional claim would have to clear first;
 none is made.

@@ -193,6 +193,12 @@ CITATIONS = {
                     lambda r: float(np.mean(crossings(r, A, "negative") - crossings(r, A, "positive")))),
     "R3.dir.sd": ("paired negative-minus-positive first crossing, arm A, level 1000, eV, SD",
                   lambda r: float(np.std(crossings(r, A, "negative") - crossings(r, A, "positive"), ddof=1))),
+    "R3.dir.n.neg.farther": ("seeds whose negative-direction first crossing is farther than the "
+                             "positive, arm A, level 1000, count",
+                             lambda r: int(np.sum(crossings(r, A, "negative") > crossings(r, A, "positive")))),
+    "R3.dir.n.neg.nearer": ("seeds whose negative-direction first crossing is nearer than the "
+                            "positive, arm A, level 1000, count",
+                            lambda r: int(np.sum(crossings(r, A, "negative") < crossings(r, A, "positive")))),
     "R3.range.lo": ("minimum first crossing over both directions, arm A, level 1000, eV",
                     lambda r: float(min(crossings(r, A, "positive").min(), crossings(r, A, "negative").min()))),
     "R3.range.hi": ("maximum first crossing over both directions, arm A, level 1000, eV",
