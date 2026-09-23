@@ -1253,9 +1253,12 @@ The cause was structural, and so is the repair.
 ### Revision 10 — 2026-09-24, after the sixth run, from a review of the history before publication
 
 A review of every commit that publication would expose, made with a fixed checklist,
-found no personal data and no boundary moved. It found statements that earlier entries
-of this log, the README and the report state as fact and that nothing later corrects.
-Nothing measured changes, and no prediction or decision rule changes.
+found no personal data and no boundary moved. It noted that this document's
+introduction names private material a reader cannot follow — a research ledger, a file
+in it and a tree of it — and that passage stands as registered. It found statements
+that earlier entries of this log, the README, the report and earlier commit messages
+state as fact and that nothing later corrects. Nothing measured changes, and no
+prediction or decision rule changes.
 
 73. **Errors in this log, corrected here rather than in place.** Revision 4 says "The
     first run's record is discarded"; it was the second run's, the first having been
@@ -1286,8 +1289,9 @@ Nothing measured changes, and no prediction or decision rule changes.
     - `4c5ebca` says the wall clocks differed "because the machine throttled";
       throttling was not measured (item 72). It says R5b failed "because cutting N
       removes information about noise, intensity and width" and that arms C and D "are
-      an N control, not a density control"; that is an untested reading, demoted in the
-      next commit and removed in item 72. It says the denoised peak at a 4 eV shift sits
+      an N control, not a density control"; that is an untested reading, which the next
+      commit's README (`3af3b07`) still stated as fact, `05d3be7` demoted, and item 72
+      removed. It says the denoised peak at a 4 eV shift sits
       "where the network was trained to expect one", a mechanism removed in item 66, and
       that extending the sweep to ±4.0 eV "is what made that decidable", which item 66
       corrects.
@@ -1302,9 +1306,22 @@ Nothing measured changes, and no prediction or decision rule changes.
       range, the displacement is about a third of a step.
     - `4c5ebca` and `05d3be7` say "four volts" where four electronvolts is meant. Each
       commits a record carrying the one-field edit Revision 6 describes, without saying
-      so; `b09b5d1` is the first commit that does.
-    - `cc88d14` says a local ref "still holds the pre-rewrite P2-A record"; that was true
-      when written, and the ref was deleted before publication.
+      so; the tree first says so in Revision 6 (`b09b5d1`).
+    - `4819525` says the path "sits in the blobs of the unpublished commits that carried
+      the record", and `cc88d14` that a local ref "still holds the pre-rewrite P2-A
+      record". Both were true when written: Revision 6's rewrite removed the path from
+      those commits before publication, and the owner deleted that ref.
+
+    Two messages whose errors an earlier item already corrects are not repeated:
+    `736e540`'s claim that the renderer recomputes every number it displays (item 40),
+    and `4c5ebca`'s count of twelve voiding self-checks (item 46).
+
+76. **Two statements removed from the tree without being listed.** `4c5ebca` said that a
+    charging shift or calibration offset "is not an edge case; it is a Tuesday" (Record
+    section) and that a shift "a practitioner would not think twice about" is enough to
+    make the denoiser worse (README). Both are statements about practice that nothing
+    here measures (item 72). `3af3b07` removed them, and neither its message nor any item
+    of this log said so until now.
 
 
 ## Record

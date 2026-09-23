@@ -87,7 +87,8 @@ arm B has one fifth of arm A's per-peak marginal density and one sixteenth in th
 three-peak joint configuration space. This repository's own training-set-size
 record shows that a change in N of that size is worth several dB on its own, and
 the design assumed that thinning position density by the same factor would cost
-about as much — the premise R5b later failed on (see below). Without C and D,
+about as much — an assumption R5b's result calls into question (see below). Without
+C and D,
 any deficit arm B shows at Δ = 0 would be unattributable — and
 the "augmentation costs something" prediction would pass for entirely the wrong
 reason. An independent audit of the preregistration caught this before any
