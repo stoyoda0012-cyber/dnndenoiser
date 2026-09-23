@@ -122,6 +122,12 @@ Discarded records and superseded claims in earlier commits become readable.
    python tests/test_tracked_paths.py origin/main..HEAD   # must report 0
    ```
 
+   The script also warns about local refs outside branches, remotes and tags —
+   another tool's checkpoint, for example — that reach such a path. A log-based scan
+   cannot see them, because they point at trees rather than commits. `git push`,
+   `--all` and `--tags` do not send them; **`git push --mirror` does, so it is never
+   used here.**
+
    If anything is found in an **unpublished** commit, rewrite the unpublished range so
    the commit no longer carries it, remap any hash references the rewrite breaks, and
    disclose the edit where the record is described. Once published, the only remedy is

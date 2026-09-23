@@ -132,6 +132,38 @@ def history_offenders(revision_range: str) -> list[str]:
     return found
 
 
+PUBLISHED_BY_ORDINARY_PUSH = ("refs/heads/", "refs/remotes/", "refs/tags/")
+
+
+def mirror_only_offenders() -> list[str]:
+    """Local refs outside branches, remotes and tags that reach a forbidden token.
+
+    `git log --all` follows commits only, so a ref pointing straight at a tree -- a
+    tool's checkpoint, for example -- is invisible to the history scan above. Such a
+    ref is not sent by `git push`, `--all` or `--tags`; `git push --mirror` sends it.
+    Reported as a warning, not an error: it is another tool's state, and whether to
+    delete it is not this script's decision.
+    """
+    tokens = [t.encode() for t in forbidden_tokens()]
+    refs = subprocess.run(["git", "for-each-ref", "--format=%(refname)"], cwd=REPO_ROOT,
+                          check=True, capture_output=True).stdout.decode().split()
+    found = []
+    for ref in refs:
+        if ref.startswith(PUBLISHED_BY_ORDINARY_PUSH):
+            continue
+        objects = subprocess.run(["git", "ls-tree", "-r", ref], cwd=REPO_ROOT,
+                                 capture_output=True).stdout.decode().splitlines()
+        for entry in objects:
+            parts = entry.split()
+            if len(parts) < 4 or parts[1] != "blob" or entry.split("\t")[-1] in EXEMPT:
+                continue
+            data = subprocess.run(["git", "cat-file", "-p", parts[2]], cwd=REPO_ROOT,
+                                  capture_output=True).stdout
+            if any(t in data for t in tokens):
+                found.append(f"{ref[:60]}... | {entry.split(chr(9))[-1]}")
+    return found
+
+
 if __name__ == "__main__":
     # python tests/test_tracked_paths.py origin/main..HEAD
     import sys
@@ -141,4 +173,9 @@ if __name__ == "__main__":
     for hit in hits:
         print(hit)
     print(f"{len(hits)} commit line(s) in {revision_range} add a developer-specific path")
+    mirror_only = mirror_only_offenders()
+    for hit in mirror_only:
+        print(f"WARNING (published only by `git push --mirror`): {hit}")
+    if mirror_only:
+        print(f"{len(mirror_only)} such object(s): never push with --mirror while these exist")
     raise SystemExit(1 if hits else 0)
