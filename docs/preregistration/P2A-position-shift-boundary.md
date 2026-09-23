@@ -1,6 +1,6 @@
 # Preregistration — P2-A: the position-shift boundary, and what augmentation does to it
 
-**Status: registered 2026-09-22; revised seven times (see Revision log); run four
+**Status: registered 2026-09-22; revised eight times (see Revision log); run four
 times — the first two discarded for defects in the apparatus, the third superseded by
 the fourth, which was made in a pinned environment and reproduced it exactly. The
 result is in the Record section, last. Seven of eight predictions held and R5b failed.
@@ -483,7 +483,8 @@ arms, and both derived series — is **descriptive, is reported without a
 asymmetric at x" may be made about a cell not named above.** A feature seen
 there is a candidate for a new preregistration, not a finding of this one.
 
-**One exception, stated rather than taken.** A descriptive cell may be cited where
+**One exception, stated rather than taken.** *(Added on 2026-09-23, after the
+results existed, and not logged at the time; recorded as Revision 8.)* A descriptive cell may be cited where
 it **bounds the interpretation of a registered claim** — that is, where reading a
 registered result without it would mislead. Such a citation asserts no direction,
 no magnitude, no mechanism and no generalisation; it names the arm and level it
@@ -1095,6 +1096,57 @@ and the record was not re-run.
 
 59. **A false statement about history, corrected.** The Record section said the first
     two runs survive only in git history. The first was never committed.
+
+
+### Revision 8 — 2026-09-23, after an independent review of the claims, before a fifth run
+
+An independent review of the Record section, and of the record behind it, found that
+the record's own self-check 4 did not run as registered, that a rule used in the Record
+section had been written after the results existed without being logged, and that the
+record's `claim_scope` — which the measurement script writes into every record — asserted
+two things the design cannot support. The owner decided to correct the script and
+regenerate the record once more rather than disclose and leave them.
+
+60. **Self-check 4 sampled 12 spectra per arm per seed, not 5 % of every pool.** The
+    registration says 5 %, and the first implementation did that. Revision 4 rewrote the
+    check to inspect the pools themselves and, in doing so, took the `n_samples` form of
+    the old check 8b it replaced — a flat 12, which is 0.5 % of arms A and B. No revision
+    recorded the change; the claims review found it by comparing the design text with
+    the code. The check is restored to the registered 5 %.
+
+    **Post-hoc evidence about the pools, gathered before deciding.** Every training pool
+    is deterministic in its seed, so the pools the fourth run trained on were
+    regenerated and first anchored to statistics that run recorded over every sample —
+    check 10's shift distributions and check 12's near-duplicate statistics, which
+    matched exactly for all 20 seeds — and then check 4 was run on **all** of them:
+    104,260 spectra rebuilt and compared bit-for-bit, all passing.
+    `benchmarks/boundaries/position_shift/verify_pools_full.py --commit 8474c94`
+    reproduces this. The anchor is direct for arms A and B and indirect for C and D,
+    which share arm A's seed sequence and code path. That is strong evidence the pools
+    were right; it is not the registered gate, which is why the run is repeated with the
+    gate as registered.
+
+61. **The descriptive-only rule's exception was added after the results existed.** It
+    entered this document's design section on 2026-09-23, in the commit that published
+    the third run's record, and no revision recorded it. The Record section's citation
+    of a level-10000 cell relies on it. Recorded here, and marked where it stands.
+
+62. **`claim_scope` asserted two things the design cannot.** It said training-set size
+    "moves the boundary at fixed range", a causal claim from arms C and D whose
+    boundaries no prediction names; and it referred to "Arm B's plateau", a shape word
+    for cells no prediction names. Both are reworded in the script, so the regenerated
+    record carries the correction as its own output rather than as an edit.
+
+63. **The review's remaining findings are about the Record section's own text** — a
+    mechanism stated for M3 against the record's own disclaimer, an unmeasured
+    comparison with what a practitioner would tolerate, a generalisation made under an
+    exception that forbids one, two false statements about the record, an internal
+    contradiction about the number of runs, shape words, and quantities quoted below
+    their standard error. They are corrected when this section is rewritten from the
+    regenerated record, and listed as each is corrected.
+
+64. **The regenerated record will not be assumed to equal the fourth.** It is compared
+    with it field by field, and every difference is reported.
 
 
 ## Record

@@ -438,7 +438,8 @@ def check_grid_and_rigidity() -> dict:
     }
 
 
-def check_pool_rigidity(pools: dict, rng: np.random.Generator, n_samples: int = 12) -> dict:
+def check_pool_rigidity(pools: dict, rng: np.random.Generator,
+                        fraction: float = 0.05, n_samples: int | None = None) -> dict:
     """Self-check 4. Was every training pool built from a RIGID shift, at the pinned jitter?
 
     This reconstructs each sampled training spectrum from first principles -- the literal
@@ -464,7 +465,12 @@ def check_pool_rigidity(pools: dict, rng: np.random.Generator, n_samples: int = 
     for arm in ARM_ORDER:
         pool = pools[arm]
         n = len(pool["batch_seeds"])
-        sample = rng.choice(n, size=min(n_samples, n), replace=False)
+        # The registered sample: 5 % of EVERY pool, rounded up. Revision 4 rewrote this
+        # check and silently replaced it with a flat 12 spectra per arm -- 0.5 % of arms
+        # A and B -- which Revision 8 records and reverses. `n_samples` exists only so a
+        # post-hoc or test run can ask for an explicit count; a measurement never passes it.
+        size = int(np.ceil(fraction * n)) if n_samples is None else n_samples
+        sample = rng.choice(n, size=min(max(1, size), n), replace=False)
         for index in sample:
             index = int(index)
             delta = float(pool["shifts"][index])
@@ -495,6 +501,7 @@ def check_pool_rigidity(pools: dict, rng: np.random.Generator, n_samples: int = 
                 )
         report[arm] = {
             "n_samples": int(n), "n_reconstructed_and_compared": int(len(sample)),
+            "registered_fraction": fraction,
             "position_jitter": POSITION_JITTER, "bit_identical_to_pool": True,
             "passed": True,
         }
@@ -1513,13 +1520,15 @@ CLAIM_SCOPE = {
         "defined at the lowest noise level, where the gain at zero shift is already "
         "negative, and no arm crosses zero inside the tested sweep at the highest. The "
         "boundary reported here is a single-noise-level quantity",
-        "that |delta|* is determined by the training position range. Arms C and D share "
-        "arm A's position range exactly -- all three draw zero rigid shift at the same "
-        "per-peak jitter -- and have nearer boundaries, so training-set size moves the "
-        "boundary at fixed range",
-        "that augmentation is safe inside its training range in general. Arm B's "
-        "plateau is one augmentation width, one architecture and one noise level, in "
-        "two quantities",
+        "that |delta|* is determined by the training position range alone. Arms C and D "
+        "share arm A's position range exactly -- all three draw zero rigid shift at the "
+        "same per-peak jitter -- and their boundaries differ from arm A's, so range alone "
+        "does not fix |delta|*. Whether training-set size moves it is a candidate for its "
+        "own registration, not a finding here: no prediction names arm C's or arm D's "
+        "boundary",
+        "that augmentation is safe inside its training range in general. Arm B was "
+        "measured at one augmentation width, one architecture and one noise level, in two "
+        "quantities, and no prediction names its gain between 0 and 1.5 eV",
         "anything about other augmentation widths: one width (+/-1.5 eV) was tested, so "
         "R6 is a statement about that width and not about augmentation in general",
         "a full-spectrum translate: linear_background is level + slope*(x - x[0]), a "
