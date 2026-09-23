@@ -8,6 +8,8 @@ Record generated 2026-09-22T15:08:25.923204+00:00 · record version 1 · 34.7 mi
 
 Registered design: `docs/preregistration/P2A-position-shift-boundary.md` (registered `06fa8c0`, Revision 1 `ef25766`). Predictions were fixed before implementation.
 
+**What this report's guard verifies, and what it does not.** Before rendering, `render_report.py` recomputes every aggregate from the raw runs independently, and re-derives the `boundaries` and `predictions` trees from the raw runs with the measurement script's own functions — so an edited or stale record is refused, but an error *inside* those functions would be reproduced, not caught. **Not verified here at all:** the self-check figures, the environment, the consistency anchor and the M3 smoother comparator, which are not derivable from the raw runs and are printed as stored. Each section below that prints one of those says so.
+
 ## What was manipulated
 
 A rigid energy shift delta (eV) applied to every peak at once, with the energy grid held fixed.
@@ -106,36 +108,36 @@ All evaluated at level 1000.0 only. Sign rules are one-sided because every predi
 ### Evidence
 
 **R1** — arm A gains at delta = 0 (positive control)  
-&nbsp;&nbsp;`.` mean +11.412 · 20/20 seeds · one-sided p = 0.0000 · d_z = +47.46  
+&nbsp;&nbsp;`.` mean +11.412 · 20/20 seeds · one-sided p = 9.54e-07 · d_z = +47.46  
 
 **R2** — arm A's gain is negative at delta = +4.0 and -4.0  
-&nbsp;&nbsp;`.per_direction[+4.00]` mean -17.097 · 20/20 seeds · one-sided p = 0.0000 · d_z = -188.20 · Holm p = 0.0000  
-&nbsp;&nbsp;`.per_direction[-4.00]` mean -17.275 · 20/20 seeds · one-sided p = 0.0000 · d_z = -187.98 · Holm p = 0.0000  
+&nbsp;&nbsp;`.per_direction[+4.00]` mean -17.097 · 20/20 seeds · one-sided p = 9.54e-07 · d_z = -188.20 · Holm p = 1.34e-44  
+&nbsp;&nbsp;`.per_direction[-4.00]` mean -17.275 · 20/20 seeds · one-sided p = 9.54e-07 · d_z = -187.98 · Holm p = 1.34e-44  
 
 **R3** — arm A's |delta|* is <= 1.5 eV in at least one direction  
 &nbsp;&nbsp;`positive` median |Δ|* = 0.47 eV vs threshold 1.5 eV, 0 censored  
 &nbsp;&nbsp;`negative` median |Δ|* = 0.47 eV vs threshold 1.5 eV, 0 censored  
 
 **R4** — at |delta| = 1.5, arm B gains more than arm A (paired within seed)  
-&nbsp;&nbsp;`.per_direction[+1.50]` mean +21.834 · 20/20 seeds · one-sided p = 0.0000 · d_z = +62.68 · Holm p = 0.0000  
-&nbsp;&nbsp;`.per_direction[-1.50]` mean +22.765 · 20/20 seeds · one-sided p = 0.0000 · d_z = +45.73 · Holm p = 0.0000  
+&nbsp;&nbsp;`.per_direction[+1.50]` mean +21.834 · 20/20 seeds · one-sided p = 9.54e-07 · d_z = +62.68 · Holm p = 1.59e-35  
+&nbsp;&nbsp;`.per_direction[-1.50]` mean +22.765 · 20/20 seeds · one-sided p = 9.54e-07 · d_z = +45.73 · Holm p = 3.16e-33  
 
 **R5a** — at delta = 0, arm A > arm C > arm D (training density alone costs)  
-&nbsp;&nbsp;`.orderings[A_over_C]` mean +4.338 · 20/20 seeds · one-sided p = 0.0000 · d_z = +12.38  
-&nbsp;&nbsp;`.orderings[C_over_D]` mean +1.437 · 20/20 seeds · one-sided p = 0.0000 · d_z = +5.93  
+&nbsp;&nbsp;`.orderings[A_over_C]` mean +4.338 · 20/20 seeds · one-sided p = 9.54e-07 · d_z = +12.38  
+&nbsp;&nbsp;`.orderings[C_over_D]` mean +1.437 · 20/20 seeds · one-sided p = 9.54e-07 · d_z = +5.93  
 
 **R5b** — at delta = 0, arm B <= arm D (augmentation costs beyond the density penalty)  
-&nbsp;&nbsp;`.` mean -4.466 · 0/20 seeds · one-sided p = 1.0000 · d_z = -13.68  
+&nbsp;&nbsp;`.` mean -4.466 · 0/20 seeds · one-sided p = 1 · d_z = -13.68  
 
 **R6** — arm B's |delta|* exceeds arm A's where arm A has one  
 &nbsp;&nbsp;`positive` verdict **moved** — arm A 0.47 eV, arm B 1.83 eV, 20/20 seeds larger  
 &nbsp;&nbsp;`negative` verdict **moved** — arm A 0.47 eV, arm B 1.83 eV, 20/20 seeds larger  
 
 **R7** — for arm A at |delta| >= 1.0, the BIAS-CORRECTED mean argmax displacement disp(delta) - disp(0) has the opposite sign to delta and grows with |delta|  
-&nbsp;&nbsp;`.sign_points[+1.00]` mean -0.668 · 20/20 seeds · one-sided p = 0.0000 · d_z = -19.61 · Holm p = 0.0000  
-&nbsp;&nbsp;`.sign_points[-1.00]` mean +0.633 · 20/20 seeds · one-sided p = 0.0000 · d_z = +14.63 · Holm p = 0.0000  
-&nbsp;&nbsp;`.sign_points[+4.00]` mean -4.013 · 20/20 seeds · one-sided p = 0.0000 · d_z = -70.22 · Holm p = 0.0000  
-&nbsp;&nbsp;`.sign_points[-4.00]` mean +3.895 · 20/20 seeds · one-sided p = 0.0000 · d_z = +57.64 · Holm p = 0.0000  
+&nbsp;&nbsp;`.sign_points[+1.00]` mean -0.668 · 20/20 seeds · one-sided p = 9.54e-07 · d_z = -19.61 · Holm p = 6.03e-26  
+&nbsp;&nbsp;`.sign_points[-1.00]` mean +0.633 · 20/20 seeds · one-sided p = 9.54e-07 · d_z = +14.63 · Holm p = 7.69e-24  
+&nbsp;&nbsp;`.sign_points[+4.00]` mean -4.013 · 20/20 seeds · one-sided p = 9.54e-07 · d_z = -70.22 · Holm p = 3.67e-36  
+&nbsp;&nbsp;`.sign_points[-4.00]` mean +3.895 · 20/20 seeds · one-sided p = 9.54e-07 · d_z = +57.64 · Holm p = 1.17e-34  
 &nbsp;&nbsp;`positive` |displacement| at |Δ| = 1, 1.5, 2, 3, 4: 0.668, 1.303, 1.936, 2.988, 4.013 eV; largest decrease 0.0000 eV against a tolerance of one grid step (0.069412 eV)  
 &nbsp;&nbsp;`negative` |displacement| at |Δ| = 1, 1.5, 2, 3, 4: 0.633, 1.165, 1.713, 2.872, 3.895 eV; largest decrease 0.0000 eV against a tolerance of one grid step (0.069412 eV)  
 
@@ -143,7 +145,73 @@ All evaluated at level 1000.0 only. Sign rules are one-sided because every predi
 
 a learning-free Gaussian smoother produces a SHIFT-INDEPENDENT positive offset of about +0.06/+0.21/+0.48 eV at sigma = 0.5/1.0/2.0 eV, present on clean spectra too -- three grid steps at sigma ~ 1 eV, which would help at delta < 0 and hurt at delta > 0
 
-Comparator (ii), the learning-free Gaussian smoother, measured on this run's own test spectra at seed 0:
+### Comparator (iii) — arm B on the identical test arrays
+
+Bias-corrected displacement `disp(Δ) − disp(0)` in eV, level 1000.0, mean over seeds. Registered in advance: a *structural* window effect would give arms A and B the same profile; a learned position prior would leave arm B near zero inside its training range. These values come from `aggregates` and are covered by the guard.
+
+| Δ (eV) | arm A | arm B |
+|---|---|---|
+| -4.00 | +3.8955 | +2.7148 |
+| -3.50 | +3.4060 | +1.9541 |
+| -3.00 | +2.8718 | +1.3584 |
+| -2.50 | +2.2769 | +0.7768 |
+| -2.00 | +1.7133 | +0.2759 |
+| -1.75 | +1.4411 | +0.1048 |
+| -1.50 | +1.1654 | +0.0207 |
+| -1.25 | +0.8938 | +0.0046 |
+| -1.00 | +0.6329 | +0.0012 |
+| -0.75 | +0.3872 | +0.0011 |
+| -0.50 | +0.1804 | +0.0007 |
+| -0.25 | +0.0487 | +0.0000 |
+| +0.00 | +0.0000 | +0.0000 |
+| +0.25 | -0.0527 | +0.0012 |
+| +0.50 | -0.1906 | -0.0010 |
+| +0.75 | -0.4061 | -0.0003 |
+| +1.00 | -0.6682 | -0.0010 |
+| +1.25 | -0.9708 | -0.0023 |
+| +1.50 | -1.3034 | -0.0227 |
+| +1.75 | -1.6338 | -0.1109 |
+| +2.00 | -1.9355 | -0.2787 |
+| +2.50 | -2.4727 | -0.8514 |
+| +3.00 | -2.9880 | -1.6578 |
+| +3.50 | -3.5213 | -2.2426 |
+| +4.00 | -4.0129 | -2.8412 |
+
+### Comparator (ii) — a learning-free Gaussian smoother, every level
+
+Mean displacement in eV on this run's own test spectra, **seed 0 only**. A diagnostic: **not verified by this report's guard**. Read the span across shifts, not the level: a flat column means the smoother's offset does not depend on the shift at that noise level.
+
+**Level 100.0** — span across all shifts: sigma_0.5eV 0.0062, sigma_1.0eV 0.0039, sigma_2.0eV 0.0084, noisy_input 0.0065 eV
+
+| Δ (eV) | sigma_0.5eV | sigma_1.0eV | sigma_2.0eV | noisy input |
+|---|---|---|---|---|
+| -4.00 | +0.057 | +0.211 | +0.470 | +0.000 |
+| -3.50 | +0.057 | +0.213 | +0.474 | +0.002 |
+| -3.00 | +0.061 | +0.213 | +0.477 | +0.001 |
+| -2.50 | +0.058 | +0.213 | +0.476 | +0.001 |
+| -2.00 | +0.058 | +0.210 | +0.476 | -0.002 |
+| -1.75 | +0.060 | +0.214 | +0.478 | +0.002 |
+| -1.50 | +0.056 | +0.211 | +0.473 | -0.002 |
+| -1.25 | +0.058 | +0.212 | +0.476 | +0.000 |
+| -1.00 | +0.057 | +0.213 | +0.478 | -0.001 |
+| -0.75 | +0.057 | +0.210 | +0.475 | -0.001 |
+| -0.50 | +0.060 | +0.213 | +0.478 | +0.001 |
+| -0.25 | +0.057 | +0.210 | +0.473 | +0.002 |
+| +0.00 | +0.058 | +0.212 | +0.476 | +0.002 |
+| +0.25 | +0.057 | +0.212 | +0.477 | +0.001 |
+| +0.50 | +0.058 | +0.210 | +0.475 | -0.000 |
+| +0.75 | +0.062 | +0.213 | +0.478 | +0.002 |
+| +1.00 | +0.057 | +0.210 | +0.474 | -0.004 |
+| +1.25 | +0.059 | +0.212 | +0.475 | +0.000 |
+| +1.50 | +0.058 | +0.212 | +0.477 | -0.000 |
+| +1.75 | +0.058 | +0.211 | +0.475 | -0.002 |
+| +2.00 | +0.062 | +0.214 | +0.479 | +0.002 |
+| +2.50 | +0.058 | +0.211 | +0.475 | -0.004 |
+| +3.00 | +0.058 | +0.212 | +0.475 | -0.000 |
+| +3.50 | +0.056 | +0.210 | +0.472 | -0.004 |
+| +4.00 | +0.057 | +0.213 | +0.476 | -0.002 |
+
+**Level 1000.0** — span across all shifts: sigma_0.5eV 0.0066, sigma_1.0eV 0.0058, sigma_2.0eV 0.0053, noisy_input 0.0169 eV
 
 | Δ (eV) | sigma_0.5eV | sigma_1.0eV | sigma_2.0eV | noisy input |
 |---|---|---|---|---|
@@ -173,7 +241,35 @@ Comparator (ii), the learning-free Gaussian smoother, measured on this run's own
 | +3.50 | +0.056 | +0.208 | +0.475 | +0.004 |
 | +4.00 | +0.057 | +0.211 | +0.478 | +0.005 |
 
-A flat column is the point: none of truncation, background asymmetry, the three-peak envelope's own asymmetry or plain oversmoothing produces a displacement that depends on the shift, so a shift-dependent displacement in a trained arm is not attributable to them.
+**Level 10000.0** — span across all shifts: sigma_0.5eV 0.2410, sigma_1.0eV 0.4677, sigma_2.0eV 0.8106, noisy_input 0.3727 eV
+
+| Δ (eV) | sigma_0.5eV | sigma_1.0eV | sigma_2.0eV | noisy input |
+|---|---|---|---|---|
+| -4.00 | +0.322 | +0.697 | +1.224 | -0.044 |
+| -3.50 | +0.199 | +0.541 | +1.039 | -0.073 |
+| -3.00 | +0.297 | +0.563 | +1.099 | -0.122 |
+| -2.50 | +0.338 | +0.693 | +1.022 | -0.082 |
+| -2.00 | +0.145 | +0.308 | +0.750 | -0.114 |
+| -1.75 | +0.236 | +0.572 | +1.000 | -0.089 |
+| -1.50 | +0.262 | +0.671 | +1.057 | -0.084 |
+| -1.25 | +0.171 | +0.360 | +0.772 | -0.116 |
+| -1.00 | +0.178 | +0.494 | +0.909 | -0.150 |
+| -0.75 | +0.135 | +0.480 | +0.773 | -0.076 |
+| -0.50 | +0.216 | +0.595 | +0.999 | -0.116 |
+| -0.25 | +0.221 | +0.360 | +0.777 | -0.192 |
+| +0.00 | +0.252 | +0.397 | +0.808 | -0.268 |
+| +0.25 | +0.157 | +0.361 | +0.672 | -0.262 |
+| +0.50 | +0.151 | +0.405 | +0.731 | -0.273 |
+| +0.75 | +0.135 | +0.296 | +0.546 | -0.293 |
+| +1.00 | +0.132 | +0.332 | +0.693 | -0.349 |
+| +1.25 | +0.151 | +0.318 | +0.649 | -0.294 |
+| +1.50 | +0.102 | +0.257 | +0.595 | -0.372 |
+| +1.75 | +0.097 | +0.229 | +0.691 | -0.417 |
+| +2.00 | +0.135 | +0.286 | +0.513 | -0.393 |
+| +2.50 | +0.214 | +0.304 | +0.574 | -0.316 |
+| +3.00 | +0.258 | +0.279 | +0.605 | -0.364 |
+| +3.50 | +0.199 | +0.279 | +0.413 | -0.332 |
+| +4.00 | +0.107 | +0.261 | +0.471 | -0.393 |
 
 ## Self-checks
 
@@ -199,7 +295,7 @@ Thirteen gates, each with a stated failure condition, each voiding the record. D
 
 ## Consistency anchor
 
-Arm A at Δ = 0 is the reference benchmark's own primary condition for this architecture, re-drawn with this script's seeding. the draws differ, the seed count differs and the per-sample generation path differs; a flag is a prompt to explain the difference in this record.
+Arm A at Δ = 0 is the reference benchmark's own primary condition for this architecture, re-drawn with this script's seeding. the draws differ, the seed count differs and the per-sample generation path differs; a flag is a prompt to explain the difference in this record. **Printed as stored; not verified by this report's guard.**
 
 | level | reference (dB) | here (dB) | difference | flag threshold | flagged |
 |---|---|---|---|---|---|

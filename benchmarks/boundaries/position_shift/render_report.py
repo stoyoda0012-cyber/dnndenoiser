@@ -210,6 +210,12 @@ def _fmt(value, digits=2, dash="--"):
     return dash if value is None else f"{value:.{digits}f}"
 
 
+def _p(value):
+    """p-values to three significant figures. Four fixed decimals printed every p below
+    5e-5 as 0.0000, so the exact binomial 9.5e-7 and a t-test's 1.3e-44 looked the same."""
+    return "--" if value is None else f"{value:.3g}"
+
+
 def render(record: dict, computed: dict) -> str:
     design = record["design"]
     level = str(design["inference"]["primary_level"])
@@ -232,6 +238,15 @@ def render(record: dict, computed: dict) -> str:
         f"(registered `{design['preregistration']['commits']['registered']}`, "
         f"Revision 1 `{design['preregistration']['commits']['revision_1']}`). "
         "Predictions were fixed before implementation.")
+    add("")
+    add("**What this report's guard verifies, and what it does not.** Before rendering, "
+        "`render_report.py` recomputes every aggregate from the raw runs independently, and "
+        "re-derives the `boundaries` and `predictions` trees from the raw runs with the "
+        "measurement script's own functions — so an edited or stale record is refused, but an "
+        "error *inside* those functions would be reproduced, not caught. **Not verified here "
+        "at all:** the self-check figures, the environment, the consistency anchor and the "
+        "M3 smoother comparator, which are not derivable from the raw runs and are printed "
+        "as stored. Each section below that prints one of those says so.")
     add("")
     if record.get("quick_mode"):
         add("> **QUICK MODE.** This record was produced by a smoke test. "
@@ -303,7 +318,7 @@ def render(record: dict, computed: dict) -> str:
     add(f"All evaluated at level {level} only. Sign rules are one-sided because every "
         f"prediction names its direction in advance; the uniform threshold is "
         f"{design['inference']['sign_rule']['k']}/{design['inference']['sign_rule']['n']} "
-        f"(one-sided p = {design['inference']['one_sided_p_of_sign_rule']:.4f}), and the "
+        f"(one-sided p = {_p(design['inference']['one_sided_p_of_sign_rule'])}), and the "
         f"positive control's is "
         f"{design['inference']['sign_rule_positive_control']['k']}/"
         f"{design['inference']['sign_rule_positive_control']['n']}.")
@@ -329,13 +344,13 @@ def render(record: dict, computed: dict) -> str:
             sign = holder["sign"]
             stats = holder.get("stats", {})
             pieces = [f"{sign['n_favouring']}/{sign['n_seeds']} seeds",
-                      f"one-sided p = {sign['one_sided_binomial_p']:.4f}"]
+                      f"one-sided p = {_p(sign['one_sided_binomial_p'])}"]
             if stats.get("mean") is not None:
                 pieces.insert(0, f"mean {stats['mean']:+.3f}")
             if stats.get("cohens_dz") is not None:
                 pieces.append(f"d_z = {stats['cohens_dz']:+.2f}")
             if holder.get("holm_adjusted_p") is not None:
-                pieces.append(f"Holm p = {holder['holm_adjusted_p']:.4f}")
+                pieces.append(f"Holm p = {_p(holder['holm_adjusted_p'])}")
             add(f"&nbsp;&nbsp;`{label or '.'}` " + " · ".join(pieces) + "  ")
         if name == "R3":
             for direction, value in prediction["per_direction"].items():
@@ -370,25 +385,46 @@ def render(record: dict, computed: dict) -> str:
     add("")
     add(record["design"]["metrics"]["M3_argmax_displacement_ev"]["why_bias_corrected"])
     add("")
-    comparators = record["diagnostics"]["m3_comparators_seed_0"].get(level, {})
+    add("### Comparator (iii) — arm B on the identical test arrays")
+    add("")
+    add(f"Bias-corrected displacement `disp(Δ) − disp(0)` in eV, level {level}, mean over "
+        "seeds. Registered in advance: a *structural* window effect would give arms A and B "
+        "the same profile; a learned position prior would leave arm B near zero inside its "
+        "training range. These values come from `aggregates` and are covered by the guard.")
+    add("")
+    add("| Δ (eV) | arm A | arm B |")
+    add("|---|---|---|")
+    for delta in computed["deltas"]:
+        a = record["aggregates"]["A_narrow_2304"][level][dkey(delta)]
+        b = record["aggregates"]["B_augmented_2304"][level][dkey(delta)]
+        add(f"| {delta:+.2f} | {a['argmax_displacement_bias_corrected_ev_mean']:+.4f} "
+            f"| {b['argmax_displacement_bias_corrected_ev_mean']:+.4f} |")
+    add("")
+
+    comparators = record["diagnostics"]["m3_comparators_seed_0"]
     if comparators:
-        add("Comparator (ii), the learning-free Gaussian smoother, measured on this run's "
-            "own test spectra at seed 0:")
+        add("### Comparator (ii) — a learning-free Gaussian smoother, every level")
         add("")
-        sigmas = [k for k in next(iter(comparators.values())) if k.startswith("sigma")]
-        add("| Δ (eV) | " + " | ".join(sigmas) + " | noisy input |")
-        add("|---" * (len(sigmas) + 2) + "|")
-        for delta in computed["deltas"]:
-            row = comparators.get(dkey(delta), {})
-            add(f"| {delta:+.2f} | "
-                + " | ".join(f"{row.get(s, float('nan')):+.3f}" for s in sigmas)
-                + f" | {row.get('noisy_input', float('nan')):+.3f} |")
+        add("Mean displacement in eV on this run's own test spectra, **seed 0 only**. A "
+            "diagnostic: **not verified by this report's guard**. Read the span across shifts, "
+            "not the level: a flat column means the smoother's offset does not depend on the "
+            "shift at that noise level.")
         add("")
-        add("A flat column is the point: none of truncation, background asymmetry, the "
-            "three-peak envelope's own asymmetry or plain oversmoothing produces a "
-            "displacement that depends on the shift, so a shift-dependent displacement in "
-            "a trained arm is not attributable to them.")
-        add("")
+        for level_key, table in comparators.items():
+            sigmas = [k for k in next(iter(table.values())) if k.startswith("sigma")]
+            spans = {k: max(r[k] for r in table.values()) - min(r[k] for r in table.values())
+                     for k in sigmas + ["noisy_input"]}
+            add(f"**Level {level_key}** — span across all shifts: "
+                + ", ".join(f"{k} {v:.4f}" for k, v in spans.items()) + " eV")
+            add("")
+            add("| Δ (eV) | " + " | ".join(sigmas) + " | noisy input |")
+            add("|---" * (len(sigmas) + 2) + "|")
+            for delta in computed["deltas"]:
+                row = table.get(dkey(delta), {})
+                add(f"| {delta:+.2f} | "
+                    + " | ".join(f"{row.get(sg, float('nan')):+.3f}" for sg in sigmas)
+                    + f" | {row.get('noisy_input', float('nan')):+.3f} |")
+            add("")
 
     add("## Self-checks")
     add("")
@@ -455,7 +491,8 @@ def render(record: dict, computed: dict) -> str:
     add("## Consistency anchor")
     add("")
     add("Arm A at Δ = 0 is the reference benchmark's own primary condition for this "
-        "architecture, re-drawn with this script's seeding. " + anchor["a_flag_is_not_a_failure"] + ".")
+        "architecture, re-drawn with this script's seeding. " + anchor["a_flag_is_not_a_failure"]
+        + ". **Printed as stored; not verified by this report's guard.**")
     add("")
     add("| level | reference (dB) | here (dB) | difference | flag threshold | flagged |")
     add("|---|---|---|---|---|---|")
