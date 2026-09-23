@@ -1792,7 +1792,11 @@ def consistency_anchor(reference_record: dict, path: Path, aggregates: dict) -> 
             "flagged": level_flagged,
         }
     return {
-        "read_from": str(path),
+        # Repository-relative. This was `str(path)`, which wrote the absolute path --
+        # including the developer's home directory -- into the record, in breach of
+        # AGENTS.md section 10, while the path guard of the day scanned only the package's
+        # .py files and passed. Revision 6.
+        "read_from": path.relative_to(Path(__file__).resolve().parents[3]).as_posix(),
         "key_path": "aggregates['suggested-hyperparameters']['" + ARCH + "'][level]",
         "no_reference_number_is_typed_into_this_script": True,
         "flag_rule": f"{CONSISTENCY_ANCHOR_SD_MULTIPLE} x the reference record's across-seed SD",
