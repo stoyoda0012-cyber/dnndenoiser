@@ -456,10 +456,15 @@ def render(record: dict, computed: dict) -> str:
     add("| 3 test-sweep peak-set construction | every centre equals its literal plus Δ. "
         "A run-time unit test of the peak-set constructor and of the registry staying "
         "unmutated — it does not inspect generated spectra; check 8b does that |")
-    add(f"| 4 training-pool rigidity | "
-        f"{per_seed[0]['4_training_pool_rigidity'][arms[0]]['n_reconstructed_and_compared']} "
-        f"spectra per arm per seed rebuilt from the literal peaks, the recorded shift and "
-        f"the replayed draws, and required bit-identical to the pool |")
+    pool_check = per_seed[0]["4_training_pool_rigidity"]
+    fraction = pool_check[arms[0]].get("registered_fraction")
+    counts = ", ".join(f"{ARM_LABELS.get(a, a).split(' (')[0]}: "
+                       f"{pool_check[a]['n_reconstructed_and_compared']}" for a in arms)
+    add("| 4 training-pool rigidity | "
+        + (f"{fraction:.0%} of every pool per seed — " if fraction is not None
+           else "a fixed sample per arm per seed (an older record, before Revision 8) — ")
+        + f"{counts} — rebuilt from the literal peaks, the recorded shift and the replayed "
+        f"draws, and required bit-identical to the pool |")
     add(f"| 5 truncation | absolute retention at Δ=0 "
         f"{checks['5_truncation']['absolute_retained_fraction_at_delta_zero'] * 100:.3f} %; "
         f"every shift within {checks['5_truncation']['tolerance_total_relative']:.0%} of it, "
