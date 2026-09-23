@@ -1289,9 +1289,9 @@ prediction or decision rule changes.
     - `4c5ebca` says the wall clocks differed "because the machine throttled";
       throttling was not measured (item 72). It says R5b failed "because cutting N
       removes information about noise, intensity and width" and that arms C and D "are
-      an N control, not a density control"; that is an untested reading, which the next
-      commit's README (`3af3b07`) still stated as fact, `05d3be7` demoted, and item 72
-      removed. It says the denoised peak at a 4 eV shift sits
+      an N control, not a density control"; that is an untested reading. The Record
+      section demoted it in `05d3be7` and item 72 removed it; the README stated it as
+      fact from `3af3b07` until `8ad78dc` and item 74 removed it. It says the denoised peak at a 4 eV shift sits
       "where the network was trained to expect one", a mechanism removed in item 66, and
       that extending the sweep to ±4.0 eV "is what made that decidable", which item 66
       corrects.
@@ -1310,11 +1310,14 @@ prediction or decision rule changes.
     - `4819525` says the path "sits in the blobs of the unpublished commits that carried
       the record", and `cc88d14` that a local ref "still holds the pre-rewrite P2-A
       record". Both were true when written: Revision 6's rewrite removed the path from
-      those commits before publication, and the owner deleted that ref.
+      those commits before publication, and the owner reports having deleted that ref.
 
     Two messages whose errors an earlier item already corrects are not repeated:
     `736e540`'s claim that the renderer recomputes every number it displays (item 40),
-    and `4c5ebca`'s count of twelve voiding self-checks (item 46).
+    and `4c5ebca`'s count of twelve voiding self-checks (item 46). `3e854c0`'s statement
+    that no test found a defect affecting the measurement is not an error: item 60's
+    deviation was found by a review, not a test, and the pools, deterministic in their
+    seeds, were then verified in full (item 60).
 
 76. **Two statements removed from the tree without being listed.** `4c5ebca` said that a
     charging shift or calibration offset "is not an edge case; it is a Tuesday" (Record
