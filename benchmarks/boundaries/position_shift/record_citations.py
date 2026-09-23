@@ -243,6 +243,8 @@ CITATIONS = {
     "chk6.margin.pct": ("check 6 at the primary level: worst span as a percentage of its tolerance",
                         lambda r: 100 * r["self_checks"]["6_input_snr_invariance"]
                         ["measured_span_db_per_level"]["1000.0"]["max"] / 0.2),
+    "env.os": ("the macOS major.minor version the environment reports, from environment.platform",
+               lambda r: float(r["environment"]["platform"].split("-")[1])),
     "grid.step": ("the realised float32 energy step, eV",
                   lambda r: grid_step(r)),
     "km.minus.median": ("|KM median - np.median|, arm A, positive, level 1000, eV",
@@ -255,4 +257,6 @@ NON_RECORD = {
     "history": "a value from a discarded run, an earlier revision or an earlier write-up, quoted as history",
     "design": "a design-time measurement reported in an earlier revision, not in this record",
     "derived-count": "a ratio or count stated for scale, derived by hand from values cited nearby",
+    "cross-record": ("a value from an earlier record committed in this repository's history -- "
+                     "reproducible from git, but not from this record alone"),
 }

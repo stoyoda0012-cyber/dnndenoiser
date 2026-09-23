@@ -151,7 +151,7 @@ MUTATIONS = [
     ("anchor removed", "+4.47<!--r:R5b.BD--> dB**; **0/20", "+4.47 dB**; **0/20"),
     ("a new unsourced number", "No mechanism is claimed.",
      "No mechanism is claimed, beyond 0.9 of the effect."),
-    ("non-record number without a reason", "0.0e+00<!--n:history-->", "0.0e+00<!--n:trust-me-->"),
+    ("non-record number without a reason", "30.9<!--n:history-->", "30.9<!--n:trust-me-->"),
     ("sign flipped", "−1.05<!--r:L10k.out.+4-->", "+1.05<!--r:L10k.out.+4-->"),
 ]
 

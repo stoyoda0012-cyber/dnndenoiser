@@ -196,16 +196,24 @@ of actual gates is not overstated.
 
 ## Status
 
-A record is published here, from the **third** full run. The first two were
-discarded: the first because a self-check was inert, the second because two
-independent audits found the apparatus did not verify the study's independent
-variable — nothing inspected the training data of the augmented arm or the density
-controls, and the checks meant to were comparing expressions against themselves. The
-preregistration's revision log documents both, and the gate tests now reproduce the
-wrong inputs that got through.
+A record is published here, from the **fourth** full run, made in the environment
+`uv.lock` pins and carrying its own provenance. The first two runs were discarded:
+the first because a self-check was inert, the second because two independent audits
+found the apparatus did not verify the study's independent variable — nothing
+inspected the training data of the augmented arm or the density controls, and the
+checks meant to were comparing expressions against themselves. The third was
+superseded by the fourth. The preregistration's revision log documents all of it,
+and the gate tests now reproduce the wrong inputs that got through.
 
-All three runs gave the same boundary values. The numbers were never what was wrong;
-the claim "all self-checks passed" was.
+The second, third and fourth runs' records are all in git history, and every per-run
+value in them is identical — across a change of operating-system version and a move
+from a shared conda base to the pinned environment. The numbers were never what was
+wrong; the claim "all self-checks passed" was.
+
+**Re-running it** uses the pinned environment: `uv sync --extra dev`, then
+`.venv/bin/python benchmarks/boundaries/position_shift/position_shift_boundary.py`
+from a clean working tree — a full run from a tree with uncommitted or untracked
+changes is refused, because the record would name a commit that is not what ran.
 
 **Not yet cleared for outward-facing quotation.** Two things remain: an independent
 review of the claims the preregistration's Record section makes, and a person's

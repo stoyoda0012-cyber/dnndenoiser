@@ -1,7 +1,8 @@
 # Preregistration — P2-A: the position-shift boundary, and what augmentation does to it
 
-**Status: registered 2026-09-22; revised six times (see Revision log); run three
-times, the first two runs discarded for defects in the apparatus; the third run's
+**Status: registered 2026-09-22; revised seven times (see Revision log); run four
+times — the first two discarded for defects in the apparatus, the third superseded by
+the fourth, which was made in a pinned environment and reproduced it exactly. The
 result is in the Record section, last. Seven of eight predictions held and R5b failed.
 Not yet cleared for outward-facing quotation.** This line previously read "Not
 implemented; not run" for a day after the record existed, because nothing checked it.
@@ -1071,14 +1072,48 @@ and the record was not re-run.
     either version.
 
 
+### Revision 7 — 2026-09-23, the record regenerated in a pinned environment
+
+56. **The environment was recorded but not enforced.** The runs were made in a conda
+    base shared with other projects, with only lower bounds in `pyproject.toml`; any
+    install for another project could have moved the next run onto different versions.
+    `uv.lock`, `.python-version` and `[tool.uv]` constraints now pin Python 3.12.11,
+    torch 2.9.1, numpy 2.3.3, scipy 1.16.3 and h5py 3.14.0 — the versions the record
+    reports — for the development and benchmark environment only; `pip install` users
+    still see lower bounds.
+
+57. **Provenance is now recorded by the run.** The hand-typed list of registration
+    commits is gone. The run reads the code commit, the working-tree state and this
+    document's version from git, and refuses a full run from a dirty tree. The gate
+    tests show it refusing a modified file and an untracked file.
+
+58. **The record was regenerated, once, as the acceptance test.** Run in the pinned
+    environment on macOS 27.0, it reproduced the third run in every per-run value,
+    aggregate, boundary, prediction and diagnostic. So the record now published is the
+    unedited output of its script, and the one-field edit of Revision 6 survives only
+    in the superseded records in history, where it is disclosed.
+
+59. **A false statement about history, corrected.** The Record section said the first
+    two runs survive only in git history. The first was never committed.
+
+
 ## Record
 
-Run 2026-09-23 from commit `3af3b07` with a clean working tree — the third full
-run, and the first whose apparatus verifies the study's independent variable. 20
-seeds, 4 arms, 25 shifts, 3 noise levels; 34.7<!--r:run.minutes--> min. The record is
+Run 2026-09-23 in the environment pinned by `uv.lock`, from a clean working tree at
+the commit the record names under `provenance` — the fourth full run. 20 seeds, 4 arms,
+25 shifts, 3 noise levels; 65.2<!--r:run.minutes--> min. The record is
 `benchmarks/boundaries/position_shift/results/position_shift_boundary.json`; the
-rendered report is `report.md` beside it. Two earlier runs were discarded, under
-Revisions 3 and 4, for defects in the apparatus and not in the numbers.
+rendered report is `report.md` beside it. The first two runs were discarded, under
+Revisions 3 and 4, for defects in the apparatus and not in the numbers; the third was
+superseded by this one under Revision 7 and agrees with it exactly (see the last
+section).
+
+**This record's provenance is recorded by the run, not typed.** `provenance` names the
+code commit, that the working tree was clean, the script's and the lockfile's sha256,
+that the interpreter was a virtual environment, and this document's own version — its
+first registration commit and its last commit before the run. The two provenance
+defects described under *Limits of provenance* below belonged to the third run's
+record and do not apply to this one.
 
 **All thirteen voiding self-checks passed**, including the four repaired in
 Revision 4 that inspect the training data of every arm: check 4 rebuilt 12 spectra
@@ -1309,45 +1344,45 @@ confirm the ordering. That cannot be remedied now — publishing this document t
 proves nothing about when it was written — and this record does not pretend otherwise.
 Future registrations are to be published before their first run.
 
-**The record's registration metadata is wrong, again.** `design.preregistration.commits`
-names the registered text and Revisions 1–3. The run was made from `3af3b07`, which
-**contains Revision 4**. This is the same defect the previous write-up disclosed for
-Revision 3, repeated: the list is a hand-maintained constant in the measurement script,
-and it was not updated. It is not corrected here, because correcting it means editing
-the record, and the record is the output of that script at `3af3b07` in every field
-but the one described next. The commit is the run's provenance, not that field. The structural fix — recording the
-code commit, the working-tree state and the registration document's own version
-mechanically at run time, as three separate facts — belongs to the shared apparatus
-that future records will use.
+**The third run's record named the wrong registration version, and one of its fields
+was edited before publication.** Both are now history rather than properties of this
+record, and both stay stated. That record's `design.preregistration.commits` was a
+hand-maintained constant in the script, not updated at Revision 3 or at Revision 4, so
+it named Revisions 1–3 for a run made against Revision 4 — the same defect disclosed a
+revision earlier, repeated. And its `consistency_anchor.read_from` held the absolute
+path of the reference record on the machine that ran it, home directory included, in
+breach of `AGENTS.md` §10. The repository's path guard scanned only the package's `.py`
+files and passed; the path was found by a review looking across all of the owner's
+projects, not by any check here. Before anything was pushed, that one field was
+replaced with the repository-relative path in both committed records that carried it
+— the third run's at `05d3be7` and the discarded second run's at `4c5ebca` — by
+rewriting the unpublished commits. Nothing else in either record changed. The rewrite
+changed the hash of every commit from `4c5ebca` onward; references to them here and in
+commit messages were remapped in the same operation, and the history as published does
+not show the version before the rewrite.
 
-**One field of this record was edited before publication, and the unpublished history
-was rewritten to do it.** As the script at `3af3b07` wrote it,
-`consistency_anchor.read_from` held the absolute path of the reference record on the
-machine that ran it, home directory included — in breach of `AGENTS.md` §10. The
-repository's path guard scanned only the package's `.py` files and passed; the path
-was found by a review looking across all of the owner's projects, not by any check
-here. Before anything was pushed, that one field was replaced with the
-repository-relative path in both records that carried it — this one, and the
-discarded first record at `4c5ebca` — by rewriting the unpublished commits. Nothing
-else in either record changed: the difference from the script's output is exactly
-that one line. The rewrite changed the hash of every commit from `4c5ebca` onward;
-references to them in this document and in commit messages were remapped in the same
-operation, and the history as published does not show the version before the
-rewrite. The script now writes a relative path, and `tests/test_tracked_paths.py`
-scans every tracked file and, run as a script, every commit a push would expose —
-both shown to fail on the path before it was removed.
+The structural fixes are in this run's apparatus: the script writes a relative path
+and records its provenance mechanically, and `tests/test_tracked_paths.py` scans every
+tracked file and, run as a script, every commit a push would expose — each shown to
+fail on the path before it was removed.
 
 ### Four things worth recording about the run itself
 
-**The measurement reproduced across three runs.** The two discarded runs and this one
-gave boundary values that agreed to 0.0e+00<!--n:history--> eV in every arm, although
-their wall clocks differed fivefold — 30.9<!--n:history-->,
-162.7<!--n:history--> and 34.7<!--r:run.minutes--> minutes — because the machine
-throttled. What a reader can check: the within-run determinism diagnostic, and that
-re-running the committed script reproduces this record. What a reader **cannot** check:
-that the earlier runs existed or what they contained. A voided run writes no record;
-the first two survive only in git history, and the cross-run comparison rests on
-comparisons made at the time.
+**The measurement reproduced across four runs, and three of them can be checked from
+this repository.** The second, third and fourth runs' records are all committed — at
+`4c5ebca`, `05d3be7` and here — and every one of the 6000 per-run values, every
+aggregate and every boundary is identical across them, at full precision. They differ
+only in wall clock and in what the environment reports. The fourth run is the
+acceptance test for the pinned environment: it moved from a shared conda base to the
+environment `uv.lock` pins, and from macOS 26.7<!--n:cross-record--> to
+27.0<!--r:env.os-->, and reproduced the third to the bit. The wall clocks were
+30.9<!--n:history-->, 162.7<!--n:cross-record-->, 34.7<!--n:cross-record--> and
+65.2<!--r:run.minutes--> minutes, because the machine throttled.
+
+What a reader **cannot** check is the first run. Its record was deleted before it was
+ever committed, when the run was voided under Revision 3, so its agreement with the
+others rests on a comparison made at the time. An earlier version of this paragraph
+said the first two runs "survive only in git history"; the first never entered it.
 
 **Self-check 6's margin is thinner than the pre-run estimate.** Revision 2 reported
 worst spans of 0.104<!--n:design--> and 0.107<!--n:design--> dB over six draws; this
