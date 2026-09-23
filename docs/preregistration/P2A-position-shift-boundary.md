@@ -1,6 +1,6 @@
 # Preregistration — P2-A: the position-shift boundary, and what augmentation does to it
 
-**Status: registered 2026-09-22; revised five times (see Revision log); run three
+**Status: registered 2026-09-22; revised six times (see Revision log); run three
 times, the first two runs discarded for defects in the apparatus; the third run's
 result is in the Record section, last. Seven of eight predictions held and R5b failed.
 Not yet cleared for outward-facing quotation.** This line previously read "Not
@@ -1046,6 +1046,31 @@ and the record was not re-run.
     after the record existed. Corrected.
 
 
+### Revision 6 — 2026-09-23, before publication: a developer-specific path
+
+53. **The record carried the developer's home directory.** `consistency_anchor.
+    read_from` was written with `str(path)`. `AGENTS.md` §10 forbids developer-specific
+    absolute paths in tracked files, and `tests/test_paths.py` enforced that over the
+    package's `.py` files only — a guard narrower than its rule, which is the defect
+    class this document has spent five revisions on. It was found by a review of all
+    the owner's projects, not by this repository.
+
+54. **Removed from history, not only from the tree.** A push publishes every commit in
+    the range, so a fix at the tip would have left the path in the two unpublished
+    commits that carried it. Those commits were rewritten before anything was pushed:
+    one field, in two records, replaced with the repository-relative path; nothing
+    else changed. Commit hashes from the first record onward changed and every
+    reference to them was remapped. The Record section states the edit where it
+    matters — against the claim that the record is the script's unchanged output.
+
+55. **The widened guard caught itself.** `tests/test_tracked_paths.py` scans every
+    tracked file, reads its tokens from `test_paths.py` so the two cannot drift, and
+    was shown to fail on the record before the fix. Committed, it then failed on its
+    own two test lines, which used the token as a literal while its docstring said it
+    carried none. Fixed before the rewrite was final, so no published commit carries
+    either version.
+
+
 ## Record
 
 Run 2026-09-23 from commit `3af3b07` with a clean working tree — the third full
@@ -1289,11 +1314,28 @@ names the registered text and Revisions 1–3. The run was made from `3af3b07`, 
 **contains Revision 4**. This is the same defect the previous write-up disclosed for
 Revision 3, repeated: the list is a hand-maintained constant in the measurement script,
 and it was not updated. It is not corrected here, because correcting it means editing
-the script, and the record is the output of that script at `3af3b07` unchanged. The
-commit is the run's provenance, not that field. The structural fix — recording the
+the record, and the record is the output of that script at `3af3b07` in every field
+but the one described next. The commit is the run's provenance, not that field. The structural fix — recording the
 code commit, the working-tree state and the registration document's own version
 mechanically at run time, as three separate facts — belongs to the shared apparatus
 that future records will use.
+
+**One field of this record was edited before publication, and the unpublished history
+was rewritten to do it.** As the script at `3af3b07` wrote it,
+`consistency_anchor.read_from` held the absolute path of the reference record on the
+machine that ran it, home directory included — in breach of `AGENTS.md` §10. The
+repository's path guard scanned only the package's `.py` files and passed; the path
+was found by a review looking across all of the owner's projects, not by any check
+here. Before anything was pushed, that one field was replaced with the
+repository-relative path in both records that carried it — this one, and the
+discarded first record at `4c5ebca` — by rewriting the unpublished commits. Nothing
+else in either record changed: the difference from the script's output is exactly
+that one line. The rewrite changed the hash of every commit from `4c5ebca` onward;
+references to them in this document and in commit messages were remapped in the same
+operation, and the history as published does not show the version before the
+rewrite. The script now writes a relative path, and `tests/test_tracked_paths.py`
+scans every tracked file and, run as a script, every commit a push would expose —
+both shown to fail on the path before it was removed.
 
 ### Four things worth recording about the run itself
 

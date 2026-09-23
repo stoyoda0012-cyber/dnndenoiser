@@ -115,7 +115,17 @@ Discarded records and superseded claims in earlier commits become readable.
 
 1. Finish the local fixes, tests and review.
 2. Review every commit the push would expose: what each adds, what it later
-   supersedes, what it would be read as saying on its own.
+   supersedes, what it would be read as saying on its own. Scan them for
+   developer-specific paths — the tree being clean is not enough:
+
+   ```bash
+   python tests/test_tracked_paths.py origin/main..HEAD   # must report 0
+   ```
+
+   If anything is found in an **unpublished** commit, rewrite the unpublished range so
+   the commit no longer carries it, remap any hash references the rewrite breaks, and
+   disclose the edit where the record is described. Once published, the only remedy is
+   a force-push, which is a different and much worse decision.
 3. Put the diff, the history and the open items in front of a person. The person
    decides whether, and in what form, it is published.
 4. After approval, push a working branch and open a draft pull request against
