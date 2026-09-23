@@ -5,7 +5,7 @@ all of them, because the repository is public and every tracked file is publishe
 `tests/test_paths.py` enforces that over the installed package only, which is what
 ships in the wheel. The rule is wider than that guard, and a record under
 `benchmarks/` carried the developer's home directory in `consistency_anchor.read_from`
-for three unpublished commits while `test_paths.py` reported `1 passed`. This file is
+in two unpublished commits while `test_paths.py` reported `1 passed`. This file is
 the guard at the rule's own width.
 
 The forbidden tokens are read from `tests/test_paths.py` rather than repeated here, so

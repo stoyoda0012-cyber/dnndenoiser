@@ -259,7 +259,8 @@ def render(record: dict, computed: dict) -> str:
     add("")
     add(f"Registered design: `{design['preregistration']['document']}` "
         + _registration_line(record) + ". "
-        "Predictions were fixed before implementation.")
+        "When the predictions were fixed, and by which commits, is stated in that "
+        "document's Record section.")
     add("")
     add("**What this report's guard verifies, and what it does not.** Before rendering, "
         "`render_report.py` recomputes every aggregate from the raw runs independently, and "

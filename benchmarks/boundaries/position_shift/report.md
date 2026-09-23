@@ -6,7 +6,7 @@
 
 Record generated 2026-09-23T15:00:32.890684+00:00 · record version 1 · 81.1 min wall clock
 
-Registered design: `docs/preregistration/P2A-position-shift-boundary.md` (first registered `06fa8c0`, last revised before this run at `f4cb1ca`; code run from `f4cb1ca`, working tree clean). Predictions were fixed before implementation.
+Registered design: `docs/preregistration/P2A-position-shift-boundary.md` (first registered `06fa8c0`, last revised before this run at `f4cb1ca`; code run from `f4cb1ca`, working tree clean). When the predictions were fixed, and by which commits, is stated in that document's Record section.
 
 **What this report's guard verifies, and what it does not.** Before rendering, `render_report.py` recomputes every aggregate from the raw runs independently, and re-derives the `boundaries` and `predictions` trees from the raw runs with the measurement script's own functions — so an edited or stale record is refused, but an error *inside* those functions would be reproduced, not caught. **Not verified here at all:** the self-check figures, the environment, the consistency anchor and the M3 smoother comparator, which are not derivable from the raw runs and are printed as stored. Each section below that prints one of those says so.
 

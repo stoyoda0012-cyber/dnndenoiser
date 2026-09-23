@@ -1,6 +1,6 @@
 # Preregistration — P2-A: the position-shift boundary, and what augmentation does to it
 
-**Status: registered 2026-09-22; revised nine times (see Revision log); run six
+**Status: registered 2026-09-22; revised ten times (see Revision log); run six
 times — the first two discarded for defects in the apparatus, the third to fifth
 superseded; the sixth, made under Revision 9, reproduced the fifth's measurement exactly.
 The result is in the Record section, last. Seven of eight predictions held and R5b failed.
@@ -525,7 +525,9 @@ Written before the numbers exist, so that it cannot be trimmed to fit them.
   property of *this* peak set, *this* jitter width, *this* architecture, *this*
   training-set size and *this* noise model. One point was measured in each.
 - **Nothing about other training-set sizes, for any claim including R5.** Arms
-  C and D bound the density penalty at one architecture and one recipe.
+  C and D bound the density penalty at one architecture and one recipe. (R5b
+  failed on this: arms C and D do not bound the cost of augmentation. See
+  Revision 4, item 41, and the Record; this pointer was added in Revision 10.)
 - **Nothing about other augmentation widths.** One width (±1.5 eV) is tested, so
   R6 is a statement about that width, not about augmentation in general.
 - **The background does not move with the peaks.** `linear_background` returns
@@ -1248,6 +1250,36 @@ The cause was structural, and so is the repair.
     setup, not tested elsewhere; `report.md`'s boundary table carries the same columns.
 
 
+### Revision 10 — 2026-09-24, after the sixth run, from a review of the history before publication
+
+A review of every commit that publication would expose, made with a fixed checklist,
+found no personal data and no boundary moved. It found statements that earlier entries
+of this log, the README and the report state as fact and that nothing later corrects.
+Nothing measured changes, and no prediction or decision rule changes.
+
+73. **Errors in this log, corrected here rather than in place.** Revision 4 says "The
+    first run's record is discarded"; it was the second run's, the first having been
+    discarded under Revision 3. Revision 4, item 47, gives R7's Holm-adjusted *p* as
+    "6.0e-26 to 3.7e-36"; the record's range is 3.7e-36 to 7.7e-24, the largest at
+    Δ = −1.0 eV. Every value is still far below 0.05, so the item's conclusion stands.
+    The design section's scope list still says that arms C and D bound the density
+    penalty — the statement Revision 4, item 41, corrected in the record's `claim_scope`
+    but not here. A pointer to R5b's result now sits beside it; nothing else in the
+    design section changed.
+
+74. **Other text brought into line with the Record section.** The README kept three
+    statements the Record section had withdrawn: that the wall clock varied because of
+    thermal throttling, which was not measured; that R5b "refutes the premise" of a
+    matched handicap, followed by an untested reading of why; and that the
+    training-set-size record shows what a change in *density* is worth, when it varies
+    N. Each now says what the record supports. `report.md` no longer states on its own
+    authority that the predictions were fixed before implementation; it points to the
+    Record section, which names the commits. The sentence on arm A's gain table no
+    longer argues in bold from the Δ = 0.5 eV cell, which no prediction names. The
+    docstring of `tests/test_tracked_paths.py` said the path sat in three unpublished
+    commits; it was two, as item 54 says.
+
+
 ## Record
 
 Run 2026-09-23 in the environment pinned by `uv.lock`, from a clean working tree at the
@@ -1359,8 +1391,7 @@ The gain against shift, arm A at level 1000, dB:
 |---|---|---|---|---|---|---|---|
 | gain (dB) | +11.4<!--r:A.gain.0--> | +6.8<!--r:A.gain.+0.25--> | −0.9<!--r:A.gain.+0.50--> | −7.0<!--r:A.gain.+0.75--> | −10.7<!--r:A.gain.+1.00--> | −15.0<!--r:A.gain.+2.00--> | −17.1<!--r:A.gain.+4.00--> |
 
-**The boundary sits below half an electronvolt: at 0.5<!--n:reg--> eV this model is
-already making the spectrum worse than it found it.** The cells other than Δ = 0 and
+**The boundary sits below half an electronvolt.** The cells other than Δ = 0 and
 Δ = 4.0<!--n:reg--> are named in no prediction; they are shown and not argued from.
 `report.md` gives every cell with its SD.
 
@@ -1514,12 +1545,13 @@ remedied now. Future registrations are to be published before their first run.
 
 **What was fixed before the results, and what changed after.** R1–R7 and their decision
 rules were fixed at Revision 1 (`ef25766`), before implementation began (`736e540`) and
-before the first run. Revisions 2–9 changed self-checks, provenance, rendering, scope
+before the first run. Revisions 2–10 changed self-checks, provenance, rendering, scope
 wording and the record's structure, and recorded one decision-rule resolution made at
 implementation time (item 47); none changed a prediction. Every run after the first was
 made after earlier runs' numbers existed; the design section of this document differs
-from Revision 4's only in its Status line and in the descriptive-only rule's exception,
-added after the results and marked as such. A reader who follows
+from Revision 4's only in its Status line, in the descriptive-only rule's exception,
+added after the results and marked as such, and in one pointer to R5b's result added in
+Revision 10. A reader who follows
 `provenance.registration` lands on a version of this document that already contains
 earlier runs' results; that is why.
 

@@ -85,8 +85,10 @@ apart.
 they were augmented, and how densely they sample the position axis. At equal N,
 arm B has one fifth of arm A's per-peak marginal density and one sixteenth in the
 three-peak joint configuration space. This repository's own training-set-size
-record shows that a density change of that size is worth several dB on its own,
-so without C and D any deficit arm B shows at Δ = 0 would be unattributable — and
+record shows that a change in N of that size is worth several dB on its own, and
+the design assumed that thinning position density by the same factor would cost
+about as much — the premise R5b later failed on (see below). Without C and D,
+any deficit arm B shows at Δ = 0 would be unattributable — and
 the "augmentation costs something" prediction would pass for entirely the wrong
 reason. An independent audit of the preregistration caught this before any
 compute was spent.
@@ -96,9 +98,9 @@ compute was spent.
 ```bash
 pip install -e ".[dev]"
 
-# The full measurement, as recorded. Between half an hour and two hours on the
-# Apple-silicon machine that made the record, depending on thermal throttling -- the
-# record's own total_wall_clock_seconds is authoritative. Device auto-selects
+# The full measurement, as recorded. Between about half an hour and nearly three
+# hours on the Apple-silicon machine that made the record; why it varied was not
+# investigated. The record's own total_wall_clock_seconds is authoritative. Device auto-selects
 # cuda > mps > cpu.
 python benchmarks/boundaries/position_shift/position_shift_boundary.py
 
@@ -248,13 +250,11 @@ so. The result itself, with its conditions, is in the preregistration's Record s
   being right.** The sweep runs past the augmented arm's training range so that
   its own edge is visible. Its *price* is a different question, and arms C and D
   do **not** answer it: they were designed to, and R5b failed 0/20 in the
-  opposite direction, which refutes the premise that cutting N to a matched
-  position density is an equal handicap. One untested reading is that cutting N
-  removes information about noise, intensity and width as well as position; the
-  record does not decide it. Nothing in this design bounds augmentation's cost in
-  either direction. Calibrating the instrument is a
-  different kind of answer to a calibration error again, and nothing here
-  compares the two.
+  opposite direction. Either cutting N does not stand in for thinning position
+  density, or augmentation has an effect at Δ = 0 the design did not anticipate;
+  no arm separates the two, so nothing in this design bounds augmentation's cost
+  in either direction. Calibrating the instrument is a different kind of answer
+  to a calibration error, and nothing here compares the two.
 - **Beyond |Δ| = 1.5 eV, degradation is not separable from window-edge effects.**
   Inside that range arm B *is* an edge-proximity control, because it saw those
   edge distances in training. Beyond it, no arm did.
