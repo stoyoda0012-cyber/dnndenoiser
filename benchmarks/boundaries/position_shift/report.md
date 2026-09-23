@@ -4,9 +4,9 @@
      results/position_shift_boundary.json. Do not edit by hand:
      anything written here is dropped the next time it is regenerated. -->
 
-Record generated 2026-09-23T12:45:38.039044+00:00 · record version 1 · 129.5 min wall clock
+Record generated 2026-09-23T15:00:32.890684+00:00 · record version 1 · 81.1 min wall clock
 
-Registered design: `docs/preregistration/P2A-position-shift-boundary.md` (first registered `06fa8c0`, last revised before this run at `3cca2c4`; code run from `3cca2c4`, working tree clean). Predictions were fixed before implementation.
+Registered design: `docs/preregistration/P2A-position-shift-boundary.md` (first registered `06fa8c0`, last revised before this run at `f4cb1ca`; code run from `f4cb1ca`, working tree clean). Predictions were fixed before implementation.
 
 **What this report's guard verifies, and what it does not.** Before rendering, `render_report.py` recomputes every aggregate from the raw runs independently, and re-derives the `boundaries` and `predictions` trees from the raw runs with the measurement script's own functions — so an edited or stale record is refused, but an error *inside* those functions would be reproduced, not caught. **Not verified here at all:** the self-check figures, the environment, the consistency anchor and the M3 smoother comparator, which are not derivable from the raw runs and are printed as stored. Each section below that prints one of those says so.
 
@@ -29,32 +29,34 @@ arms A and B differ in TWO things, not one: augmentation, and training density o
 
 |Δ|\* is the first crossing of zero mean SNR gain, per seed, median over 20 seeds. A censored seed never crossed inside the tested range and enters the order statistics at its bound; it is never dropped.
 
-| Arm | level | direction | median \|Δ\|\* (eV) | censored | sustained (eV) | re-crossing seeds |
-|---|---|---|---|---|---|---|
-| A narrow (N=2304) | 100.0 | positive | not defined | — | — | — |
-| A narrow (N=2304) | 100.0 | negative | not defined | — | — | — |
-| B augmented ±1.5 eV (N=2304) | 100.0 | positive | not defined | — | — | — |
-| B augmented ±1.5 eV (N=2304) | 100.0 | negative | not defined | — | — | — |
-| C narrow (N=461) | 100.0 | positive | not defined | — | — | — |
-| C narrow (N=461) | 100.0 | negative | not defined | — | — | — |
-| D narrow (N=144) | 100.0 | positive | not defined | — | — | — |
-| D narrow (N=144) | 100.0 | negative | not defined | — | — | — |
-| A narrow (N=2304) | 1000.0 | positive | 0.47 | 0/20 | 0.47 | 0 |
-| A narrow (N=2304) | 1000.0 | negative | 0.47 | 0/20 | 0.47 | 0 |
-| B augmented ±1.5 eV (N=2304) | 1000.0 | positive | 1.83 | 0/20 | 1.83 | 0 |
-| B augmented ±1.5 eV (N=2304) | 1000.0 | negative | 1.83 | 0/20 | 1.83 | 0 |
-| C narrow (N=461) | 1000.0 | positive | 0.37 | 0/20 | 0.37 | 0 |
-| C narrow (N=461) | 1000.0 | negative | 0.35 | 0/20 | 0.35 | 0 |
-| D narrow (N=144) | 1000.0 | positive | 0.31 | 0/20 | 0.31 | 0 |
-| D narrow (N=144) | 1000.0 | negative | 0.30 | 0/20 | 0.30 | 0 |
-| A narrow (N=2304) | 10000.0 | positive | > 4.0 | 20/20 | -- | 0 |
-| A narrow (N=2304) | 10000.0 | negative | > 4.0 | 20/20 | -- | 0 |
-| B augmented ±1.5 eV (N=2304) | 10000.0 | positive | > 4.0 | 20/20 | -- | 0 |
-| B augmented ±1.5 eV (N=2304) | 10000.0 | negative | > 4.0 | 20/20 | -- | 0 |
-| C narrow (N=461) | 10000.0 | positive | > 4.0 | 20/20 | -- | 0 |
-| C narrow (N=461) | 10000.0 | negative | > 4.0 | 20/20 | -- | 0 |
-| D narrow (N=144) | 10000.0 | positive | > 4.0 | 20/20 | -- | 0 |
-| D narrow (N=144) | 10000.0 | negative | > 4.0 | 20/20 | -- | 0 |
+eV is the unit that was measured. The two columns after it are conversions of the same number for this record's one setup, computed here from the record: bins on its 0.069427 eV grid, and multiples of the dominant peak's *nominal* FWHM, 1.2 eV. That FWHM is the generator's setting for the 284.8 eV peak — each synthetic spectrum varies it by up to ±10 %, and the three-peak envelope is wider — so the ratio is a conversion, not a measured width. **Whether any of these units carries over to a different grid or line width was not tested.**
+
+| Arm | level | direction | median \|Δ\|\* (eV) | ≈ bins | ≈ × nominal FWHM | censored | sustained (eV) | re-crossing seeds |
+|---|---|---|---|---|---|---|---|---|
+| A narrow (N=2304) | 100.0 | positive | not defined | — | — | — | — | — |
+| A narrow (N=2304) | 100.0 | negative | not defined | — | — | — | — | — |
+| B augmented ±1.5 eV (N=2304) | 100.0 | positive | not defined | — | — | — | — | — |
+| B augmented ±1.5 eV (N=2304) | 100.0 | negative | not defined | — | — | — | — | — |
+| C narrow (N=461) | 100.0 | positive | not defined | — | — | — | — | — |
+| C narrow (N=461) | 100.0 | negative | not defined | — | — | — | — | — |
+| D narrow (N=144) | 100.0 | positive | not defined | — | — | — | — | — |
+| D narrow (N=144) | 100.0 | negative | not defined | — | — | — | — | — |
+| A narrow (N=2304) | 1000.0 | positive | 0.47 | 6.8 | 0.39 | 0/20 | 0.47 | 0 |
+| A narrow (N=2304) | 1000.0 | negative | 0.47 | 6.8 | 0.40 | 0/20 | 0.47 | 0 |
+| B augmented ±1.5 eV (N=2304) | 1000.0 | positive | 1.8 | 26 | 1.5 | 0/20 | 1.8 | 0 |
+| B augmented ±1.5 eV (N=2304) | 1000.0 | negative | 1.8 | 26 | 1.5 | 0/20 | 1.8 | 0 |
+| C narrow (N=461) | 1000.0 | positive | 0.37 | 5.3 | 0.31 | 0/20 | 0.37 | 0 |
+| C narrow (N=461) | 1000.0 | negative | 0.35 | 5.0 | 0.29 | 0/20 | 0.35 | 0 |
+| D narrow (N=144) | 1000.0 | positive | 0.31 | 4.5 | 0.26 | 0/20 | 0.31 | 0 |
+| D narrow (N=144) | 1000.0 | negative | 0.30 | 4.3 | 0.25 | 0/20 | 0.30 | 0 |
+| A narrow (N=2304) | 10000.0 | positive | > 4.0 | — | — | 20/20 | -- | 0 |
+| A narrow (N=2304) | 10000.0 | negative | > 4.0 | — | — | 20/20 | -- | 0 |
+| B augmented ±1.5 eV (N=2304) | 10000.0 | positive | > 4.0 | — | — | 20/20 | -- | 0 |
+| B augmented ±1.5 eV (N=2304) | 10000.0 | negative | > 4.0 | — | — | 20/20 | -- | 0 |
+| C narrow (N=461) | 10000.0 | positive | > 4.0 | — | — | 20/20 | -- | 0 |
+| C narrow (N=461) | 10000.0 | negative | > 4.0 | — | — | 20/20 | -- | 0 |
+| D narrow (N=144) | 10000.0 | positive | > 4.0 | — | — | 20/20 | -- | 0 |
+| D narrow (N=144) | 10000.0 | negative | > 4.0 | — | — | 20/20 | -- | 0 |
 
 Where the mean gain at Δ = 0 is already negative there is no boundary to find, and the row says `not defined` rather than reporting Δ = 0.
 
@@ -307,10 +309,10 @@ Arm A at Δ = 0 is the reference benchmark's own primary condition for this arch
 
 - anything about MEASURED spectra: every spectrum here is synthetic, scored against a reference that exists only because it is synthetic, and the training noise and the test noise come from the same function, so the model's noise model is exactly correct by construction -- a condition measured data never satisfies
 - a general position-shift threshold for XPS denoising: |delta|* is a property of THIS peak set, THIS jitter width, THIS architecture, THIS training-set size and THIS noise model, and one point was measured in each of those spaces
-- anything about other training-set sizes. Arms C and D were DESIGNED to bound the density penalty and the result shows they do not: R5b failed 0/20 in the opposite direction, so they are N controls, not density controls. They bound the cost of cutting N at one architecture and one recipe, and NOTHING here bounds the cost of augmentation in either direction
-- a boundary at any noise level other than the primary one: |delta|* is not defined at the lowest noise level, where the gain at zero shift is already negative, and no arm crosses zero inside the tested sweep at the highest. The boundary reported here is a single-noise-level quantity
-- that |delta|* is determined by the training position range alone. Arms C and D share arm A's position range exactly -- all three draw zero rigid shift at the same per-peak jitter -- and their boundaries differ from arm A's, so range alone does not fix |delta|*. Whether training-set size moves it is a candidate for its own registration, not a finding here: no prediction names arm C's or arm D's boundary
-- that augmentation is safe inside its training range in general. Arm B was measured at one augmentation width, one architecture and one noise level, in two quantities, and no prediction names its gain between 0 and 1.5 eV
+- anything about other training-set sizes: each arm was trained at one pool size (2304, 461 or 144 spectra), with one architecture and one recipe
+- an inferential claim at any noise level other than the primary one: every prediction was registered at level 1000.0, and the other two levels are descriptive
+- a relation between |delta|* and any single property of the training distribution -- its position range, its size or its position density: one architecture and four training distributions were measured
+- that augmentation is safe inside its training range in general: one augmentation width, one architecture and one noise level were measured
 - anything about other augmentation widths: one width (+/-1.5 eV) was tested, so R6 is a statement about that width and not about augmentation in general
 - a full-spectrum translate: linear_background is level + slope*(x - x[0]), a ramp pinned to the WINDOW, so it does not travel with the peaks and a peak moving along it sits on a different background level. This manipulation is therefore 'peaks shift under a stationary background'. Self-check 7 measures the departure from a pure translate and bounds it; it does not remove it
 - separation of degradation from window-edge effects beyond |delta| = 1.5 eV. Inside that range arm B IS an edge-proximity control, because it saw those edge distances in training; beyond it no arm did
@@ -323,6 +325,8 @@ Arm A at Δ = 0 is the reference benchmark's own primary condition for this arch
 **Device dependence.** R1, R2, R4, R5 and R7 are sign and ordering claims. R3 and R6 compare a recorded MAGNITUDE -- |delta|*, in eV -- against a fixed threshold, and are therefore subject to the same device caveat as any magnitude here. Floating-point reduction order differs between CPU, MPS and CUDA backends; no cross-device comparison is recorded unless one is run, and none is asserted.
 
 **Descriptive-only rule.** Only the cells named in R1-R7, at the primary noise level, carry an inferential claim. Every other cell -- all other shifts, all other levels, all other arms, and both derived series -- is descriptive, is reported without a p-value, and no statement of the form 'gain dips at delta = x' or 'the curve is asymmetric at x' may be made about a cell not named in a prediction. A feature seen there is a candidate for a NEW preregistration, not a finding of this one.
+
+**Where the result-dependent cautions are.** This list was fixed before the results and states only what the design cannot support. Cautions that depend on the result -- among them how to read R5b's failure, what the other two noise levels showed, and what arms C and D do and do not show -- are in the Record section of docs/preregistration/P2A-position-shift-boundary.md, and in report.md, each with its source.
 
 **The evaluated quantity is agreement with a known synthetic reference. A high SNR gain does not establish that structure in the output is real; the network can oversmooth, suppress weak features, and produce plausible structure that was not in the input.**
 

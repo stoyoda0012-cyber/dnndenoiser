@@ -1,9 +1,9 @@
 # Preregistration — P2-A: the position-shift boundary, and what augmentation does to it
 
-**Status: registered 2026-09-22; revised nine times (see Revision log); run five
-times — the first two discarded for defects in the apparatus, the third and fourth
-superseded; the fifth, made under Revision 8 with every self-check as registered,
-reproduced the fourth exactly. The result is in the Record section, last. Seven of eight predictions held and R5b failed.
+**Status: registered 2026-09-22; revised nine times (see Revision log); run six
+times — the first two discarded for defects in the apparatus, the third to fifth
+superseded; the sixth, made under Revision 9, reproduced the fifth's measurement exactly.
+The result is in the Record section, last. Seven of eight predictions held and R5b failed.
 Not yet cleared for outward-facing quotation.** This line previously read "Not
 implemented; not run" for a day after the record existed, because nothing checked it.
 Nothing below may be revised to match a result. When a prediction or a rule turns out to be
@@ -1216,18 +1216,47 @@ The cause was structural, and so is the repair.
     when the Record section is updated from the sixth record, which is compared with the
     fifth field by field.
 
+71. **The sixth run, compared with the fifth field by field.** Every per-run value,
+    aggregate, boundary, prediction, diagnostic, the consistency anchor and the
+    environment are identical. The differences are exactly the intended ones and nothing
+    else: the four `claim_scope` items, the added `result_dependent_interpretation`
+    entry, the removed `predictions_fixed_before_implementation` field, the provenance of
+    the new commit (code commit, script sha256, and the registration's last commit,
+    commit count and sha256), `train_seconds` in every arm and seed, the wall clock and
+    the generation time.
+
+72. **The Record section is rewritten from the sixth record, and the second review's
+    findings are addressed as follows.** Two false statements are corrected: M1 does
+    penalise a misplaced peak, so the text no longer says it does not encode position,
+    and says instead that a positive M1 gain does not establish where the output's peak
+    sits; and the third run, not only the fourth, sampled 12 spectra in check 4. The
+    claim that every gate is shown to fail now excepts check 6. The headline table
+    names its level, its pairing and what ± means, and quotes gains at 0.1 dB. What the
+    other two levels showed, formerly in `claim_scope`, is stated here. R5b's section no
+    longer says which step of the design failed: the untested reading is removed, and
+    the two readings the design cannot separate are stated side by side. Arms C and D's
+    boundaries are quoted as values in eV, not as percentages of arm A's. R7 is compared
+    with its across-seed SD, and the standard-error multiples and the percentage are
+    gone. Comparator (ii) names its σ column and adds the widest one at level 10000. The
+    sentence on charging and adventitious-carbon referencing, a statement about practice
+    with no source here, is replaced by the shape of shift the axis stands for. The
+    provenance paragraph says what was fixed at Revision 1 and before implementation,
+    with the commits, and that the Revision 6 rewrite cannot be detected from the
+    history. The wall-clock variation is no longer attributed to throttling, which was
+    not measured. A Units paragraph states eV as the unit measured and quoted, with bins
+    and the ratio to the dominant peak's nominal FWHM given as conversions for this one
+    setup, not tested elsewhere; `report.md`'s boundary table carries the same columns.
+
 
 ## Record
 
 Run 2026-09-23 in the environment pinned by `uv.lock`, from a clean working tree at the
-commit the record names under `provenance` — the fifth full run, made under Revision 8
-with self-check 4 as registered. 20 seeds, 4 arms, 25 shifts, 3 noise levels, on the MPS
-backend; 129.5<!--r:run.minutes--> min. The record is
+commit the record names under `provenance` — the sixth full run, made under Revision 9.
+20 seeds, 4 arms, 25 shifts, 3 noise levels, on the MPS backend;
+81.1<!--r:run.minutes--> min. The record is
 `benchmarks/boundaries/position_shift/results/position_shift_boundary.json`; the
-rendered report is `report.md` beside it. The first two runs were discarded, under
-Revisions 3 and 4, for defects in the apparatus; the third and fourth were superseded,
-under Revisions 7 and 8. Every per-run value agrees across the four that were committed
-(see the last section).
+rendered report is `report.md` beside it. Every per-run value agrees across the five runs
+that were committed (see the last section).
 
 **All thirteen voiding self-checks passed.** Four of them inspect the training data of
 every arm, each by a different route: check 4 rebuilds 5 %<!--n:reg--> of every pool —
@@ -1244,16 +1273,17 @@ level.
 **This record's provenance is recorded by the run, not typed.** `provenance` names the
 code commit, that the working tree was clean, the script's and the lockfile's sha256,
 that the interpreter was a virtual environment, and this document's own version — its
-first registration commit and its last commit before the run.
+first registration commit and its last commit before the run. Since Revision 9 the
+record holds only what was measured, what is derived from it, and what was fixed before
+the results; the result-dependent cautions are here and in `report.md`.
 
-**Each gate is shown to fail, not only to pass.**
-`tests/test_position_shift_boundary_gates.py` gives every self-check a pair — the
-correct input accepted, a named wrong input rejected, with the rejection pinned to the
-reason the gate is for. Two limits: rejecting one constructed failure does not prove a
-gate catches every failure; and **check 6 is written inline in `run()` and has no
-independent test** — it is exercised only by full runs. None of these tests found a
-defect affecting the measurement, so they did not on their own call for a re-run; the
-fourth and fifth runs were made for the reasons given in Revisions 7 and 8.
+**Every gate but one is shown to fail, not only to pass.**
+`tests/test_position_shift_boundary_gates.py` gives every self-check except check 6 a
+pair — the correct input accepted, a named wrong input rejected, with the rejection
+pinned to the reason the gate is for. **Check 6 is written inline in `run()` and has no
+independent test**; it is exercised only by full runs. Rejecting one constructed failure
+does not prove a gate catches every failure. None of these tests found a defect
+affecting the measurement.
 
 **How the numbers here are checked.** Every number below carries an anchor in the
 source (`<!--r:…-->` or `<!--n:…-->`, invisible when rendered). An `r:` anchor names
@@ -1262,23 +1292,40 @@ the metric, condition, unit and derivation in
 `tests/test_p2a_record_citations.py` recomputes it from the record and requires the
 quoted text to match at the precision quoted. An `n:` anchor marks a number that is
 deliberately not from this record and says why. The record owns every `r:` number; if
-they ever disagree, this section is wrong. When this mechanism was first run it found
-two transcription errors in an earlier draft of this section.
+they ever disagree, this section is wrong.
+
+**Units.** Shifts and boundaries are measured and quoted in eV. Where a boundary is
+also given in bins and as a multiple of the dominant peak's nominal FWHM, those are
+conversions of the same number for this record's one setup — a grid of
+0.069427<!--r:grid.step--> eV per bin, and the generator's nominal FWHM of
+1.2<!--r:fwhm.nominal--> eV for the 284.8<!--n:reg--> eV peak, which each synthetic spectrum varies
+by up to ±10 %<!--n:reg--> and which is narrower than the three-peak envelope. **Whether
+any of these units carries over to another grid or line width was not tested.**
 
 ### Result — seven of eight predictions held; R5b failed
 
+At level 1000 (the primary level); R4 and R5 are paired within seed; every ± is the
+standard deviation across the twenty seeds.
+
 | | Verdict | The number that decided it |
 |---|---|---|
-| **R1** positive control | **PASS** | arm A gains **+11.41<!--r:A.gain.0--> ± 0.24<!--r:A.gain.0.sd--> dB** at Δ = 0; 20/20 seeds |
-| **R2** there is a cliff | **PASS** | **−17.10<!--r:R2.+4-->** and **−17.28<!--r:R2.-4--> dB** at Δ = ±4.0<!--n:reg-->; 20/20 each |
+| **R1** positive control | **PASS** | arm A gains **+11.4<!--r:A.gain.0--> ± 0.2<!--r:A.gain.0.sd--> dB** at Δ = 0; 20/20 seeds |
+| **R2** there is a cliff | **PASS** | **−17.1<!--r:R2.+4-->** and **−17.3<!--r:R2.-4--> dB** at Δ = ±4.0<!--n:reg-->; 20/20 each |
 | **R3** the cliff is narrow | **PASS** | \|Δ\|\* ≈ **0.47<!--r:R3.pos--> eV**, against a registered threshold of 1.5<!--n:reg--> |
-| **R4** the shift is the cause | **PASS** | arm B beats arm A by **+21.8<!--r:R4.+1.5--> / +22.8<!--r:R4.-1.5--> dB** at \|Δ\| = 1.5<!--n:reg-->; 20/20 |
-| **R5a** density alone costs | **PASS** | A > C by **+4.34<!--r:R5a.AC--> dB**, C > D by **+1.44<!--r:R5a.CD--> dB**; 20/20 each |
-| **R5b** augmentation costs beyond density | **FAIL** | arm B beats arm D by **+4.47<!--r:R5b.BD--> dB**; **0/20** seeds |
+| **R4** the shift is the cause | **PASS** | arm B gains more than arm A by **+21.8<!--r:R4.+1.5--> / +22.8<!--r:R4.-1.5--> dB** at \|Δ\| = 1.5<!--n:reg-->; 20/20 |
+| **R5a** density alone costs | **PASS** | A over C by **+4.3<!--r:R5a.AC--> dB**, C over D by **+1.4<!--r:R5a.CD--> dB**; 20/20 each |
+| **R5b** augmentation costs beyond density | **FAIL** | arm B gains more than arm D by **+4.5<!--r:R5b.BD--> dB**; **0/20** seeds |
 | **R6** the boundary moves | **PASS**, verdict **moved** | arm B's \|Δ\|\* ≈ **1.8<!--r:R6.pos--> eV**, inside the tested range; 20/20 |
 | **R7** displacement opposite to Δ | **PASS** | **−4.01<!--r:R7.+4--> ± 0.06<!--r:R7.+4.sd--> / +3.90<!--r:R7.-4--> ± 0.07<!--r:R7.-4.sd--> eV** at Δ = ±4.0<!--n:reg-->; monotone, no violations |
 
-Every ± here is the standard deviation across the twenty seeds.
+**The other two levels, descriptive.** At level 100, R1 fails there as the design
+anticipated: arm A's gain at Δ = 0 is −5.4<!--r:L100.A.gain.0--> ±
+0.7<!--r:L100.A.gain.0.sd--> dB, so this model never helps at that level and no boundary
+is defined. At level 10000, no arm's gain crosses zero anywhere inside ±4.0<!--n:reg-->
+eV — the smallest mean gain over all four arms and all shifts is
++2.0<!--r:L10k.min.gain--> dB. So "there is a cliff" and the boundary below are
+statements about level 1000; at one other level the model never helps, and at the other
+there is no crossing inside the range tested.
 
 ### R3 was right in direction and badly wrong in magnitude
 
@@ -1286,7 +1333,9 @@ The registered text called R3 "the prediction most likely to be wrong, and the o
 that matters", set the threshold at 1.5<!--n:reg--> eV, and said that if the boundary
 sat near 0.5<!--n:reg--> eV the README's warning would have to be much louder than
 anything written there. That is the branch the data took: **the boundary is about
-0.47<!--r:R3.neg--> eV in both directions.**
+0.47<!--r:R3.neg--> eV in both directions** — on this grid about
+6.8<!--r:R3.bins--> bins, and about 0.39<!--r:R3.fwhm--> times the dominant peak's nominal
+FWHM.
 
 **Two significant figures, and why.** The across-seed SD of the boundary is
 0.011<!--r:R3.sd--> eV in the positive direction and 0.013<!--r:R3.sd.neg--> eV in the
@@ -1304,78 +1353,70 @@ both sides, and the across-seed range over both directions is
 per-peak truncation asymmetry that any directional claim would have to clear first;
 none is made.
 
-The gain against shift, arm A at the primary level:
+The gain against shift, arm A at level 1000, dB:
 
 | Δ (eV) | 0 | 0.25 | 0.50 | 0.75 | 1.00 | 2.00 | 4.00 | <!--n:reg-row-->
 |---|---|---|---|---|---|---|---|
-| gain (dB) | +11.41<!--r:A.gain.0--> | +6.83<!--r:A.gain.+0.25--> | −0.94<!--r:A.gain.+0.50--> | −6.97<!--r:A.gain.+0.75--> | −10.72<!--r:A.gain.+1.00--> | −15.05<!--r:A.gain.+2.00--> | −17.10<!--r:A.gain.+4.00--> |
+| gain (dB) | +11.4<!--r:A.gain.0--> | +6.8<!--r:A.gain.+0.25--> | −0.9<!--r:A.gain.+0.50--> | −7.0<!--r:A.gain.+0.75--> | −10.7<!--r:A.gain.+1.00--> | −15.0<!--r:A.gain.+2.00--> | −17.1<!--r:A.gain.+4.00--> |
 
 **The boundary sits below half an electronvolt: at 0.5<!--n:reg--> eV this model is
-already making the spectrum worse than it found it.** The cells in the table other than
-Δ = 0 and Δ = 4.0<!--n:reg--> are named in no prediction; they are shown and not argued
-from.
+already making the spectrum worse than it found it.** The cells other than Δ = 0 and
+Δ = 4.0<!--n:reg--> are named in no prediction; they are shown and not argued from.
+`report.md` gives every cell with its SD.
 
-What the record establishes is about **this** model: trained with ±0.3<!--n:reg--> eV of
-per-peak jitter and no rigid shift, it stops helping at a rigid shift of about
-0.47<!--r:R3.pos--> eV — the same order as its own training jitter. Shifts of this size
-are not exotic in XPS; charging on poorly conducting samples and binding-energy
-referencing to adventitious carbon are both routinely discussed at the few-tenths-of-an-eV
-scale. **That is context for why this axis was chosen, not a measurement made here, and
-no comparison with any practitioner's tolerance is made.** No measured spectrum appears
-anywhere in this record.
+What the record establishes is about **this** model: trained on this package's synthetic
+spectra with ±0.3<!--n:reg--> eV of per-peak jitter (±4.3<!--r:jitter.bins--> bins) and no
+rigid shift, it stops helping at a rigid shift of about 0.47<!--r:R3.pos--> eV. A rigid
+shift of the whole envelope is the shape of a sample-charging offset or a binding-energy
+calibration error, which is why this axis was chosen; **no measured spectrum appears
+anywhere in this record**, and nothing here compares the boundary with the shifts met in
+practice.
 
-### R5b failed, and what failed was its premise
+### R5b failed in the opposite direction, and the design cannot say why
 
 R5b predicted that arm B, trained across ±1.5<!--n:reg--> eV, would score **no better**
 at Δ = 0 than arm D, a narrow arm cut to the same position density. Arm B scored
-**+4.47<!--r:R5b.BD--> dB better**, in 20 of 20 seeds. The record stores the paired
-difference as D − B, whose *d*<sub>z</sub> is −13.68<!--r:R5b.dz-->. It did not fail to
-reach a threshold; it failed in the opposite direction.
+**+4.5<!--r:R5b.BD--> dB better**, in 20 of 20 seeds. The record stores the paired
+difference as D − B, whose *d*<sub>z</sub> is −13.7<!--r:R5b.dz-->.
 
 | at Δ = 0, level 1000 | gain (dB) | versus arm A |
 |---|---|---|
-| A narrow, N = 2304 | +11.41<!--r:A.gain.0--> | — |
-| B augmented ±1.5<!--n:reg-->, N = 2304 | +10.10<!--r:B.gain.+0.00--> | −1.31<!--r:B.vsA--> |
-| C narrow, N = 461 | +7.07<!--r:C.gain.0--> | −4.34<!--r:C.vsA--> |
-| D narrow, N = 144 | +5.64<!--r:D.gain.0--> | −5.78<!--r:D.vsA--> |
+| A narrow, N = 2304 | +11.4<!--r:A.gain.0--> | — |
+| B augmented ±1.5<!--n:reg-->, N = 2304 | +10.1<!--r:B.gain.+0.00--> | −1.3<!--r:B.vsA--> |
+| C narrow, N = 461 | +7.1<!--r:C.gain.0--> | −4.3<!--r:C.vsA--> |
+| D narrow, N = 144 | +5.6<!--r:D.gain.0--> | −5.8<!--r:D.vsA--> |
 
 *The A-over-C and C-over-D orderings are the registered R5a comparisons; **A minus B is
 descriptive**, named in no prediction, and is shown rather than argued from.*
 
-The record can say which step of the design failed. Arm C, cut to one fifth of arm A's
-N, lost 4.34<!--r:R5a.AC--> ± 0.35<!--r:R5a.AC.sd--> dB. The design-time extrapolation
-from this repository's training-set-size record predicted ≈3.4<!--n:design--> dB; the
-measured loss is 2.7<!--r:R5a.AC.z--> of its own SDs above that, so the extrapolation held
-in direction and order of magnitude and underestimated the size. What did not hold is
-the **equivalence** the design rested on: that cutting N to one fifth stands in for
-spreading a fixed N over five times the position range.
+Arm C, cut to one fifth of arm A's N, lost 4.3<!--r:R5a.AC--> ± 0.4<!--r:R5a.AC.sd--> dB.
+The design-time extrapolation from this repository's training-set-size record predicted
+≈3.4<!--n:design--> dB; the measured loss is 2.7<!--r:R5a.AC.z--> of its own SDs above
+that, so the extrapolation held in direction and order of magnitude and underestimated
+the size.
 
-One reading is that cutting N removes information about noise, intensity, width and
-shape at once, while spreading a fixed N dilutes position coverage alone, and that this
-network pays far less for the latter. **That reading is not tested here.** No arm
-separates the two manipulations, and at least two other readings — that the density
-equivalence was miscalculated, or that the augmented pool is an easier optimisation
-problem — fit the same numbers.
-
-What is established is negative and sufficient for the verdict: **arms C and D do not
-bound the cost of augmentation**, so the registered inference from them does not hold.
-Per the registered fallback, *no augmentation cost beyond the density penalty was
-demonstrated — an undecided verdict, not a finding that augmentation is free.* The
-failure refutes the premise, and **this record contains no instrument that can
-attribute the Δ = 0 difference between arms A and B, in either direction.** The cell
-that would is an augmented arm at reduced N, which is a new preregistration.
+**Either the density equivalence the design rested on does not hold, or augmentation has
+an effect at Δ = 0 that the design did not anticipate.** No arm separates these, and
+other readings — that the augmented pool is an easier optimisation problem, for example —
+fit the same numbers. What follows under every reading is enough for the verdict:
+**arms C and D cannot bound the cost of augmentation, in either direction.** Per the
+registered fallback, *no augmentation cost beyond the density penalty was demonstrated —
+an undecided verdict, not a finding that augmentation is free.* The cell that would
+separate the readings is an augmented arm at reduced N, which is a new preregistration.
 
 ### R6 came out "moved", which was the falsifiable half
 
-Arm B's boundary is about **1.8<!--r:R6.pos--> eV**, inside the tested range, so the
-pre-declared verdict is *moved*, not *beyond range*. Its across-seed SD is
-0.014<!--r:R6.sd.pos--> eV in the positive direction and 0.022<!--r:R6.sd.neg--> eV in the
-negative, and it is quoted to two significant figures for the same reason as arm A's.
-Augmentation relocated the boundary; at this width it did not remove it.
+Arm B's boundary is about **1.8<!--r:R6.pos--> eV** — on this grid about
+26<!--r:R6.bins--> bins, and about 1.5<!--r:R6.fwhm--> times the dominant peak's nominal
+FWHM — inside the tested range, so the pre-declared verdict is *moved*, not *beyond
+range*. Its across-seed SD is 0.014<!--r:R6.sd.pos--> eV in the positive direction and
+0.022<!--r:R6.sd.neg--> eV in the negative. Training as arm B was trained — a rigid shift
+drawn per spectrum from ±1.5<!--n:reg--> eV, at the same N — moved the boundary and, at
+this width, did not remove it.
 
 | Δ (eV) | 0 | 1.00 | 1.50 | 1.75 | 2.00 | 2.50 | 4.00 | <!--n:reg-row-->
 |---|---|---|---|---|---|---|---|
-| arm B gain (dB) | +10.10<!--r:B.gain.+0.00--> | +9.90<!--r:B.gain.+1.00--> | +7.83<!--r:B.gain.+1.50--> | +2.03<!--r:B.gain.+1.75--> | −3.95<!--r:B.gain.+2.00--> | −11.35<!--r:B.gain.+2.50--> | −15.86<!--r:B.gain.+4.00--> |
+| arm B gain (dB) | +10.1<!--r:B.gain.+0.00--> | +9.9<!--r:B.gain.+1.00--> | +7.8<!--r:B.gain.+1.50--> | +2.0<!--r:B.gain.+1.75--> | −4.0<!--r:B.gain.+2.00--> | −11.3<!--r:B.gain.+2.50--> | −15.9<!--r:B.gain.+4.00--> |
 
 R4 names arm B at ±1.5<!--n:reg--> only, and R6 its crossing; the other cells are
 descriptive. The sweep was extended from ±3.0<!--n:reg--> to ±4.0<!--n:reg--> eV in
@@ -1383,39 +1424,40 @@ Revision 1 against an expected boundary near 3.0<!--n:design--> eV; the measured
 boundary lies well inside either cap, so the extension was not what made this verdict
 decidable.
 
-**No regularity is claimed across the arms.** Two arms differ in training range, and
-their boundaries differ in the same direction; that is two points. Arms C and D share
-arm A's position range exactly, and their boundaries at level 1000 are not arm A's:
-22 %<!--r:C.boundary.nearer--> and 34 %<!--r:D.boundary.nearer--> nearer in the positive
-direction, 26 %<!--r:C.boundary.nearer.neg--> and 37 %<!--r:D.boundary.nearer.neg--> in
-the negative. No prediction names those boundaries; they are cited only to show that
-the training range alone does not fix |Δ|\*, and **no follow-up is committed**.
+**No regularity is claimed across the arms.** R6 is not to be read as showing that the
+training position range alone fixes |Δ|\*. Arms C and D share arm A's position range,
+and their boundaries at level 1000 are reported for that reason — arm C
+0.37<!--r:C.boundary.pos--> / 0.35<!--r:C.boundary.neg--> eV and arm D
+0.31<!--r:D.boundary.pos--> / 0.30<!--r:D.boundary.neg--> eV, positive / negative,
+descriptive. No prediction names them, and **no follow-up is committed**.
 
 ### R7 held, and it is the result a user should be most careful with
 
 The bias-corrected displacement is **−4.01<!--r:R7.+4--> ± 0.06<!--r:R7.+4.sd--> eV at
 Δ = +4.0<!--n:reg--> and +3.90<!--r:R7.-4--> ± 0.07<!--r:R7.-4.sd--> eV at
 Δ = −4.0<!--n:reg-->**. Its reference value is −Δ, which is what the displacement would
-be if the denoised peak did not move with the shift at all. The +4.0<!--n:reg--> direction
-is indistinguishable from −Δ — short by 0.01<!--r:R7.+4.short--> eV, about
-0.2<!--r:R7.+4.steps--> of a grid step and 1.0<!--r:R7.+4.z--> standard error. The
-−4.0<!--n:reg--> direction is not — short by 0.10<!--r:R7.-4.short--> eV,
-1.5<!--r:R7.-4.steps--> grid steps and 6.9<!--r:R7.-4.z--> standard errors, about
-2.6 %<!--r:R7.-4.pct--> of the shift. **This document declines to read that difference**:
-it is not a registered comparison, and self-check 5 records a truncation asymmetry this
-record cannot separate from it. At Δ = ±1.0<!--n:reg--> the displacement is already
-−0.67<!--r:R7.+1--> ± 0.03<!--r:R7.+1.sd--> and +0.63<!--r:R7.-1--> ± 0.04<!--r:R7.-1.sd-->
-eV — roughly two-thirds of the shift in each direction. **No mechanism is claimed.**
-Opposite-signed displacement is consistent with a learned position prior; the
-observable does not decide it.
+be if the denoised peak did not move with the shift at all. In the +4.0<!--n:reg-->
+direction the mean falls short of −Δ by 0.01<!--r:R7.+4.short--> eV, about
+0.2<!--r:R7.+4.steps--> of a grid step and inside its across-seed SD of
+0.06<!--r:R7.+4.sd-->; in the −4.0<!--n:reg--> direction by 0.10<!--r:R7.-4.short--> eV,
+1.5<!--r:R7.-4.steps--> grid steps, more than its SD of 0.07<!--r:R7.-4.sd-->. **This
+document declines to read that difference**: it is not a registered comparison, and
+self-check 5 records a truncation asymmetry this record cannot separate from it. At
+Δ = ±1.0<!--n:reg--> the displacement is already −0.67<!--r:R7.+1--> ±
+0.03<!--r:R7.+1.sd--> and +0.63<!--r:R7.-1--> ± 0.04<!--r:R7.-1.sd--> eV — roughly
+two-thirds of the shift in each direction. **No mechanism is claimed.** Opposite-signed
+displacement is consistent with a learned position prior; the observable does not
+decide it.
 
 **Comparator (ii)**, the learning-free Gaussian smoother, spans
-0.0058<!--r:M3.smoother.span.1000--> eV across all 25 shifts at the primary level, so
-the offset that motivated the bias correction does not depend on the shift there, and a
-shift-dependent displacement in a trained arm is not attributable to truncation,
-background, envelope asymmetry or oversmoothing. **That covers the primary level only**:
-at the highest noise level the same comparator spans 0.468<!--r:M3.smoother.span.10000-->
-eV. It is a seed-0 diagnostic and is not covered by `report.md`'s guard.
+0.0058<!--r:M3.smoother.span.1000--> eV across all 25 shifts at level 1000 in its
+σ = 1.0<!--n:reg--> eV column, so the offset that motivated the bias correction does not
+depend on the shift there, and a shift-dependent displacement in a trained arm is not
+attributable to truncation, background, envelope asymmetry or oversmoothing. **That
+covers level 1000 only**: at level 10000 the same column spans
+0.468<!--r:M3.smoother.span.10000--> eV and the widest, σ = 2.0<!--n:reg--> eV, spans
+0.81<!--r:M3.smoother.span.10000.s2--> eV. It is a seed-0 diagnostic and is not covered by
+`report.md`'s guard.
 
 **Comparator (iii)**, arm B on the identical test arrays, was registered alongside the
 smoother. Out to |Δ| = 1.25<!--n:reg--> in both directions arm B's bias-corrected
@@ -1433,24 +1475,29 @@ audit called that an incomplete record, correctly.)
 ### A descriptive cell cited under the exception to the descriptive-only rule
 
 The exception was written after the results existed and was not logged at the time; see
-Revision 8. The citation below keeps to its conditions.
+Revision 8. The citation below keeps to its conditions and bounds how R1's and R4's
+gains may be read.
 
 Level 10000 is the noisiest level — its input SNR at Δ = 0 is
 −3.6<!--r:L10k.in.0--> dB. In one cell there (arm A, Δ = +4.0<!--n:reg-->) M1 reads
-+2.50<!--r:L10k.gain.+4--> dB while M3 reads −4.00<!--r:L10k.disp.+4--> eV; the input's
-own SNR is −3.55<!--r:L10k.in.+4--> dB and the output's −1.05<!--r:L10k.out.+4--> dB. M1
-is a ratio of mean-squared errors against a reference and does not encode peak position
-by its construction, and that is how any M1 gain in this record is to be read. **No
-follow-up measurement is committed here.**
++2.5<!--r:L10k.gain.+4--> dB while M3 reads −4.0<!--r:L10k.disp.+4--> eV; the input's own
+SNR is −3.6<!--r:L10k.in.+4--> dB and the output's −1.1<!--r:L10k.out.+4--> dB. M1, a
+mean-squared error against the Δ-matched reference, does penalise a misplaced peak — but
+a smooth output with its peak in the wrong place can still beat an input whose noise
+power exceeds its signal power. **A positive M1 gain does not establish that the
+output's peak sits where the reference's does.** No follow-up measurement is committed
+here.
 
 ### What this licenses, and nothing stronger
 
 That **this** ResNet-FCNN, trained on **this** synthetic distribution at **this** jitter
 width, size and noise model, on the MPS backend, loses all benefit at a rigid shift of
-about 0.47<!--r:R3.pos--> eV at the primary noise level; and that training across a
-±1.5<!--n:reg--> eV range moves that boundary to about 1.8<!--r:R6.pos--> eV. Arm B's gain
-at Δ = 0 differs from arm A's (descriptive, −1.31<!--r:B.vsA--> dB), and this design
-cannot attribute that difference. The claim-scope list in the record applies.
+about 0.47<!--r:R3.pos--> eV at level 1000 — on this grid about 6.8<!--r:R3.bins--> bins,
+about 0.39<!--r:R3.fwhm--> times the dominant peak's nominal FWHM; and that training with a
+rigid shift drawn from ±1.5<!--n:reg--> eV moved that boundary to about
+1.8<!--r:R6.pos--> eV. Arm B's gain at Δ = 0 differs from arm A's (descriptive,
+−1.3<!--r:B.vsA--> dB), and this design cannot attribute that difference. The claim-scope
+list in the record applies.
 
 The consistency anchor licenses one thing beyond agreement: the Δ = 0 column here
 **is** the reference benchmark's own primary condition for this architecture, agreeing
@@ -1461,42 +1508,43 @@ that record describes. It licenses nothing about the other architectures there.
 
 **The preregistration was never published before any run.** Every registration and
 revision commit of this document was made locally and none was pushed before the
-measurement. So "registered before the results existed" is attested only by this
-repository's own history, whose timestamps its author controls; no third party can
-confirm the ordering. That cannot be remedied now. Future registrations are to be
-published before their first run.
+measurement. "Registered before the results existed" is attested only by this
+repository's own history, whose timestamps its author controls. That cannot be
+remedied now. Future registrations are to be published before their first run.
 
-**Only the third run was made before its own results were known.** The ordering of
-registration and result rests on the third run, made against Revision 4. The fourth
-and fifth were made after the results existed, from versions of this document whose
-design section differs from Revision 4's only in the Status line and in the
-descriptive-only rule's exception — added after the results, and marked as such — so
-nothing that determines the measurement was revised to fit. A reader who follows
+**What was fixed before the results, and what changed after.** R1–R7 and their decision
+rules were fixed at Revision 1 (`ef25766`), before implementation began (`736e540`) and
+before the first run. Revisions 2–9 changed self-checks, provenance, rendering, scope
+wording and the record's structure, and recorded one decision-rule resolution made at
+implementation time (item 47); none changed a prediction. Every run after the first was
+made after earlier runs' numbers existed; the design section of this document differs
+from Revision 4's only in its Status line and in the descriptive-only rule's exception,
+added after the results and marked as such. A reader who follows
 `provenance.registration` lands on a version of this document that already contains
 earlier runs' results; that is why.
 
 **The earlier records' provenance defects are history.** The third run's record named
-the wrong registration version, from a hand-maintained constant, and it and the second
-run's record carried a developer-specific absolute path in
-`consistency_anchor.read_from`, removed before publication by rewriting the unpublished
-commits (Revision 6) — one field in each, nothing else. The fourth run's self-check 4
-sampled 12 spectra per arm per seed instead of the registered 5 %<!--n:reg-->, about
-0.5 %<!--n:derived-count--> of arms A and B (Revision 8). None of these applies to this
-record, and all stay stated.
+the wrong registration version, from a hand-maintained constant. It and the second run's
+record carried a developer-specific absolute path in `consistency_anchor.read_from`,
+removed before publication by rewriting the unpublished commits (Revision 6) — one field
+in each, nothing else. That rewrite cannot be detected from the published history, whose
+author and committer dates coincide, so "one field in each, nothing else" is attested
+by the author. The third and fourth runs' self-check 4 sampled 12 spectra per arm per
+seed instead of the registered 5 %<!--n:reg-->, about 0.5 %<!--n:derived-count--> of arms A
+and B (Revision 8). None of these applies to this record, and all stay stated.
 
 ### Things worth recording about the runs themselves
 
-**The measurement reproduced across five runs, and four of them can be checked from
-this repository.** The second to fifth runs' records are committed — at `4c5ebca`,
-`05d3be7`, `8474c94` and here — and every one of the 6000 per-run values, every
-aggregate and every boundary is identical across them, at full precision. They differ
-in wall clock, in what the environment reports, and in the fields later revisions
-added. The fourth run moved from a shared conda base to the pinned environment and
-from macOS 26.7<!--n:cross-record--> to 27.0<!--r:env.os-->; the fifth ran check 4 at
-the registered 5 %<!--n:reg--> and wrote the corrected `claim_scope`. The wall clocks
-were 30.9<!--n:history-->, 162.7<!--n:cross-record-->, 34.7<!--n:cross-record-->,
-65.2<!--n:cross-record--> and 129.5<!--r:run.minutes--> minutes, because the machine
-throttled.
+**The measurement reproduced across six runs, and five of them can be checked from this
+repository.** The second to sixth runs' records are committed, and every one of the
+6000 per-run values, every aggregate and every boundary is identical across them, at
+full precision. They differ in wall clock, in what the environment reports, and in the
+fields later revisions added or removed. The fourth run moved from a shared conda base to
+the pinned environment and from macOS 26.7<!--n:cross-record--> to 27.0<!--r:env.os-->; the
+fifth ran check 4 at the registered 5 %<!--n:reg-->; the sixth wrote a `claim_scope` that
+holds only what was fixed before the results. The wall clocks varied — 30.9<!--n:history-->,
+162.7<!--n:cross-record-->, 34.7<!--n:cross-record-->, 65.2<!--n:cross-record-->,
+129.5<!--n:cross-record--> and 81.1<!--r:run.minutes--> minutes.
 
 What a reader **cannot** check is the first run. Its record was deleted before it was
 ever committed, when the run was voided under Revision 3, so its agreement with the
@@ -1505,7 +1553,7 @@ others rests on a comparison made at the time.
 **Self-check 6's margin is thinner than the pre-run estimate.** Revision 2 reported
 worst spans of 0.104<!--n:design--> and 0.107<!--n:design--> dB over six draws; this
 record's maxima over twenty seeds are 0.138<!--r:chk6.100.0-->,
-0.160<!--r:chk6.1000.0--> and 0.202<!--r:chk6.10000.0--> dB, so the primary level used
+0.160<!--r:chk6.1000.0--> and 0.202<!--r:chk6.10000.0--> dB, so level 1000 used
 80 %<!--r:chk6.margin.pct--> of its 0.2<!--n:reg--> dB tolerance. Immaterial against the
 gain swing, and better stated than left to a reader who diffs the two.
 

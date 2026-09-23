@@ -223,6 +223,16 @@ def _fmt(value, digits=2, dash="--"):
     return dash if value is None else f"{value:.{digits}f}"
 
 
+def _sig2(value):
+    """Two significant figures, keeping a trailing zero (0.40, not 0.4). The boundary's
+    across-seed spread and its interpolation span do not support a third."""
+    if value is None:
+        return "--"
+    from math import floor, log10
+    decimals = max(0, 1 - floor(log10(abs(value)))) if value else 1
+    return f"{value:.{decimals}f}"
+
+
 def _p(value):
     """p-values to three significant figures. Four fixed decimals printed every p below
     5e-5 as 0.0000, so the exact binomial 9.5e-7 and a t-test's 1.3e-44 looked the same."""
@@ -289,21 +299,34 @@ def render(record: dict, computed: dict) -> str:
         f"median over {n_seeds} seeds. A censored seed never crossed inside the tested "
         f"range and enters the order statistics at its bound; it is never dropped.")
     add("")
-    add("| Arm | level | direction | median \\|Δ\\|\\* (eV) | censored | sustained (eV) | re-crossing seeds |")
-    add("|---|---|---|---|---|---|---|")
+    step = record["self_checks"]["2_and_3_grid_and_test_sweep_rigidity"]["energy_step_eV"]
+    fwhm = record["design"]["data"]["nominal_fwhm_eV"][0]
+    add(f"eV is the unit that was measured. The two columns after it are conversions of the "
+        f"same number for this record's one setup, computed here from the record: bins on "
+        f"its {step:.6f} eV grid, and multiples of the dominant peak's *nominal* FWHM, "
+        f"{fwhm} eV. That FWHM is the generator's setting for the 284.8 eV peak — each "
+        f"synthetic spectrum varies it by up to ±10 %, and the three-peak envelope is wider "
+        f"— so the ratio is a conversion, not a measured width. **Whether any of these "
+        f"units carries over to a different grid or line width was not tested.**")
+    add("")
+    add("| Arm | level | direction | median \\|Δ\\|\\* (eV) | ≈ bins | ≈ × nominal FWHM | censored | sustained (eV) | re-crossing seeds |")
+    add("|---|---|---|---|---|---|---|---|---|")
     for level_key in record["boundaries"]:
         for arm in arms:
             for direction in ("positive", "negative"):
                 summary = record["boundaries"][level_key][arm][direction]
                 if not summary.get("defined"):
                     add(f"| {ARM_LABELS.get(arm, arm)} | {level_key} | {direction} "
-                        f"| not defined | — | — | — |")
+                        f"| not defined | — | — | — | — | — |")
                     continue
                 median = summary.get("median_first_crossing_eV")
-                shown = _fmt(median) if median is not None else f"> {summary['censoring_bound_eV']}"
+                shown = _sig2(median) if median is not None else f"> {summary['censoring_bound_eV']}"
+                bins = _sig2(median / step) if median is not None else "—"
+                ratio = _sig2(median / fwhm) if median is not None else "—"
                 add(f"| {ARM_LABELS.get(arm, arm)} | {level_key} | {direction} | {shown} "
+                    f"| {bins} | {ratio} "
                     f"| {summary['n_censored']}/{summary['n_seeds_defined']} "
-                    f"| {_fmt(summary.get('median_sustained_crossing_eV'))} "
+                    f"| {_sig2(summary.get('median_sustained_crossing_eV'))} "
                     f"| {summary['n_seeds_re_crossing']} |")
     add("")
     add("Where the mean gain at Δ = 0 is already negative there is no boundary to find, "
@@ -529,6 +552,10 @@ def render(record: dict, computed: dict) -> str:
     add("")
     add(f"**Descriptive-only rule.** {record['claim_scope']['descriptive_only_rule']}")
     add("")
+    if record["claim_scope"].get("result_dependent_interpretation"):
+        add(f"**Where the result-dependent cautions are.** "
+            f"{record['claim_scope']['result_dependent_interpretation']}")
+        add("")
     add(f"**{record['claim_scope']['denoised_output_is_a_model_estimate']}**")
     add("")
     return "\n".join(lines) + "\n"

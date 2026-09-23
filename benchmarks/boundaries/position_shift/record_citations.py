@@ -212,18 +212,38 @@ CITATIONS = {
                     (lambda arm: lambda r: agg(r, arm, PRIMARY, 0.0, "snr_gain_db_mean")
                      - agg(r, A, PRIMARY, 0.0, "snr_gain_db_mean"))(arm))
        for k, arm in (("B", B), ("C", C), ("D", D))},
-    "C.boundary.nearer": ("how much nearer arm C's boundary is than arm A's, positive, level 1000, %",
-                          lambda r: 100 * (1 - boundary(r, C, "positive", "median_first_crossing_eV")
-                                           / boundary(r, A, "positive", "median_first_crossing_eV"))),
-    "D.boundary.nearer": ("how much nearer arm D's boundary is than arm A's, positive, level 1000, %",
-                          lambda r: 100 * (1 - boundary(r, D, "positive", "median_first_crossing_eV")
-                                           / boundary(r, A, "positive", "median_first_crossing_eV"))),
-    **{f"{k}.boundary.nearer.neg": (f"how much nearer arm {k}'s boundary is than arm A's, negative, "
-                                    "level 1000, %",
-                                    (lambda arm: lambda r: 100 * (
-                                        1 - boundary(r, arm, "negative", "median_first_crossing_eV")
-                                        / boundary(r, A, "negative", "median_first_crossing_eV")))(arm))
-       for k, arm in (("C", C), ("D", D))},
+    **{f"{k}.boundary.{d[:3]}": (f"boundary |delta|*, arm {k}, level 1000, {d} direction, eV, median",
+                                 (lambda arm, d: lambda r: boundary(r, arm, d, "median_first_crossing_eV"))(arm, d))
+       for k, arm in (("C", C), ("D", D)) for d in ("positive", "negative")},
+
+    # unit conversions of this record's one setup (not measurements, not transferable)
+    "R3.bins": ("arm A's positive-direction boundary in bins of this record's energy grid",
+                lambda r: boundary(r, A, "positive", "median_first_crossing_eV") / grid_step(r)),
+    "R3.fwhm": ("arm A's positive-direction boundary as a multiple of the dominant peak's nominal FWHM",
+                lambda r: boundary(r, A, "positive", "median_first_crossing_eV")
+                / r["design"]["data"]["nominal_fwhm_eV"][0]),
+    "R6.bins": ("arm B's positive-direction boundary in bins of this record's energy grid",
+                lambda r: boundary(r, B, "positive", "median_first_crossing_eV") / grid_step(r)),
+    "R6.fwhm": ("arm B's positive-direction boundary as a multiple of the dominant peak's nominal FWHM",
+                lambda r: boundary(r, B, "positive", "median_first_crossing_eV")
+                / r["design"]["data"]["nominal_fwhm_eV"][0]),
+    "jitter.bins": ("the +/-0.3 eV per-peak training jitter in bins of this record's energy grid",
+                    lambda r: 0.3 / grid_step(r)),
+    "fwhm.nominal": ("the dominant peak's nominal FWHM in the generator's design, eV",
+                     lambda r: r["design"]["data"]["nominal_fwhm_eV"][0]),
+
+    # the other two noise levels, descriptive
+    "L100.A.gain.0": ("SNR gain, arm A, level 100, delta 0, dB, mean",
+                      lambda r: agg(r, A, "100.0", 0.0, "snr_gain_db_mean")),
+    "L100.A.gain.0.sd": ("SNR gain, arm A, level 100, delta 0, dB, SD across seeds",
+                         lambda r: agg(r, A, "100.0", 0.0, "snr_gain_db_sd_across_seeds")),
+    "L10k.min.gain": ("smallest mean SNR gain over all four arms and all 25 shifts at level 10000, dB",
+                      lambda r: min(agg(r, arm, "10000.0", d, "snr_gain_db_mean")
+                                    for arm in (A, B, C, D)
+                                    for d in r["design"]["manipulated"]["delta_values_eV"])),
+    "M3.smoother.span.10000.s2": ("smoother comparator sigma 2.0 eV, span across shifts, level 10000, "
+                                  "eV, seed 0 -- the widest column",
+                                  lambda r: smoother_span(r, "10000.0", "sigma_2.0eV")),
 
     # R7 in both directions
     "R7.+4.short": ("|disp(+4) + 4|, arm A, level 1000, eV: shortfall from complete pinning",
@@ -234,14 +254,6 @@ CITATIONS = {
                     lambda r: displacement_short_of_minus_delta(r, 4.0) / grid_step(r)),
     "R7.-4.steps": ("the -4.0 shortfall in units of the realised grid step",
                     lambda r: displacement_short_of_minus_delta(r, -4.0) / grid_step(r)),
-    "R7.+4.z": ("the +4.0 shortfall in across-seed standard errors, magnitude",
-                lambda r: abs(displacement_z(r, 4.0))),
-    "R7.-4.z": ("the -4.0 shortfall in across-seed standard errors, magnitude",
-                lambda r: abs(displacement_z(r, -4.0))),
-    "R7.-4.pct": ("the -4.0 shortfall as a percentage of |delta|",
-                  lambda r: 100 * displacement_short_of_minus_delta(r, -4.0) / 4.0),
-
-    # M3 comparators
     "M3.smoother.span.1000": ("smoother comparator sigma 1.0 eV, span across shifts, level 1000, eV, seed 0",
                               lambda r: smoother_span(r, "1000.0")),
     "M3.smoother.span.10000": ("smoother comparator sigma 1.0 eV, span across shifts, level 10000, eV, seed 0",

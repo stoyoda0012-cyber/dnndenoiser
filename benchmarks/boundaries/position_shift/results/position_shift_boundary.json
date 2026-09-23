@@ -1,22 +1,24 @@
 {
   "record_version": "1",
-  "generated_utc": "2026-09-23T12:45:38.039044+00:00",
+  "generated_utc": "2026-09-23T15:00:32.890684+00:00",
   "script": "position_shift_boundary.py",
   "provenance": {
     "how_recorded": "read from git and the filesystem at run time; nothing here is typed",
-    "code_commit": "3cca2c46b27a2a95cbc11e58651f9200941f4c44",
+    "code_commit": "f4cb1ca32c208b51feeb53d2a57076595c5cc1de",
     "working_tree_clean": true,
     "working_tree_changes_if_dirty": [],
     "script": {
       "path": "benchmarks/boundaries/position_shift/position_shift_boundary.py",
-      "sha256": "553a8fc23e83cecdc8dc01f1eb752a9662b3c78f0d0febe5acfc1b50be5f85ec"
+      "sha256": "5dee904718433c49dc3055f7839759c5a3ac82a4ca620e33f30362ff7ebf65dd"
     },
     "registration": {
       "document": "docs/preregistration/P2A-position-shift-boundary.md",
-      "sha256_at_run": "49d69403d0158a179459717e83a242270479cf39e3f58ef11d5344aaf260beaf",
+      "sha256_at_run": "81affeffc1c222637c1cd7339da416c90365617a3c18c4647e9c8423bab00d6c",
       "first_commit": "06fa8c012ae2f3f00de512f6db213f0436c828a9",
-      "last_commit_before_run": "3cca2c46b27a2a95cbc11e58651f9200941f4c44",
+      "last_commit_before_run": "f4cb1ca32c208b51feeb53d2a57076595c5cc1de",
       "commits_before_run": [
+        "f4cb1ca32c208b51feeb53d2a57076595c5cc1de",
+        "8ad78dc6bfccf8f4cc6984902f01c89c75fdb759",
         "3cca2c46b27a2a95cbc11e58651f9200941f4c44",
         "8474c9491e60bd8a8603a51ccf07e094ed7d4f1f",
         "b09b5d18a68a5648d951bb3d0624755f3e96f869",
@@ -41,10 +43,10 @@
     "does_not_support": [
       "anything about MEASURED spectra: every spectrum here is synthetic, scored against a reference that exists only because it is synthetic, and the training noise and the test noise come from the same function, so the model's noise model is exactly correct by construction -- a condition measured data never satisfies",
       "a general position-shift threshold for XPS denoising: |delta|* is a property of THIS peak set, THIS jitter width, THIS architecture, THIS training-set size and THIS noise model, and one point was measured in each of those spaces",
-      "anything about other training-set sizes. Arms C and D were DESIGNED to bound the density penalty and the result shows they do not: R5b failed 0/20 in the opposite direction, so they are N controls, not density controls. They bound the cost of cutting N at one architecture and one recipe, and NOTHING here bounds the cost of augmentation in either direction",
-      "a boundary at any noise level other than the primary one: |delta|* is not defined at the lowest noise level, where the gain at zero shift is already negative, and no arm crosses zero inside the tested sweep at the highest. The boundary reported here is a single-noise-level quantity",
-      "that |delta|* is determined by the training position range alone. Arms C and D share arm A's position range exactly -- all three draw zero rigid shift at the same per-peak jitter -- and their boundaries differ from arm A's, so range alone does not fix |delta|*. Whether training-set size moves it is a candidate for its own registration, not a finding here: no prediction names arm C's or arm D's boundary",
-      "that augmentation is safe inside its training range in general. Arm B was measured at one augmentation width, one architecture and one noise level, in two quantities, and no prediction names its gain between 0 and 1.5 eV",
+      "anything about other training-set sizes: each arm was trained at one pool size (2304, 461 or 144 spectra), with one architecture and one recipe",
+      "an inferential claim at any noise level other than the primary one: every prediction was registered at level 1000.0, and the other two levels are descriptive",
+      "a relation between |delta|* and any single property of the training distribution -- its position range, its size or its position density: one architecture and four training distributions were measured",
+      "that augmentation is safe inside its training range in general: one augmentation width, one architecture and one noise level were measured",
       "anything about other augmentation widths: one width (+/-1.5 eV) was tested, so R6 is a statement about that width and not about augmentation in general",
       "a full-spectrum translate: linear_background is level + slope*(x - x[0]), a ramp pinned to the WINDOW, so it does not travel with the peaks and a peak moving along it sits on a different background level. This manipulation is therefore 'peaks shift under a stationary background'. Self-check 7 measures the departure from a pure translate and bounds it; it does not remove it",
       "separation of degradation from window-edge effects beyond |delta| = 1.5 eV. Inside that range arm B IS an edge-proximity control, because it saw those edge distances in training; beyond it no arm did",
@@ -56,6 +58,7 @@
     ],
     "device_dependence": "R1, R2, R4, R5 and R7 are sign and ordering claims. R3 and R6 compare a recorded MAGNITUDE -- |delta|*, in eV -- against a fixed threshold, and are therefore subject to the same device caveat as any magnitude here. Floating-point reduction order differs between CPU, MPS and CUDA backends; no cross-device comparison is recorded unless one is run, and none is asserted.",
     "descriptive_only_rule": "Only the cells named in R1-R7, at the primary noise level, carry an inferential claim. Every other cell -- all other shifts, all other levels, all other arms, and both derived series -- is descriptive, is reported without a p-value, and no statement of the form 'gain dips at delta = x' or 'the curve is asymmetric at x' may be made about a cell not named in a prediction. A feature seen there is a candidate for a NEW preregistration, not a finding of this one.",
+    "result_dependent_interpretation": "This list was fixed before the results and states only what the design cannot support. Cautions that depend on the result -- among them how to read R5b's failure, what the other two noise levels showed, and what arms C and D do and do not show -- are in the Record section of docs/preregistration/P2A-position-shift-boundary.md, and in report.md, each with its source.",
     "denoised_output_is_a_model_estimate": "The evaluated quantity is agreement with a known synthetic reference. A high SNR gain does not establish that structure in the output is real; the network can oversmooth, suppress weak features, and produce plausible structure that was not in the input."
   },
   "environment": {
@@ -71,8 +74,7 @@
   "design": {
     "preregistration": {
       "document": "docs/preregistration/P2A-position-shift-boundary.md",
-      "version": "see provenance.registration, read from git at run time",
-      "predictions_fixed_before_implementation": true
+      "version": "see provenance.registration, read from git at run time"
     },
     "manipulated": {
       "variable": "rigid energy shift delta (eV) applied to every peak at once",
@@ -1230,28 +1232,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.749732347087249e-05,
-            "train_seconds": 109.04726524999569,
+            "train_seconds": 99.55651899999793,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.370420020279805e-05,
-            "train_seconds": 99.2135813749992,
+            "train_seconds": 102.123174458,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00019390622840327178,
-            "train_seconds": 19.30615987499914,
+            "train_seconds": 21.216073250005138,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003040951560251415,
-            "train_seconds": 5.905811249998806,
+            "train_seconds": 6.456788041999971,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -1362,28 +1364,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 6.163525790725544e-05,
-            "train_seconds": 97.42784862499684,
+            "train_seconds": 96.21970349999901,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.607314930488226e-05,
-            "train_seconds": 95.80105120799999,
+            "train_seconds": 99.622466832996,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00019410957837204352,
-            "train_seconds": 19.312289457993757,
+            "train_seconds": 19.319442166000954,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00031285997182648216,
-            "train_seconds": 5.885331499994209,
+            "train_seconds": 5.814572415998555,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -1494,28 +1496,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.610601230425042e-05,
-            "train_seconds": 96.85412416700274,
+            "train_seconds": 98.86311337499501,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.720026880837395e-05,
-            "train_seconds": 196.02070412500325,
+            "train_seconds": 102.60313283299911,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00020112957080810107,
-            "train_seconds": 39.427974500002165,
+            "train_seconds": 21.671776707997196,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003126497289890216,
-            "train_seconds": 6.99421566700039,
+            "train_seconds": 6.733657000004314,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -1626,28 +1628,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.969061539366926e-05,
-            "train_seconds": 155.1577086249963,
+            "train_seconds": 108.01277779100201,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.798744804355213e-05,
-            "train_seconds": 184.5463443330009,
+            "train_seconds": 106.04198220800026,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00016900765908287903,
-            "train_seconds": 40.825531875001616,
+            "train_seconds": 19.903417082998203,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00030258256528112624,
-            "train_seconds": 11.477422542004206,
+            "train_seconds": 6.320151500003703,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -1758,28 +1760,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.529587353218327e-05,
-            "train_seconds": 192.3136970419946,
+            "train_seconds": 105.90092645899858,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.273239877277067e-05,
-            "train_seconds": 192.72928599999432,
+            "train_seconds": 105.68946899999719,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00021653538037910415,
-            "train_seconds": 37.578448874999594,
+            "train_seconds": 21.54774583299877,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0002977482896919052,
-            "train_seconds": 11.729437458001485,
+            "train_seconds": 6.8097468330015545,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -1890,28 +1892,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 6.02542882259311e-05,
-            "train_seconds": 186.17444783300016,
+            "train_seconds": 111.33502841700101,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.112089926727802e-05,
-            "train_seconds": 207.7192962909976,
+            "train_seconds": 109.41683604100399,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00020151249943943373,
-            "train_seconds": 34.54261195799336,
+            "train_seconds": 22.228408542003308,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003330829883149515,
-            "train_seconds": 10.253906207995897,
+            "train_seconds": 6.738866332998441,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2022,28 +2024,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 6.127500079047523e-05,
-            "train_seconds": 168.1108725830054,
+            "train_seconds": 116.85803112500435,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.455794068142293e-05,
-            "train_seconds": 169.5190767499953,
+            "train_seconds": 113.05383329199685,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00020421432242889343,
-            "train_seconds": 33.953490917003364,
+            "train_seconds": 20.449011582997628,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003237752324720431,
-            "train_seconds": 10.509845667002082,
+            "train_seconds": 5.564314249997551,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2154,28 +2156,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.450426632099455e-05,
-            "train_seconds": 171.02040087500063,
+            "train_seconds": 92.16295054199873,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.233765194947612e-05,
-            "train_seconds": 164.17103133400087,
+            "train_seconds": 96.22337162499753,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.0001821572413660008,
-            "train_seconds": 33.80001120799716,
+            "train_seconds": 19.249936499996693,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003042838684955819,
-            "train_seconds": 10.468507291996502,
+            "train_seconds": 5.99822016699909,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2286,28 +2288,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.810950101982194e-05,
-            "train_seconds": 170.11980774999392,
+            "train_seconds": 100.68850429099984,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.886842346732414e-05,
-            "train_seconds": 171.45604704200377,
+            "train_seconds": 100.07803958400473,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00021022256034233705,
-            "train_seconds": 33.951221249997616,
+            "train_seconds": 20.268013832996076,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00031710756916759745,
-            "train_seconds": 10.607120041997405,
+            "train_seconds": 6.078284125003847,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2418,28 +2420,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.613450300895945e-05,
-            "train_seconds": 161.1142765409968,
+            "train_seconds": 103.3369953750007,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.706986747914925e-05,
-            "train_seconds": 161.75910112499696,
+            "train_seconds": 100.62031920799927,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00020722196244731033,
-            "train_seconds": 33.59441783299553,
+            "train_seconds": 19.70295541700034,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0002963295652686308,
-            "train_seconds": 10.173419209000713,
+            "train_seconds": 6.109334083994327,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2550,28 +2552,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.584122626108486e-05,
-            "train_seconds": 163.24594945800345,
+            "train_seconds": 98.6485823749972,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.550193105193709e-05,
-            "train_seconds": 163.3106362499966,
+            "train_seconds": 97.63281375000224,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00020874761384189258,
-            "train_seconds": 33.06197241699556,
+            "train_seconds": 20.73101237499941,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00033479742382446095,
-            "train_seconds": 10.060606457998801,
+            "train_seconds": 6.059155458999157,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2682,28 +2684,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 6.035380091715423e-05,
-            "train_seconds": 162.0420967089958,
+            "train_seconds": 100.18352987500111,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.68651709930014e-05,
-            "train_seconds": 157.77982216700184,
+            "train_seconds": 98.70276833300159,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00020129299032148616,
-            "train_seconds": 31.49945100000332,
+            "train_seconds": 20.838882625001133,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003323271489029543,
-            "train_seconds": 9.702924457997142,
+            "train_seconds": 6.545335417002207,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2814,28 +2816,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 6.383563156002008e-05,
-            "train_seconds": 160.91829070799577,
+            "train_seconds": 103.84512087499752,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.106509267237723e-05,
-            "train_seconds": 163.55314170900238,
+            "train_seconds": 99.76081979100127,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00021731432784220269,
-            "train_seconds": 32.469349999999395,
+            "train_seconds": 20.819225833001838,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00038905042068411905,
-            "train_seconds": 10.17475070799992,
+            "train_seconds": 6.69088420800108,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2946,28 +2948,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.535202131391593e-05,
-            "train_seconds": 161.5363803750006,
+            "train_seconds": 100.93910779200087,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.686188700974324e-05,
-            "train_seconds": 162.5341138750009,
+            "train_seconds": 103.1671644589951,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00019619429377630223,
-            "train_seconds": 33.75536354199721,
+            "train_seconds": 20.210254999998142,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003348676222635226,
-            "train_seconds": 10.575293417001376,
+            "train_seconds": 6.055427458995837,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -3078,28 +3080,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.965022945828322e-05,
-            "train_seconds": 167.46579824999935,
+            "train_seconds": 99.25930141699791,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.11959657767309e-05,
-            "train_seconds": 167.6954170839963,
+            "train_seconds": 98.32557629199437,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00019913528752834377,
-            "train_seconds": 32.39810320799734,
+            "train_seconds": 22.26916654100205,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00030722155740174156,
-            "train_seconds": 9.932972041999165,
+            "train_seconds": 6.765549249998003,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -3210,28 +3212,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.341108039323849e-05,
-            "train_seconds": 161.02726820899989,
+            "train_seconds": 102.74327408400131,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.812902670898539e-05,
-            "train_seconds": 165.55318408299354,
+            "train_seconds": 101.42667070899915,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00019947565431658435,
-            "train_seconds": 33.96391754200158,
+            "train_seconds": 17.1429634169981,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003186004113457683,
-            "train_seconds": 10.851112083000771,
+            "train_seconds": 5.506245958000363,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -3342,28 +3344,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.185245181059549e-05,
-            "train_seconds": 169.64967020799668,
+            "train_seconds": 86.65324662499916,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.128551775777143e-05,
-            "train_seconds": 276.51382091699634,
+            "train_seconds": 84.75655962499877,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00018728352382634607,
-            "train_seconds": 78.61800741699699,
+            "train_seconds": 16.900534415995935,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00033031975746982626,
-            "train_seconds": 39.626826459003496,
+            "train_seconds": 5.21799912500137,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -3474,28 +3476,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.520102538664812e-05,
-            "train_seconds": 394.08325004200015,
+            "train_seconds": 89.88283424999827,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.040102107367905e-05,
-            "train_seconds": 100.80985708299704,
+            "train_seconds": 103.4347498749994,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00021047985877697197,
-            "train_seconds": 19.15253537499666,
+            "train_seconds": 20.462163874995895,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.000294307748036873,
-            "train_seconds": 5.74956637500145,
+            "train_seconds": 6.368545125005767,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -3606,28 +3608,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 6.248191549376416e-05,
-            "train_seconds": 96.43262358399807,
+            "train_seconds": 101.61326595799619,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.034115358493484e-05,
-            "train_seconds": 112.67300558299758,
+            "train_seconds": 100.01921920800669,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.0001944379533785556,
-            "train_seconds": 21.465762834006455,
+            "train_seconds": 20.308642834002967,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0002803169158546047,
-            "train_seconds": 6.424673916000756,
+            "train_seconds": 6.613791957999638,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -3738,28 +3740,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.727714225637707e-05,
-            "train_seconds": 106.941917791999,
+            "train_seconds": 105.02007295800286,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.143045094282975e-05,
-            "train_seconds": 101.8111139580069,
+            "train_seconds": 104.06382599999779,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00019716748421819046,
-            "train_seconds": 18.707314624996798,
+            "train_seconds": 21.25949579099688,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0002904442339462952,
-            "train_seconds": 5.846994125000492,
+            "train_seconds": 6.094124833995011,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -87331,6 +87333,6 @@
       }
     }
   },
-  "total_wall_clock_seconds": 7770.5973738750035,
+  "total_wall_clock_seconds": 4865.905078333002,
   "quick_mode": false
 }

@@ -41,6 +41,7 @@ NUMBER = re.compile(
     r"|(?<![\w.#])(?P<dec>[+\-−]?\d+\.\d+(?:e[+\-−]?\d+)?)"
 )
 ANCHOR = re.compile(r"<!--([rn]):([^>]+?)-->")
+ANCHORED_INTEGER = re.compile(r"(?<![\w.#])(?P<dec>[+\-−]?\d+)(?=<!--[rn]:)")
 
 
 @pytest.fixture(scope="module")
@@ -80,7 +81,14 @@ def _occurrences(section: str):
         trailing = re.search(r"<!--n:([^>]+?)-row-->\s*$", stripped)
         if trailing:
             row_key = trailing.group(1)
-        events = [(m.start(), "num", m) for m in NUMBER.finditer(ANCHOR.sub(lambda a: " " * len(a.group(0)), line))]
+        blanked = ANCHOR.sub(lambda a: " " * len(a.group(0)), line)
+        events = [(m.start(), "num", m) for m in NUMBER.finditer(blanked)]
+        spans = [m.span() for m in NUMBER.finditer(blanked)]
+        # An integer is a count and is not checked -- unless an anchor follows it directly,
+        # which says it is a quoted value (for example a boundary given in bins). Digits
+        # inside a number already matched -- the exponent of 5.3e-4 -- are not a second one.
+        events += [(m.start(), "num", m) for m in ANCHORED_INTEGER.finditer(line)
+                   if not any(a <= m.start() < b for a, b in spans)]
         events += [(m.start(), "anchor", m) for m in ANCHOR.finditer(line)
                    if not m.group(2).endswith("-row")]
         events.sort(key=lambda e: e[0])
@@ -89,8 +97,9 @@ def _occurrences(section: str):
             if kind == "num":
                 if pending is not None:
                     out.append((lineno, pending[0], pending[1], None, None))
-                token = match.group("num") or match.group("dec")
-                pending = (token, bool(match.group("pct")))
+                groups = match.groupdict()
+                token = groups.get("num") or groups.get("dec")
+                pending = (token, bool(groups.get("pct")))
             else:
                 if pending is not None:
                     out.append((lineno, pending[0], pending[1], match.group(1), match.group(2)))
@@ -145,14 +154,15 @@ def test_no_citation_in_the_registry_goes_unused(registry, section):
 MUTATIONS = [
     ("transcription error in an SD", "0.011<!--r:R3.sd-->", "0.012<!--r:R3.sd-->"),
     ("transcription error in a percentage",
-     "34 %<!--r:D.boundary.nearer-->", "35 %<!--r:D.boundary.nearer-->"),
-    ("right number, wrong shift", "+6.83<!--r:A.gain.+0.25-->", "+6.83<!--r:A.gain.+0.50-->"),
-    ("right metric, wrong direction", "**−17.10<!--r:R2.+4-->**", "**−17.10<!--r:R2.-4-->**"),
-    ("anchor removed", "+4.47<!--r:R5b.BD--> dB**; **0/20", "+4.47 dB**; **0/20"),
+     "80 %<!--r:chk6.margin.pct-->", "85 %<!--r:chk6.margin.pct-->"),
+    ("right number, wrong shift", "+6.8<!--r:A.gain.+0.25-->", "+6.8<!--r:A.gain.+0.50-->"),
+    ("right metric, wrong direction", "**−17.1<!--r:R2.+4-->**", "**−17.1<!--r:R2.-4-->**"),
+    ("anchor removed", "+4.5<!--r:R5b.BD--> dB**; **0/20", "+4.5 dB**; **0/20"),
     ("a new unsourced number", "No mechanism is claimed.",
      "No mechanism is claimed, beyond 0.9 of the effect."),
     ("non-record number without a reason", "30.9<!--n:history-->", "30.9<!--n:trust-me-->"),
-    ("sign flipped", "−1.05<!--r:L10k.out.+4-->", "+1.05<!--r:L10k.out.+4-->"),
+    ("sign flipped", "−1.1<!--r:L10k.out.+4-->", "+1.1<!--r:L10k.out.+4-->"),
+    ("an anchored integer altered", "26<!--r:R6.bins-->", "27<!--r:R6.bins-->"),
 ]
 
 

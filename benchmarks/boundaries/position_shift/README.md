@@ -25,9 +25,17 @@ Nothing in this directory is distributed in the sdist or wheel (`AGENTS.md` §3)
 | `record_citations.py` | What every number quoted in the preregistration's Record section means and how it is derived from the record. Checked by `tests/test_p2a_record_citations.py`. |
 
 `../../../docs/preregistration/P2A-position-shift-boundary.md` is the registered
-design. It was fixed, audited and revised **before** any of this was implemented,
-and it is the document to read first: it says what was predicted, what the
-decision rules were, and what a failed prediction means.
+design. Its predictions and decision rules were fixed and audited **before** any of
+this was implemented (Revision 1); the later revisions, all logged, changed self-checks,
+provenance, rendering, scope wording and the record's structure — never a prediction.
+It is the document to read first: it says what was predicted, what the decision rules
+were, and what a failed prediction means.
+
+**Units.** Shifts and boundaries are measured in eV. `report.md` also gives each
+boundary in bins of this record's energy grid and as a multiple of the dominant
+peak's nominal FWHM. Those are conversions of the same number for this record's one
+setup; whether any of the three units carries over to another grid or line width
+was not tested.
 
 The rule that keeps this honest is the reference benchmark's: **numbers are never
 typed by hand**, and nor is anything else in `report.md`. `render_report.py`
@@ -198,17 +206,21 @@ of actual gates is not overstated.
 
 ## Status
 
-A record is published here, from the **fifth** full run, made in the environment
-`uv.lock` pins, with every self-check as registered and carrying its own provenance. The first two runs were discarded:
+A record is published here, from the **sixth** full run, made in the environment
+`uv.lock` pins, with every self-check as registered, carrying its own provenance, and
+holding only what was measured, what is derived from it, and what was fixed before
+the results — the result-dependent cautions are in the preregistration's Record
+section and in `report.md`. The first two runs were discarded:
 the first because a self-check was inert, the second because two independent audits
 found the apparatus did not verify the study's independent variable — nothing
 inspected the training data of the augmented arm or the density controls, and the
-checks meant to were comparing expressions against themselves. The third
-and fourth were superseded — the fourth because its self-check 4 sampled 12
-spectra per arm instead of the registered 5 %. The preregistration's revision log documents all of it,
+checks meant to were comparing expressions against themselves. The third to
+fifth were superseded — the third and fourth because their self-check 4 sampled 12
+spectra per arm instead of the registered 5 %, the fifth because its `claim_scope`
+still held result-dependent interpretation. The preregistration's revision log documents all of it,
 and the gate tests now reproduce the wrong inputs that got through.
 
-The second to fifth runs' records are all in git history, and every per-run
+The second to sixth runs' records are all in git history, and every per-run
 value in them is identical — across a change of operating-system version and a move
 from a shared conda base to the pinned environment. The numbers were never what was
 wrong; the claim "all self-checks passed" was.
