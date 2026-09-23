@@ -88,8 +88,10 @@ compute was spent.
 ```bash
 pip install -e ".[dev]"
 
-# The full measurement, as recorded. About half an hour on an Apple-silicon
-# machine; device auto-selects cuda > mps > cpu.
+# The full measurement, as recorded. Between half an hour and two hours on the
+# Apple-silicon machine that made the record, depending on thermal throttling -- the
+# record's own total_wall_clock_seconds is authoritative. Device auto-selects
+# cuda > mps > cpu.
 python benchmarks/boundaries/position_shift/position_shift_boundary.py
 
 # Regenerate the report from the record.
@@ -196,16 +198,17 @@ of actual gates is not overstated.
 
 ## Status
 
-A record is published here, from the **fourth** full run, made in the environment
-`uv.lock` pins and carrying its own provenance. The first two runs were discarded:
+A record is published here, from the **fifth** full run, made in the environment
+`uv.lock` pins, with every self-check as registered and carrying its own provenance. The first two runs were discarded:
 the first because a self-check was inert, the second because two independent audits
 found the apparatus did not verify the study's independent variable — nothing
 inspected the training data of the augmented arm or the density controls, and the
-checks meant to were comparing expressions against themselves. The third was
-superseded by the fourth. The preregistration's revision log documents all of it,
+checks meant to were comparing expressions against themselves. The third
+and fourth were superseded — the fourth because its self-check 4 sampled 12
+spectra per arm instead of the registered 5 %. The preregistration's revision log documents all of it,
 and the gate tests now reproduce the wrong inputs that got through.
 
-The second, third and fourth runs' records are all in git history, and every per-run
+The second to fifth runs' records are all in git history, and every per-run
 value in them is identical — across a change of operating-system version and a move
 from a shared conda base to the pinned environment. The numbers were never what was
 wrong; the claim "all self-checks passed" was.
@@ -222,8 +225,8 @@ package README, the documentation or a release note.
 
 ## Things about a record from this design that are easy to misread
 
-Written from the design, not from a result. Result-specific cautions go here once
-a record is published and audited.
+Most of these follow from the design; where one rests on the record's result, it says
+so. The result itself, with its conditions, is in the preregistration's Record section.
 
 - **The boundary is a property of the training distribution, not of XPS.**
   Whatever |Δ|\* the record reports is a property of *this* peak set, *this*
@@ -232,11 +235,12 @@ a record is published and audited.
 - **Augmentation "working" is not augmentation being free, and not augmentation
   being right.** The sweep runs past the augmented arm's training range so that
   its own edge is visible. Its *price* is a different question, and arms C and D
-  do **not** answer it: they were designed to, and the first run's R5b failed
-  0/20 in the opposite direction, which refutes the premise that cutting N to a
-  matched position density is an equal handicap. Cutting N removes information
-  about noise, intensity and width as well as position. Nothing in this design
-  bounds augmentation's cost in either direction. Calibrating the instrument is a
+  do **not** answer it: they were designed to, and R5b failed 0/20 in the
+  opposite direction, which refutes the premise that cutting N to a matched
+  position density is an equal handicap. One untested reading is that cutting N
+  removes information about noise, intensity and width as well as position; the
+  record does not decide it. Nothing in this design bounds augmentation's cost in
+  either direction. Calibrating the instrument is a
   different kind of answer to a calibration error again, and nothing here
   compares the two.
 - **Beyond |Δ| = 1.5 eV, degradation is not separable from window-edge effects.**
@@ -273,8 +277,9 @@ a record is published and audited.
   metric — makes the new record incomparable with the old one. Bump
   `RECORD_VERSION` and say what changed.
 - **Changing anything the preregistration fixed means revising the
-  preregistration first**, visibly, with the reason and the date. Two such
-  revisions already exist and both were forced by implementation, not by results.
+  preregistration first**, visibly, with the reason and the date. The
+  preregistration's revision log shows how many such revisions there have been and
+  what forced each.
 - Changing the noise model, the generator, or the meaning of a metric is an
   independent-audit item (`AGENTS.md` §8). So is quoting any number from this
   record anywhere outward-facing.

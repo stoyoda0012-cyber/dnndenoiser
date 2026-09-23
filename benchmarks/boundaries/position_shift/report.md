@@ -4,9 +4,9 @@
      results/position_shift_boundary.json. Do not edit by hand:
      anything written here is dropped the next time it is regenerated. -->
 
-Record generated 2026-09-23T03:28:57.595116+00:00 · record version 1 · 65.2 min wall clock
+Record generated 2026-09-23T12:45:38.039044+00:00 · record version 1 · 129.5 min wall clock
 
-Registered design: `docs/preregistration/P2A-position-shift-boundary.md` (first registered `06fa8c0`, last revised before this run at `b09b5d1`; code run from `2cb9045`, working tree clean). Predictions were fixed before implementation.
+Registered design: `docs/preregistration/P2A-position-shift-boundary.md` (first registered `06fa8c0`, last revised before this run at `3cca2c4`; code run from `3cca2c4`, working tree clean). Predictions were fixed before implementation.
 
 **What this report's guard verifies, and what it does not.** Before rendering, `render_report.py` recomputes every aggregate from the raw runs independently, and re-derives the `boundaries` and `predictions` trees from the raw runs with the measurement script's own functions — so an edited or stale record is refused, but an error *inside* those functions would be reproduced, not caught. **Not verified here at all:** the self-check figures, the environment, the consistency anchor and the M3 smoother comparator, which are not derivable from the raw runs and are printed as stored. Each section below that prints one of those says so.
 
@@ -280,7 +280,7 @@ Thirteen gates, each with a stated failure condition, each voiding the record. D
 | 1 parameter count | 658177 (expected read from the reference record) |
 | 2 grid invariance | bit-identical at all 25 shifts |
 | 3 test-sweep peak-set construction | every centre equals its literal plus Δ. A run-time unit test of the peak-set constructor and of the registry staying unmutated — it does not inspect generated spectra; check 8b does that |
-| 4 training-pool rigidity | 12 spectra per arm per seed rebuilt from the literal peaks, the recorded shift and the replayed draws, and required bit-identical to the pool |
+| 4 training-pool rigidity | 5% of every pool per seed — A narrow: 116, B augmented ±1.5 eV: 116, C narrow: 24, D narrow: 8 — rebuilt from the literal peaks, the recorded shift and the replayed draws, and required bit-identical to the pool |
 | 5 truncation | absolute retention at Δ=0 98.426 %; every shift within 1% of it, each peak within 2% |
 | 6 input-SNR invariance | worst span 100.0 → 0.138 dB, 1000.0 → 0.160 dB, 10000.0 → 0.202 dB |
 | 7 translation equivariance | worst residual 0.00456 of peak height against a tolerance of 0.01, compared with `np.roll` at integer grid offsets |
@@ -309,8 +309,8 @@ Arm A at Δ = 0 is the reference benchmark's own primary condition for this arch
 - a general position-shift threshold for XPS denoising: |delta|* is a property of THIS peak set, THIS jitter width, THIS architecture, THIS training-set size and THIS noise model, and one point was measured in each of those spaces
 - anything about other training-set sizes. Arms C and D were DESIGNED to bound the density penalty and the result shows they do not: R5b failed 0/20 in the opposite direction, so they are N controls, not density controls. They bound the cost of cutting N at one architecture and one recipe, and NOTHING here bounds the cost of augmentation in either direction
 - a boundary at any noise level other than the primary one: |delta|* is not defined at the lowest noise level, where the gain at zero shift is already negative, and no arm crosses zero inside the tested sweep at the highest. The boundary reported here is a single-noise-level quantity
-- that |delta|* is determined by the training position range. Arms C and D share arm A's position range exactly -- all three draw zero rigid shift at the same per-peak jitter -- and have nearer boundaries, so training-set size moves the boundary at fixed range
-- that augmentation is safe inside its training range in general. Arm B's plateau is one augmentation width, one architecture and one noise level, in two quantities
+- that |delta|* is determined by the training position range alone. Arms C and D share arm A's position range exactly -- all three draw zero rigid shift at the same per-peak jitter -- and their boundaries differ from arm A's, so range alone does not fix |delta|*. Whether training-set size moves it is a candidate for its own registration, not a finding here: no prediction names arm C's or arm D's boundary
+- that augmentation is safe inside its training range in general. Arm B was measured at one augmentation width, one architecture and one noise level, in two quantities, and no prediction names its gain between 0 and 1.5 eV
 - anything about other augmentation widths: one width (+/-1.5 eV) was tested, so R6 is a statement about that width and not about augmentation in general
 - a full-spectrum translate: linear_background is level + slope*(x - x[0]), a ramp pinned to the WINDOW, so it does not travel with the peaks and a peak moving along it sits on a different background level. This manipulation is therefore 'peaks shift under a stationary background'. Self-check 7 measures the departure from a pure translate and bounds it; it does not remove it
 - separation of degradation from window-edge effects beyond |delta| = 1.5 eV. Inside that range arm B IS an edge-proximity control, because it saw those edge distances in training; beyond it no arm did

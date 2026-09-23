@@ -1,22 +1,24 @@
 {
   "record_version": "1",
-  "generated_utc": "2026-09-23T03:28:57.595116+00:00",
+  "generated_utc": "2026-09-23T12:45:38.039044+00:00",
   "script": "position_shift_boundary.py",
   "provenance": {
     "how_recorded": "read from git and the filesystem at run time; nothing here is typed",
-    "code_commit": "2cb9045e6411fcd86683c8762aea54485633dd58",
+    "code_commit": "3cca2c46b27a2a95cbc11e58651f9200941f4c44",
     "working_tree_clean": true,
     "working_tree_changes_if_dirty": [],
     "script": {
       "path": "benchmarks/boundaries/position_shift/position_shift_boundary.py",
-      "sha256": "669434414116d23124469babfe36696b88d018fc5ac63d92415b01f255ff37ca"
+      "sha256": "553a8fc23e83cecdc8dc01f1eb752a9662b3c78f0d0febe5acfc1b50be5f85ec"
     },
     "registration": {
       "document": "docs/preregistration/P2A-position-shift-boundary.md",
-      "sha256_at_run": "bd451a41f96746e3c97dfe355522150907b8bdf46a329abbf202cb422edb3ca4",
+      "sha256_at_run": "49d69403d0158a179459717e83a242270479cf39e3f58ef11d5344aaf260beaf",
       "first_commit": "06fa8c012ae2f3f00de512f6db213f0436c828a9",
-      "last_commit_before_run": "b09b5d18a68a5648d951bb3d0624755f3e96f869",
+      "last_commit_before_run": "3cca2c46b27a2a95cbc11e58651f9200941f4c44",
       "commits_before_run": [
+        "3cca2c46b27a2a95cbc11e58651f9200941f4c44",
+        "8474c9491e60bd8a8603a51ccf07e094ed7d4f1f",
         "b09b5d18a68a5648d951bb3d0624755f3e96f869",
         "d5abcc0275f9eea2972366acefa76f5bb5f7ffe0",
         "05d3be7f9002dc3f5be4d66608b16c5684cc42e3",
@@ -41,8 +43,8 @@
       "a general position-shift threshold for XPS denoising: |delta|* is a property of THIS peak set, THIS jitter width, THIS architecture, THIS training-set size and THIS noise model, and one point was measured in each of those spaces",
       "anything about other training-set sizes. Arms C and D were DESIGNED to bound the density penalty and the result shows they do not: R5b failed 0/20 in the opposite direction, so they are N controls, not density controls. They bound the cost of cutting N at one architecture and one recipe, and NOTHING here bounds the cost of augmentation in either direction",
       "a boundary at any noise level other than the primary one: |delta|* is not defined at the lowest noise level, where the gain at zero shift is already negative, and no arm crosses zero inside the tested sweep at the highest. The boundary reported here is a single-noise-level quantity",
-      "that |delta|* is determined by the training position range. Arms C and D share arm A's position range exactly -- all three draw zero rigid shift at the same per-peak jitter -- and have nearer boundaries, so training-set size moves the boundary at fixed range",
-      "that augmentation is safe inside its training range in general. Arm B's plateau is one augmentation width, one architecture and one noise level, in two quantities",
+      "that |delta|* is determined by the training position range alone. Arms C and D share arm A's position range exactly -- all three draw zero rigid shift at the same per-peak jitter -- and their boundaries differ from arm A's, so range alone does not fix |delta|*. Whether training-set size moves it is a candidate for its own registration, not a finding here: no prediction names arm C's or arm D's boundary",
+      "that augmentation is safe inside its training range in general. Arm B was measured at one augmentation width, one architecture and one noise level, in two quantities, and no prediction names its gain between 0 and 1.5 eV",
       "anything about other augmentation widths: one width (+/-1.5 eV) was tested, so R6 is a statement about that width and not about augmentation in general",
       "a full-spectrum translate: linear_background is level + slope*(x - x[0]), a ramp pinned to the WINDOW, so it does not travel with the peaks and a peak moving along it sits on a different background level. This manipulation is therefore 'peaks shift under a stationary background'. Self-check 7 measures the departure from a pure translate and bounds it; it does not remove it",
       "separation of degradation from window-edge effects beyond |delta| = 1.5 eV. Inside that range arm B IS an edge-proximity control, because it saw those edge distances in training; beyond it no arm did",
@@ -1148,28 +1150,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -1224,28 +1230,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.749732347087249e-05,
-            "train_seconds": 55.86930525000025,
+            "train_seconds": 109.04726524999569,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.370420020279805e-05,
-            "train_seconds": 55.66754645799938,
+            "train_seconds": 99.2135813749992,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00019390622840327178,
-            "train_seconds": 11.514583207999749,
+            "train_seconds": 19.30615987499914,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003040951560251415,
-            "train_seconds": 3.484826291999525,
+            "train_seconds": 5.905811249998806,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -1276,28 +1282,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -1352,28 +1362,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 6.163525790725544e-05,
-            "train_seconds": 55.753911334000804,
+            "train_seconds": 97.42784862499684,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.607314930488226e-05,
-            "train_seconds": 55.978564000000006,
+            "train_seconds": 95.80105120799999,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00019410957837204352,
-            "train_seconds": 11.20903829100007,
+            "train_seconds": 19.312289457993757,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00031285997182648216,
-            "train_seconds": 3.485123666999243,
+            "train_seconds": 5.885331499994209,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -1404,28 +1414,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -1480,28 +1494,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.610601230425042e-05,
-            "train_seconds": 55.81723920799959,
+            "train_seconds": 96.85412416700274,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.720026880837395e-05,
-            "train_seconds": 56.312115457999425,
+            "train_seconds": 196.02070412500325,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00020112957080810107,
-            "train_seconds": 11.666877416000716,
+            "train_seconds": 39.427974500002165,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003126497289890216,
-            "train_seconds": 3.660672959000294,
+            "train_seconds": 6.99421566700039,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -1532,28 +1546,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -1608,28 +1626,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.969061539366926e-05,
-            "train_seconds": 56.13808637500006,
+            "train_seconds": 155.1577086249963,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.798744804355213e-05,
-            "train_seconds": 56.352559582999675,
+            "train_seconds": 184.5463443330009,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00016900765908287903,
-            "train_seconds": 11.440927333999753,
+            "train_seconds": 40.825531875001616,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00030258256528112624,
-            "train_seconds": 3.47851320799964,
+            "train_seconds": 11.477422542004206,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -1660,28 +1678,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -1736,28 +1758,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.529587353218327e-05,
-            "train_seconds": 56.18264233300033,
+            "train_seconds": 192.3136970419946,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.273239877277067e-05,
-            "train_seconds": 57.12714404200051,
+            "train_seconds": 192.72928599999432,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00021653538037910415,
-            "train_seconds": 11.947189874999822,
+            "train_seconds": 37.578448874999594,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0002977482896919052,
-            "train_seconds": 3.5691336249992673,
+            "train_seconds": 11.729437458001485,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -1788,28 +1810,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -1864,28 +1890,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 6.02542882259311e-05,
-            "train_seconds": 57.167288624999856,
+            "train_seconds": 186.17444783300016,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.112089926727802e-05,
-            "train_seconds": 57.93000937499983,
+            "train_seconds": 207.7192962909976,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00020151249943943373,
-            "train_seconds": 11.357305958000325,
+            "train_seconds": 34.54261195799336,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003330829883149515,
-            "train_seconds": 3.508517084000232,
+            "train_seconds": 10.253906207995897,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -1916,28 +1942,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -1992,28 +2022,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 6.127500079047523e-05,
-            "train_seconds": 56.81422137499976,
+            "train_seconds": 168.1108725830054,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.455794068142293e-05,
-            "train_seconds": 56.24282533299993,
+            "train_seconds": 169.5190767499953,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00020421432242889343,
-            "train_seconds": 11.267574499999682,
+            "train_seconds": 33.953490917003364,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003237752324720431,
-            "train_seconds": 3.4680192499999976,
+            "train_seconds": 10.509845667002082,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2044,28 +2074,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -2120,28 +2154,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.450426632099455e-05,
-            "train_seconds": 56.0859190000001,
+            "train_seconds": 171.02040087500063,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.233765194947612e-05,
-            "train_seconds": 76.51494950000051,
+            "train_seconds": 164.17103133400087,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.0001821572413660008,
-            "train_seconds": 18.490100791999794,
+            "train_seconds": 33.80001120799716,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003042838684955819,
-            "train_seconds": 5.373861250000118,
+            "train_seconds": 10.468507291996502,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2172,28 +2206,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -2248,28 +2286,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.810950101982194e-05,
-            "train_seconds": 91.92963383400001,
+            "train_seconds": 170.11980774999392,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.886842346732414e-05,
-            "train_seconds": 98.058186708,
+            "train_seconds": 171.45604704200377,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00021022256034233705,
-            "train_seconds": 20.595668957999806,
+            "train_seconds": 33.951221249997616,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00031710756916759745,
-            "train_seconds": 6.375995957999294,
+            "train_seconds": 10.607120041997405,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2300,28 +2338,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -2376,28 +2418,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.613450300895945e-05,
-            "train_seconds": 99.9025956660007,
+            "train_seconds": 161.1142765409968,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.706986747914925e-05,
-            "train_seconds": 99.63813674999983,
+            "train_seconds": 161.75910112499696,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00020722196244731033,
-            "train_seconds": 20.122266334000415,
+            "train_seconds": 33.59441783299553,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0002963295652686308,
-            "train_seconds": 6.233583124999313,
+            "train_seconds": 10.173419209000713,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2428,28 +2470,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -2504,28 +2550,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.584122626108486e-05,
-            "train_seconds": 99.55747595899993,
+            "train_seconds": 163.24594945800345,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.550193105193709e-05,
-            "train_seconds": 99.95830662499975,
+            "train_seconds": 163.3106362499966,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00020874761384189258,
-            "train_seconds": 20.425634917000934,
+            "train_seconds": 33.06197241699556,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00033479742382446095,
-            "train_seconds": 5.940733957999328,
+            "train_seconds": 10.060606457998801,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2556,28 +2602,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -2632,28 +2682,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 6.035380091715423e-05,
-            "train_seconds": 100.44201412499933,
+            "train_seconds": 162.0420967089958,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.68651709930014e-05,
-            "train_seconds": 99.27815162499974,
+            "train_seconds": 157.77982216700184,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00020129299032148616,
-            "train_seconds": 19.6371554999987,
+            "train_seconds": 31.49945100000332,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003323271489029543,
-            "train_seconds": 6.578094749998854,
+            "train_seconds": 9.702924457997142,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2684,28 +2734,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -2760,28 +2814,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 6.383563156002008e-05,
-            "train_seconds": 96.91550275000009,
+            "train_seconds": 160.91829070799577,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.106509267237723e-05,
-            "train_seconds": 92.92686670799958,
+            "train_seconds": 163.55314170900238,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00021731432784220269,
-            "train_seconds": 19.055196833000082,
+            "train_seconds": 32.469349999999395,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00038905042068411905,
-            "train_seconds": 5.917954625001585,
+            "train_seconds": 10.17475070799992,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2812,28 +2866,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -2888,28 +2946,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.535202131391593e-05,
-            "train_seconds": 94.66982595799891,
+            "train_seconds": 161.5363803750006,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.686188700974324e-05,
-            "train_seconds": 100.16848883400053,
+            "train_seconds": 162.5341138750009,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00019619429377630223,
-            "train_seconds": 21.225231708000138,
+            "train_seconds": 33.75536354199721,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003348676222635226,
-            "train_seconds": 6.56372354099949,
+            "train_seconds": 10.575293417001376,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -2940,28 +2998,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -3016,28 +3078,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.965022945828322e-05,
-            "train_seconds": 94.03491258399845,
+            "train_seconds": 167.46579824999935,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.11959657767309e-05,
-            "train_seconds": 94.33958720800001,
+            "train_seconds": 167.6954170839963,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00019913528752834377,
-            "train_seconds": 18.555100749999838,
+            "train_seconds": 32.39810320799734,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00030722155740174156,
-            "train_seconds": 5.819379874999868,
+            "train_seconds": 9.932972041999165,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -3068,28 +3130,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -3144,28 +3210,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.341108039323849e-05,
-            "train_seconds": 95.2659605000008,
+            "train_seconds": 161.02726820899989,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 8.812902670898539e-05,
-            "train_seconds": 93.94674479199966,
+            "train_seconds": 165.55318408299354,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00019947565431658435,
-            "train_seconds": 19.220275499999843,
+            "train_seconds": 33.96391754200158,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0003186004113457683,
-            "train_seconds": 5.978966874999969,
+            "train_seconds": 10.851112083000771,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -3196,28 +3262,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -3272,28 +3342,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.185245181059549e-05,
-            "train_seconds": 94.7262717499998,
+            "train_seconds": 169.64967020799668,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.128551775777143e-05,
-            "train_seconds": 114.3380219160008,
+            "train_seconds": 276.51382091699634,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00018728352382634607,
-            "train_seconds": 21.759550417000355,
+            "train_seconds": 78.61800741699699,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.00033031975746982626,
-            "train_seconds": 7.300761042000886,
+            "train_seconds": 39.626826459003496,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -3324,28 +3394,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -3400,28 +3474,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.520102538664812e-05,
-            "train_seconds": 113.73781891600083,
+            "train_seconds": 394.08325004200015,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.040102107367905e-05,
-            "train_seconds": 94.98834870800056,
+            "train_seconds": 100.80985708299704,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00021047985877697197,
-            "train_seconds": 18.930366208000123,
+            "train_seconds": 19.15253537499666,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.000294307748036873,
-            "train_seconds": 5.828095916000166,
+            "train_seconds": 5.74956637500145,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -3452,28 +3526,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -3528,28 +3606,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 6.248191549376416e-05,
-            "train_seconds": 93.74241279200032,
+            "train_seconds": 96.43262358399807,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.034115358493484e-05,
-            "train_seconds": 93.65497375000086,
+            "train_seconds": 112.67300558299758,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.0001944379533785556,
-            "train_seconds": 17.973598791999393,
+            "train_seconds": 21.465762834006455,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0002803169158546047,
-            "train_seconds": 5.563357375000123,
+            "train_seconds": 6.424673916000756,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -3580,28 +3658,32 @@
         "4_training_pool_rigidity": {
           "A_narrow_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "B_augmented_2304": {
             "n_samples": 2304,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 116,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "C_narrow_461": {
             "n_samples": 461,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 24,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
           },
           "D_narrow_144": {
             "n_samples": 144,
-            "n_reconstructed_and_compared": 12,
+            "n_reconstructed_and_compared": 8,
+            "registered_fraction": 0.05,
             "position_jitter": 0.3,
             "bit_identical_to_pool": true,
             "passed": true
@@ -3656,28 +3738,28 @@
           "A_narrow_2304": {
             "epochs_run": 50,
             "final_train_loss": 5.727714225637707e-05,
-            "train_seconds": 93.32521179200012,
+            "train_seconds": 106.941917791999,
             "n_train_spectra": 2304,
             "arm": "A_narrow_2304"
           },
           "B_augmented_2304": {
             "epochs_run": 50,
             "final_train_loss": 9.143045094282975e-05,
-            "train_seconds": 93.95501441600027,
+            "train_seconds": 101.8111139580069,
             "n_train_spectra": 2304,
             "arm": "B_augmented_2304"
           },
           "C_narrow_461": {
             "epochs_run": 50,
             "final_train_loss": 0.00019716748421819046,
-            "train_seconds": 18.83059200000025,
+            "train_seconds": 18.707314624996798,
             "n_train_spectra": 461,
             "arm": "C_narrow_461"
           },
           "D_narrow_144": {
             "epochs_run": 50,
             "final_train_loss": 0.0002904442339462952,
-            "train_seconds": 5.828104207999786,
+            "train_seconds": 5.846994125000492,
             "n_train_spectra": 144,
             "arm": "D_narrow_144"
           }
@@ -87249,6 +87331,6 @@
       }
     }
   },
-  "total_wall_clock_seconds": 3911.7494363330006,
+  "total_wall_clock_seconds": 7770.5973738750035,
   "quick_mode": false
 }

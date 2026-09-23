@@ -99,6 +99,16 @@ def displacement_z(record, delta):
     return float(residual / (v.std(ddof=1) / np.sqrt(len(v))))
 
 
+def disp_series(record, arm, delta, level=PRIMARY):
+    """Per-seed bias-corrected argmax displacement, disp(delta) - disp(0), eV."""
+    base = {r["seed_index"]: r["argmax_displacement_ev_mean"] for r in record["runs"]
+            if r["arm"] == arm and str(r["level"]) == level and r["delta"] == 0.0}
+    return np.array([r["argmax_displacement_ev_mean"] - base[r["seed_index"]]
+                     for r in record["runs"]
+                     if r["arm"] == arm and str(r["level"]) == level
+                     and abs(r["delta"] - delta) < 1e-9])
+
+
 def grid_step(record):
     return record["self_checks"]["2_and_3_grid_and_test_sweep_rigidity"]["energy_step_eV"]
 
@@ -143,12 +153,29 @@ CITATIONS = {
               lambda r: agg(r, A, PRIMARY, 4.0, "argmax_displacement_bias_corrected_ev_mean")),
     "R7.-4": ("bias-corrected argmax displacement, arm A, level 1000, delta -4.0, eV, mean",
               lambda r: agg(r, A, PRIMARY, -4.0, "argmax_displacement_bias_corrected_ev_mean")),
-    "R7.+1": ("bias-corrected argmax displacement, arm A, level 1000, delta +1.0, eV, magnitude",
-              lambda r: abs(agg(r, A, PRIMARY, 1.0, "argmax_displacement_bias_corrected_ev_mean"))),
+    "R7.+1": ("bias-corrected argmax displacement, arm A, level 1000, delta +1.0, eV, mean",
+              lambda r: agg(r, A, PRIMARY, 1.0, "argmax_displacement_bias_corrected_ev_mean")),
+    "R7.-1": ("bias-corrected argmax displacement, arm A, level 1000, delta -1.0, eV, mean",
+              lambda r: agg(r, A, PRIMARY, -1.0, "argmax_displacement_bias_corrected_ev_mean")),
+    **{f"R7.{d:+.0f}.sd": (f"SD across seeds of the bias-corrected displacement, arm A, level 1000, "
+                           f"delta {d:+.1f}, eV",
+                           (lambda d: lambda r: float(np.std(disp_series(r, A, d), ddof=1)))(d))
+       for d in (1.0, -1.0, 4.0, -4.0)},
 
     # boundary precision and direction
     "R3.sd": ("SD across seeds of arm A's first crossing, positive direction, level 1000, eV",
               lambda r: float(np.std(crossings(r, A, "positive"), ddof=1))),
+    "R3.sd.neg": ("SD across seeds of arm A's first crossing, negative direction, level 1000, eV",
+                  lambda r: float(np.std(crossings(r, A, "negative"), ddof=1))),
+    "R6.sd.pos": ("SD across seeds of arm B's first crossing, positive direction, level 1000, eV",
+                  lambda r: float(np.std(crossings(r, B, "positive"), ddof=1))),
+    "R6.sd.neg": ("SD across seeds of arm B's first crossing, negative direction, level 1000, eV",
+                  lambda r: float(np.std(crossings(r, B, "negative"), ddof=1))),
+    "R5a.AC.sd": ("SD across seeds of the paired A - C difference, level 1000, delta 0, dB",
+                  lambda r: r["predictions"]["R5a"]["orderings"]["A_over_C"]["stats"]["sd"]),
+    "R5a.AC.z": ("how many of those SDs the measured A - C lies above the design-time 3.4 dB",
+                 lambda r: (r["predictions"]["R5a"]["orderings"]["A_over_C"]["stats"]["mean"] - 3.4)
+                 / r["predictions"]["R5a"]["orderings"]["A_over_C"]["stats"]["sd"]),
     "R3.linear": ("median first crossing, arm A, positive, linear interpolation (registered), eV",
                   lambda r: boundary(r, A, "positive", "median_first_crossing_eV")),
     "R3.spline": ("median first crossing, arm A, positive, cubic-spline interpolation, eV",
@@ -191,6 +218,12 @@ CITATIONS = {
     "D.boundary.nearer": ("how much nearer arm D's boundary is than arm A's, positive, level 1000, %",
                           lambda r: 100 * (1 - boundary(r, D, "positive", "median_first_crossing_eV")
                                            / boundary(r, A, "positive", "median_first_crossing_eV"))),
+    **{f"{k}.boundary.nearer.neg": (f"how much nearer arm {k}'s boundary is than arm A's, negative, "
+                                    "level 1000, %",
+                                    (lambda arm: lambda r: 100 * (
+                                        1 - boundary(r, arm, "negative", "median_first_crossing_eV")
+                                        / boundary(r, A, "negative", "median_first_crossing_eV")))(arm))
+       for k, arm in (("C", C), ("D", D))},
 
     # R7 in both directions
     "R7.+4.short": ("|disp(+4) + 4|, arm A, level 1000, eV: shortfall from complete pinning",
@@ -216,13 +249,29 @@ CITATIONS = {
     **{f"B.disp.{d:+.2f}": (f"bias-corrected argmax displacement, arm B, level 1000, delta {d:+.2f}, eV",
                             (lambda d: lambda r: agg(r, B, PRIMARY, d,
                                                      "argmax_displacement_bias_corrected_ev_mean"))(d))
-       for d in (0.25, 0.75, 1.25, 1.5, 1.75, 2.0, 4.0)},
+       for d in (1.5, -1.5, 2.0, -2.0, 4.0, -4.0)},
+    **{f"B.disp.sd.{d:+.1f}": (f"SD across seeds of arm B's bias-corrected displacement, level 1000, "
+                               f"delta {d:+.1f}, eV",
+                               (lambda d: lambda r: float(np.std(disp_series(r, B, d), ddof=1)))(d))
+       for d in (1.5, 4.0, -4.0)},
+    "B.disp.sd.2.max": ("larger SD across seeds of arm B's displacement at delta = +2.0 and -2.0, eV",
+                        lambda r: max(float(np.std(disp_series(r, B, d), ddof=1)) for d in (2.0, -2.0))),
+    "B.disp.inner.maxabs": ("largest |mean| of arm B's bias-corrected displacement over |delta| <= 1.25, "
+                            "both directions, level 1000, eV",
+                            lambda r: max(abs(agg(r, B, PRIMARY, s * d,
+                                                  "argmax_displacement_bias_corrected_ev_mean"))
+                                          for d in (0.25, 0.5, 0.75, 1.0, 1.25) for s in (1, -1))),
+    "B.disp.inner.maxsd": ("largest SD across seeds of that displacement over |delta| <= 1.25, eV",
+                           lambda r: max(float(np.std(disp_series(r, B, s * d), ddof=1))
+                                         for d in (0.25, 0.5, 0.75, 1.0, 1.25) for s in (1, -1))),
 
     # the level-10000 cell cited under the descriptive-only exception
     "L10k.gain.+4": ("SNR gain, arm A, level 10000, delta +4.0, dB, mean",
                      lambda r: agg(r, A, "10000.0", 4.0, "snr_gain_db_mean")),
     "L10k.disp.+4": ("bias-corrected argmax displacement, arm A, level 10000, delta +4.0, eV",
                      lambda r: agg(r, A, "10000.0", 4.0, "argmax_displacement_bias_corrected_ev_mean")),
+    "L10k.in.0": ("input SNR, arm A, level 10000, delta 0, dB: what makes it the noisiest level",
+                  lambda r: runs_mean(r, A, "10000.0", 0.0, "input_snr_db_mean")),
     "L10k.in.+4": ("input SNR, arm A, level 10000, delta +4.0, dB, mean over runs",
                    lambda r: runs_mean(r, A, "10000.0", 4.0, "input_snr_db_mean")),
     "L10k.out.+4": ("output SNR, arm A, level 10000, delta +4.0, dB, mean over runs",
@@ -233,6 +282,12 @@ CITATIONS = {
                     lambda r: r["total_wall_clock_seconds"] / 60.0),
     "chk10.sd": ("check 10, arm B realised shift SD, seed 0, eV",
                  lambda r: r["self_checks"]["4_8_10_12_per_seed"][0]["10_augmentation"][B]["sd"]),
+    "chk10.sd.min": ("check 10, smallest arm B realised shift SD over the 20 seeds, eV",
+                     lambda r: min(x["10_augmentation"][B]["sd"]
+                                   for x in r["self_checks"]["4_8_10_12_per_seed"])),
+    "chk10.sd.max": ("check 10, largest arm B realised shift SD over the 20 seeds, eV",
+                     lambda r: max(x["10_augmentation"][B]["sd"]
+                                   for x in r["self_checks"]["4_8_10_12_per_seed"])),
     "chk10.sigma": ("check 10, uniform SD of U(-1.5, 1.5), eV",
                     lambda r: r["self_checks"]["4_8_10_12_per_seed"][0]["10_augmentation"][B]
                     ["expected_uniform_sd"]),
