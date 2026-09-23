@@ -149,6 +149,24 @@ Request an independent audit when the task brief asks for one, or when a change:
 - revises the acceptance criteria or the recorded conditions of a published
   measurement.
 
+### 8.1 What makes a check or a review count
+
+- A check counts once it has been shown to **reject** a named wrong input, and the
+  test showing it is committed beside it. A check that has only ever passed has not
+  been shown to check anything.
+- A check compares against a source of truth independent of what it checks.
+  Rebuilding the checked value through the code path that produced it is not a check.
+- A number quoted in prose about a measurement is tied to the metric, condition, unit
+  and record field it comes from, and the tie is tested. That the value appears
+  somewhere in the record is not a tie.
+- An independent review of a claim receives the frozen artefacts and a fixed
+  checklist, not the author's expected conclusions, and may report defects outside
+  the checklist. Automating a defined check does not replace reviewing whether it is
+  the right check.
+- A preregistration is published, with a person's approval, before its first run.
+
+How to apply these is in `docs/VERIFICATION.md`.
+
 ## 9. Git and local state
 
 - **Stage explicit paths.** Do not use `git add -A`, `git add .`, or `git commit -a`.
@@ -172,6 +190,9 @@ being prepared. They do not assert that any particular publication has been deci
   locations, or personal or affiliation details beyond what the project has already
   chosen to publish.
 - Claims in shipped documentation must satisfy §6 and stay inside §5.
+- A push to the public repository publishes history, not only the final tree. Before
+  one, review every commit it would expose, including discarded results and
+  superseded claims, and let a person decide. A draft pull request is already public.
 
 ## 11. What this file deliberately does not contain
 
@@ -183,6 +204,7 @@ being prepared. They do not assert that any particular publication has been deci
 | Dependencies, Python range, entry points, packaging | `pyproject.toml` |
 | Enforced checks | `.github/workflows/ci.yml`, `tests/` |
 | Reference measurement, its conditions and how to re-run it | `benchmarks/reference/` |
+| How checks, citations, reviews and publication are carried out | `docs/VERIFICATION.md` |
 
 Benchmark numbers, dates, a current "best architecture", session logs, and progress
 notes are intentionally absent: they go stale, and this file has no way to notice.
