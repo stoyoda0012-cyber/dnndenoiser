@@ -1,6 +1,6 @@
 # Preregistration — P2-A: the position-shift boundary, and what augmentation does to it
 
-**Status: registered 2026-09-22; revised eight times (see Revision log); run five
+**Status: registered 2026-09-22; revised nine times (see Revision log); run five
 times — the first two discarded for defects in the apparatus, the third and fourth
 superseded; the fifth, made under Revision 8 with every self-check as registered,
 reproduced the fourth exactly. The result is in the Record section, last. Seven of eight predictions held and R5b failed.
@@ -1176,6 +1176,45 @@ regenerate the record once more rather than disclose and leave them.
     stated; "close to 3.4 dB" became "2.7 SDs above it"; the `train_seconds` correction is
     attributed to the audits that found it; the noisiest level is named as such; the
     MPS backend is named beside the magnitudes it produced.
+
+
+### Revision 9 — 2026-09-23, a structural change to the record, before a sixth and last run
+
+A second independent review of the rewritten Record section found nothing blocking and
+a set of corrections, two of which sat inside the record rather than in this document.
+The cause was structural, and so is the repair.
+
+67. **The record's `claim_scope` held interpretation, so every wording review meant
+    re-measuring.** `claim_scope` is written into the record by the measurement script.
+    Revisions 4 and 8 added to it statements that depend on the result — how R5b's
+    failure should be read, what the other two noise levels showed, what arms C and D's
+    boundaries imply, what arm B's gain looked like inside its training range. Each time
+    a review asked for one of those to be worded differently, the only faithful ways to
+    change it were to edit the record by hand or to run the measurement again.
+
+    **Before:** `claim_scope` mixed the design's limits with four result-dependent
+    items. **After:** it states only what the design cannot support, as could have been
+    written before any result — one pool size per arm; predictions registered at one
+    noise level; no relation between |Δ|\* and any single property of the training
+    distribution; one augmentation width — and a new `result_dependent_interpretation`
+    entry tells a reader of the JSON alone where the result-dependent cautions are: the
+    Record section and `report.md`, each with its source. Nothing measured changes.
+
+68. **A hand-typed assertion is removed from the record.**
+    `design.preregistration.predictions_fixed_before_implementation: true` was typed
+    into the script, and the run could not verify it — the class of field Revision 7
+    removed elsewhere. What it asserted is stated in the Record section with the commits
+    that establish it.
+
+69. **After this run, prose corrections no longer require a measurement.** Everything
+    in the record is either measured, derived from what was measured, or fixed before
+    the results. Interpretation lives in this document and in `report.md`, whose unit
+    conversions (bins and the ratio to the dominant peak's nominal FWHM, added at an
+    external review's suggestion) are computed from the record at render time.
+
+70. **The review's other findings concern this document's own text** and are corrected
+    when the Record section is updated from the sixth record, which is compared with the
+    fifth field by field.
 
 
 ## Record

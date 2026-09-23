@@ -1511,24 +1511,16 @@ CLAIM_SCOPE = {
         "a general position-shift threshold for XPS denoising: |delta|* is a property of "
         "THIS peak set, THIS jitter width, THIS architecture, THIS training-set size and "
         "THIS noise model, and one point was measured in each of those spaces",
-        "anything about other training-set sizes. Arms C and D were DESIGNED to bound "
-        "the density penalty and the result shows they do not: R5b failed 0/20 in the "
-        "opposite direction, so they are N controls, not density controls. They bound "
-        "the cost of cutting N at one architecture and one recipe, and NOTHING here "
-        "bounds the cost of augmentation in either direction",
-        "a boundary at any noise level other than the primary one: |delta|* is not "
-        "defined at the lowest noise level, where the gain at zero shift is already "
-        "negative, and no arm crosses zero inside the tested sweep at the highest. The "
-        "boundary reported here is a single-noise-level quantity",
-        "that |delta|* is determined by the training position range alone. Arms C and D "
-        "share arm A's position range exactly -- all three draw zero rigid shift at the "
-        "same per-peak jitter -- and their boundaries differ from arm A's, so range alone "
-        "does not fix |delta|*. Whether training-set size moves it is a candidate for its "
-        "own registration, not a finding here: no prediction names arm C's or arm D's "
-        "boundary",
-        "that augmentation is safe inside its training range in general. Arm B was "
-        "measured at one augmentation width, one architecture and one noise level, in two "
-        "quantities, and no prediction names its gain between 0 and 1.5 eV",
+        "anything about other training-set sizes: each arm was trained at one pool size "
+        "(2304, 461 or 144 spectra), with one architecture and one recipe",
+        "an inferential claim at any noise level other than the primary one: every "
+        "prediction was registered at level 1000.0, and the other two levels are "
+        "descriptive",
+        "a relation between |delta|* and any single property of the training "
+        "distribution -- its position range, its size or its position density: one "
+        "architecture and four training distributions were measured",
+        "that augmentation is safe inside its training range in general: one "
+        "augmentation width, one architecture and one noise level were measured",
         "anything about other augmentation widths: one width (+/-1.5 eV) was tested, so "
         "R6 is a statement about that width and not about augmentation in general",
         "a full-spectrum translate: linear_background is level + slope*(x - x[0]), a "
@@ -1565,6 +1557,18 @@ CLAIM_SCOPE = {
         "statement of the form 'gain dips at delta = x' or 'the curve is asymmetric at x' "
         "may be made about a cell not named in a prediction. A feature seen there is a "
         "candidate for a NEW preregistration, not a finding of this one."
+    ),
+    # Fixed before the results, and only that. Revisions 4 and 8 added result-dependent
+    # interpretation here, which put interpretation inside the measurement's output: every
+    # wording review then required re-measuring. Revision 9 moved it out; this pointer is
+    # what a reader of the JSON alone is left with, so the limits are not lost to them.
+    "result_dependent_interpretation": (
+        "This list was fixed before the results and states only what the design cannot "
+        "support. Cautions that depend on the result -- among them how to read R5b's "
+        "failure, what the other two noise levels showed, and what arms C and D do and do "
+        "not show -- are in the Record section of "
+        "docs/preregistration/P2A-position-shift-boundary.md, and in report.md, each with "
+        "its source."
     ),
     "denoised_output_is_a_model_estimate": (
         "The evaluated quantity is agreement with a known synthetic reference. A high SNR "
@@ -1656,7 +1660,6 @@ def design_record(n_seeds: int, n_test_per_level: int, epochs_cap) -> dict:
         "preregistration": {
             "document": PREREGISTRATION,
             "version": "see provenance.registration, read from git at run time",
-            "predictions_fixed_before_implementation": True,
         },
         "manipulated": {
             "variable": "rigid energy shift delta (eV) applied to every peak at once",
