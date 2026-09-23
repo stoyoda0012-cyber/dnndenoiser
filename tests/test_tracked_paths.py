@@ -108,3 +108,37 @@ def test_the_guard_skips_its_own_token_source_but_nothing_else():
     files = {"tests/test_paths.py": token, "tests/other.py": token}
     found = offenders_in(files, files.get, forbidden_tokens())
     assert [f.split(":")[0] for f in found] == ["tests/other.py"]
+
+
+def history_offenders(revision_range: str) -> list[str]:
+    """Every commit in `revision_range` whose patch adds a forbidden token.
+
+    The pre-push check. A tree can be clean while an earlier commit in the range still
+    carries a path, and a push publishes every commit in the range.
+    """
+    tokens = forbidden_tokens()
+    log = subprocess.run(
+        ["git", "log", "-p", "--format=COMMIT %h %s", revision_range, "--",
+         ".", ":(exclude)tests/test_paths.py"],
+        cwd=REPO_ROOT, check=True, capture_output=True).stdout.decode("utf-8", "replace")
+    found, commit, path = [], "?", "?"
+    for line in log.splitlines():
+        if line.startswith("COMMIT "):
+            commit = line[7:]
+        elif line.startswith("+++ b/"):
+            path = line[6:]
+        elif line.startswith("+") and not line.startswith("+++"):
+            found += [f"{commit} | {path} | {t!r}" for t in tokens if t in line]
+    return found
+
+
+if __name__ == "__main__":
+    # python tests/test_tracked_paths.py origin/main..HEAD
+    import sys
+
+    revision_range = sys.argv[1] if len(sys.argv) > 1 else "origin/main..HEAD"
+    hits = history_offenders(revision_range)
+    for hit in hits:
+        print(hit)
+    print(f"{len(hits)} commit line(s) in {revision_range} add a developer-specific path")
+    raise SystemExit(1 if hits else 0)
