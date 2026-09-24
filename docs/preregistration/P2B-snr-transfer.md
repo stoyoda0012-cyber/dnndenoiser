@@ -1,9 +1,9 @@
 # Preregistration — P2-B: training and inference at different signal-to-noise ratios
 
-**Status: DRAFT — not registered, not implemented, not run.** Items marked
-**PROPOSED** are decisions the owner has not yet made. This document becomes a
-registration only when the owner approves it and it is **published (pushed) before the
-first run**
+**Status: DRAFT — not registered, not implemented, not run.** The design and the
+predictions were decided by the owner on 2026-09-25; the self-checks are completed at
+implementation. This document becomes a registration only when the owner approves it,
+after an independent audit, and it is **published (pushed) before the first run**
 (`AGENTS.md` §8.1). Nothing below may later be revised to match a result; a change
 after registration is made visibly, with the reason and the date, in a Revision log.
 
@@ -94,12 +94,16 @@ separately wherever a ratio is quoted.
    sample's frames alone, as SIA trained per sample.
 2. **noise2clean (baseline).** Trained against clean references on a pool of
    independently drawn spectra from the same generator at the same single training
-   flux — **PROPOSED:** 2304 spectra, P2-A's pool size, all at that one flux — with
-   P2-A's recipe, so that its diagonal cell at λ = 100 can be set beside
+   flux — 2304 spectra, P2-A's pool size, all at that one flux — with P2-A's recipe, so that its diagonal cell at λ = 100 can be set beside
    P2-A's operating point. The two methods therefore differ in information (clean
    targets versus none), in training data (a pool of spectra versus one sample's
    frames) and in recipe. **The comparison between them is descriptive**; it cannot
    attribute a difference to any one of those.
+   Because the noise2clean pool has the same 2304 spectra at every level, its row of
+   the grid varies training S/N **without** varying the amount of training data. That
+   makes it a descriptive handle on the moving-average method's confound between S/N
+   and frame count — only a handle, since the two methods differ in the three ways
+   just named.
 
 **Pairing.** For each seed, both methods and every training level are evaluated on
 the **same test arrays**: fresh single frames of the seed's sample at each inference
@@ -143,7 +147,7 @@ and its inference flux.
   of the diagonal cell at the same inference flux, computed within seed: what training
   at the other flux cost, or gained, relative to training at the flux being denoised.
 
-## Registered predictions (PROPOSED — for the owner's decision)
+## Registered predictions
 
 Evaluated for the moving-average method; the same statistics are recorded for
 noise2clean, descriptively. Every prediction is a **sign rule per cell, across the
@@ -152,34 +156,57 @@ noise2clean, descriptively. Every prediction is a **sign rule per cell, across t
 **How the threshold and Holm fit together.** The one-sided binomial *p* of *k* of 20
 seeds in the stated direction, under a fair coin, is 0.0207 at 15, 0.0059 at 16,
 0.0013 at 17, 0.00020 at 18 and 0.000020 at 19. Holm's first step for a family of
-*m* tests at α = 0.05 is 0.05/*m*: 0.005 for 10 cells, 0.0167 for 3. So the per-cell
-threshold is set at the smallest *k* whose *p* clears that first step — **17 of 20
-for a family of 10, 16 of 20 for a family of 3** — and a family in which every cell
-meets it passes Holm at every step. **Holm is therefore required, and is met through
-the threshold**; the Holm-adjusted *p* of every cell is also reported. (The
-alternative — a looser threshold with Holm reported only — is not proposed: it would
-let a prediction "hold" that its own correction does not support.)
+*m* tests at α = 0.05 is 0.05/*m*. The per-cell threshold is the smallest *k* whose
+*p* clears that first step, so a family in which every cell meets it passes Holm at
+every step:
 
-- **R1 — positive control, upper levels only.** At λ = 20, 45 and 100, the diagonal
-  cell's M1 is positive in at least 19 of 20 seeds — P2-A's positive-control rule,
-  stricter than the family-of-3 minimum of 16. The diagonal cells at λ = 4 and 9 are
-  **descriptive**: whether the method helps at all there is part of what is being
-  measured, not a precondition.
+| Family size *m* | 1–2 | 3–8 | 9–10 |
+|---|---|---|---|
+| Per-cell threshold, of 20 seeds | 15 | 16 | 17 |
+
+**Holm is required, and is met through the threshold**; the Holm-adjusted *p* of every
+cell is also reported. A looser threshold with Holm reported only is not used: it
+would let a prediction hold that its own correction does not support.
+
+- **R1 — positive control, at λ = 20, 45 and 100.** The diagonal cell's M1 is positive
+  in at least 19 of 20 seeds — P2-A's positive-control rule, stricter than the
+  family-of-3 threshold of 16. **Why only these levels:** the SIA paper reports that
+  training at its most photon-starved exposure, 4.8 s/frame, failed structurally — the
+  denoiser's output lost its diversity, and all three cells trained there shared one
+  wrong reconstruction whatever they were applied to. λ = 4 sits at that exposure's
+  place in the 25-fold range (the lowest flux), and λ = 9 between it and SIA's 24 s;
+  λ = 20, 45 and 100 cover SIA's 24 s and 120 s. The mapping is by relative flux only:
+  the synthetic counts are not SIA's. So whether the method helps at λ = 4 and 9 is
+  part of what is measured, and those two diagonal cells are **descriptive**.
 - **R2 — training above inference costs little.** In each of the 10 cells with
-  training flux above inference flux, M2 is above the margin in at least 17 of 20
-  seeds. **The margin, two options for the owner:**
-  - *(a) fixed:* M2 > −1 dB.
-  - *(b) relative:* M2 > −0.1 × the diagonal gain at the same inference flux, within
-    seed — the off-diagonal model keeps at least 90 % of what training at the
-    inference flux achieves. Defined only where that diagonal gain is positive; at
-    λ = 4 and 9, where R1 does not require it to be, a seed with a non-positive
-    diagonal gain counts against the prediction rather than being dropped.
+  training flux above inference flux, M2 > −1 dB in at least 17 of 20 seeds. A fixed
+  margin is a different fraction of the diagonal gain at each inference level; that
+  is accepted, and the record says so. A relative margin was rejected because seven of
+  the ten cells are at λ = 4 or 9, where the diagonal it would be relative to is
+  descriptive and may not be positive. **Each R2 cell is reported with its own M1 and
+  the diagonal cell's M1 beside it**: where the diagonal fails, an R2 cell can pass
+  formally by losing little relative to nothing, and that is not to be read as
+  transfer that worked.
 - **R3 — training below inference costs.** In each of the 10 cells with training flux
   below inference flux, M2 is negative in at least 17 of 20 seeds.
 - **R4 — the asymmetry.** For each of the 10 pairs of levels (a below b), the penalty
   of training at a and denoising at b is larger than that of training at b and
   denoising at a — −M2(a→b) > −M2(b→a), paired within seed — in at least 17 of 20
   seeds.
+
+**If R1 fails at a level.** Decided now, before any result:
+- R1's failure is reported first, per level.
+- If R1 fails at one level L of λ = 20, 45, 100: every R2 and R3 cell whose inference
+  level is L, and every R4 pair that includes L, becomes descriptive — its M2 is
+  measured against a diagonal that did not work. R2, R3 and R4 are evaluated on the
+  cells that remain, with the per-cell threshold read from the table above for the
+  reduced family size. The record names the cells removed.
+- If R1 fails at two or three of those levels, R2, R3 and R4 are not evaluated: the
+  method did not work at enough of the grid for a transfer statement to mean anything.
+  All their cells are reported descriptively.
+- Cells at inference λ = 4 and 9 are not removed by this rule. Their diagonals were
+  never required to work; R2's report of M1 beside M2 is what keeps them from being
+  misread.
 
 R2 and R3 together are this document's analogue, on synthetic spectra, of the SIA
 paper's empirical directional rule. Whichever way they fall, both are recorded; a
@@ -188,7 +215,7 @@ run.
 
 ## Self-checks that void the record
 
-To be completed at implementation and reviewed before registration. At least:
+Completed at implementation and audited before registration. At least:
 - the realised count at each level matches its λ;
 - every level's noise is exact Poisson (no Gaussian approximation anywhere);
 - no test frame is byte-identical to a training frame, and the test arrays are
@@ -211,7 +238,7 @@ To be completed at implementation and reviewed before registration. At least:
 
 ## Before registration
 
-1. The owner decides every **PROPOSED** item.
+1. ~~The owner decides the design and the predictions~~ — done 2026-09-25.
 2. The apparatus is implemented under `benchmarks/boundaries/snr_transfer/`, reusing
    what P2-A's apparatus does through a shared module; P2-A's own script is not
    edited, because its hash is in its record.
