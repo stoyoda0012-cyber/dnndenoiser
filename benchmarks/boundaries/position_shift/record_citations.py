@@ -382,6 +382,7 @@ PAGE_REQUIRED_PHRASES = (
     "exactly right by construction",
     "does not establish that the output's peak sits where the reference's does",
     "was not measured",
+    "consistently smaller",
     "cannot attribute why",
 )
 

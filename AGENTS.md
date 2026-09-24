@@ -119,8 +119,8 @@ Further rules:
   describes: (a) the record's own report — its preregistration's Record section and its
   `report.md`; (b) anywhere else, only where, after an independent review (§8), the
   person who decides publication has cleared those statements and their numbers for
-  quotation in that place, the decision is recorded in the record's preregistration, and
-  the place links to the record.
+  quotation in that place, the decision is recorded in the record's preregistration or in
+  the document that states the record's conditions, and the place links to the record.
 - Retractions, "undecided" verdicts, and negative results stay in the record. Do not
   delete or quietly soften them.
 - Do not promote an empirical regularity to a law.

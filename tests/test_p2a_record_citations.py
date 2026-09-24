@@ -315,69 +315,115 @@ def test_a_planted_error_is_rejected(registry, record, section, label, old, new)
     assert rejected, f"planted error not caught: {label}"
 
 
-# The same, planted in the page. The last two are what the Revision 11 check exists for:
-# a number that is correct and anchored, but was never cleared for quotation here.
+# The same, planted in the page. Each case names the check that must reject it -- not
+# merely some check -- so a case cannot pass because an unrelated rule happened to fire.
+# Revision 11, item 78, tabulates these; `test_item_78_table_matches_the_planted_cases`
+# keeps that table and this list in step.
+ANCHORED = "test_every_number_on_the_page_is_anchored"
+MATCHES = "test_every_page_citation_matches_the_record"
+CLEARED = "test_the_page_cites_exactly_what_revision_11_cleared"
+DESIGN = "test_the_page_uses_design_values_only_as_registered"
+DIGIT = "test_no_digit_on_the_page_stands_outside_an_anchored_number"
+FIFTH = "test_every_record_number_on_the_page_is_within_a_fifth_of_its_value"
+QUALIFIERS = "test_the_page_keeps_its_qualifiers"
+
+M1 = "(M1 is the SNR gain.)"
+NO_MECH = " No\n  mechanism is claimed."
 PAGE_MUTATIONS = [
-    ("page: boundary mistyped", "0.47<!--r:R3.pos--> eV toward", "0.52<!--r:R3.pos--> eV toward"),
-    ("page: rounded figure outside its precision", "about\n  0.5<!--r:R3.pos--> eV",
+    ("page: anchor removed", ANCHORED, "about\n  1.8<!--r:R6.pos--> eV", "about\n  1.8 eV"),
+    ("page: boundary mistyped", MATCHES, "0.47<!--r:R3.pos--> eV toward", "0.52<!--r:R3.pos--> eV toward"),
+    ("page: rounded figure outside its precision", MATCHES, "about\n  0.5<!--r:R3.pos--> eV",
      "about\n  0.6<!--r:R3.pos--> eV"),
-    ("page: anchor removed", "about\n  1.8<!--r:R6.pos--> eV", "about\n  1.8 eV"),
-    ("page: an uncleared record number, correct and anchored", "(M1 is the SNR gain.)",
-     "(M1 is the SNR gain.) At zero shift it gained +11.4<!--r:A.gain.0--> dB."),
-    ("page: an uncleared record number relabelled as a design value", "(M1 is the SNR gain.)",
-     "(M1 is the SNR gain.) At zero shift it gained +11.4<!--n:reg--> dB."),
-    ("page: an uncleared record number under another non-record reason",
-     "(M1 is the SNR gain.)", "(M1 is the SNR gain.) B beat D by +4.5<!--n:design--> dB."),
-    ("page: an unanchored count", "(M1 is the SNR gain.)",
-     "(M1 is the SNR gain.) It gained 11 dB at zero shift."),
-    ("page: a cleared sentence removed", " (1.8<!--r:R6.neg--> eV the other way;", " ("),
-    ("page: a required qualifier deleted", " No\n  mechanism is claimed.", ""),
-    ("page: a required qualifier hidden in a comment", " No\n  mechanism is claimed.",
-     " <!-- No mechanism is claimed. -->"),
-    ("page: a signed count", "(M1 is the SNR gain.)", "(M1 is the SNR gain.) It gained +11 dB."),
-    ("page: a sentence-final count", "(M1 is the SNR gain.)",
-     "(M1 is the SNR gain.) The gain in dB was 11."),
-    ("page: a unit-glued count", "(M1 is the SNR gain.)", "(M1 is the SNR gain.) It gained 11dB."),
-    ("page: an exponent form", "(M1 is the SNR gain.)", "(M1 is the SNR gain.) It gained .13e1 dB."),
-    ("page: an uncleared difference passed off as an integer design value",
-     "(M1 is the SNR gain.)", "(M1 is the SNR gain.) B beat D by 4<!--n:reg--> dB."),
-    ("page: rounded until it says something else", "0.47<!--r:R3.pos--> eV toward",
-     "0<!--r:R3.pos--> eV toward"),
-    ("page: R7 rounded to full pinning", "−0.67<!--r:R7.+1-->", "−1<!--r:R7.+1-->"),
-    ("page: an anchored number set off by a space", "0.47<!--r:R3.pos--> eV toward",
+    ("page: an uncleared record number, correct and anchored", CLEARED, M1,
+     M1 + " At zero shift it gained +11.4<!--r:A.gain.0--> dB."),
+    ("page: a cleared sentence removed", CLEARED, " (1.8<!--r:R6.neg--> eV the other way;", " ("),
+    ("page: an uncleared record number under another non-record reason", DESIGN, M1,
+     M1 + " B beat D by +4.5<!--n:design--> dB."),
+    ("page: an uncleared record number relabelled as a design value", DESIGN, M1,
+     M1 + " At zero shift it gained +11.4<!--n:reg--> dB."),
+    ("page: an uncleared difference passed off as an integer design value", DESIGN, M1,
+     M1 + " B beat D by 4<!--n:reg--> dB."),
+    ("page: an unanchored count", DIGIT, M1, M1 + " It gained 11 dB at zero shift."),
+    ("page: a signed count", DIGIT, M1, M1 + " It gained +11 dB."),
+    ("page: a sentence-final count", DIGIT, M1, M1 + " The gain in dB was 11."),
+    ("page: a unit-glued count", DIGIT, M1, M1 + " It gained 11dB."),
+    ("page: an anchored number set off by a space", DIGIT, "0.47<!--r:R3.pos--> eV toward",
      "9 <!--r:R3.pos--> eV toward"),
-    ("page: an integer mantissa with an exponent", "0.47<!--r:R3.pos--> eV toward",
+    ("page: an exponent form", DIGIT, M1, M1 + " It gained .13e1 dB."),
+    ("page: an integer mantissa with an exponent", DIGIT, "0.47<!--r:R3.pos--> eV toward",
      "9e0<!--r:R3.pos--> eV toward"),
-    ("page: a sign flipped with an en dash", "+0.63<!--r:R7.-1-->", "–0.63<!--r:R7.-1-->"),
-    ("page: a count at the start of a wrapped line", "(M1 is the SNR gain.)",
-     "(M1 is the SNR gain.) Its gain in dB was\n  11. Beyond"),
-    ("page: a qualifier kept only in a link-reference definition",
-     (" No\n  mechanism is claimed.", "**Record:**"),
-     ("", '[nm]: #record "No mechanism is claimed."\n\n**Record:**')),
+    ("page: a count at the start of a wrapped line", DIGIT, M1,
+     M1 + " Its gain in dB was\n  11. Beyond"),
+    ("page: a sign flipped with an en dash", DIGIT, "+0.63<!--r:R7.-1-->", "–0.63<!--r:R7.-1-->"),
+    ("page: rounded until it says something else", FIFTH, "0.47<!--r:R3.pos--> eV toward",
+     "0<!--r:R3.pos--> eV toward"),
+    ("page: R7 rounded to full pinning", FIFTH, "−0.67<!--r:R7.+1-->", "−1<!--r:R7.+1-->"),
+    ("page: a required qualifier deleted", QUALIFIERS, NO_MECH, ""),
+    ("page: a required qualifier hidden in a comment", QUALIFIERS, NO_MECH,
+     " <!-- No mechanism is claimed. -->"),
+    ("page: a qualifier kept only in a link-reference definition", QUALIFIERS,
+     (NO_MECH, "**Record:**"), ("", '[nm]: #record "No mechanism is claimed."\n\n**Record:**')),
 ]
 
 
-@pytest.mark.parametrize("label,old,new", PAGE_MUTATIONS, ids=[m[0] for m in PAGE_MUTATIONS])
-def test_a_planted_error_on_the_page_is_rejected(registry, record, section, page, label, old, new):
+def _page_check(name, registry, record, text):
+    return {
+        ANCHORED: lambda: test_every_number_on_the_page_is_anchored(text),
+        MATCHES: lambda: test_every_page_citation_matches_the_record(registry, record, text),
+        CLEARED: lambda: test_the_page_cites_exactly_what_revision_11_cleared(registry, text),
+        DESIGN: lambda: test_the_page_uses_design_values_only_as_registered(registry, record, text),
+        DIGIT: lambda: test_no_digit_on_the_page_stands_outside_an_anchored_number(text),
+        FIFTH: lambda: test_every_record_number_on_the_page_is_within_a_fifth_of_its_value(
+            registry, record, text),
+        QUALIFIERS: lambda: test_the_page_keeps_its_qualifiers(registry, text),
+    }[name]
+
+
+@pytest.mark.parametrize("label,check,old,new", PAGE_MUTATIONS, ids=[m[0] for m in PAGE_MUTATIONS])
+def test_a_planted_error_on_the_page_is_rejected(registry, record, page, label, check, old, new):
+    _page_check(check, registry, record, page)()  # the unmutated page passes this check
     mutated = page
     for o, n in (zip(old, new) if isinstance(old, tuple) else [(old, new)]):
         assert o in mutated, f"mutation anchor for {label!r} no longer on the page"
         mutated = mutated.replace(o, n, 1)
-    checks = [
-        lambda: test_every_number_on_the_page_is_anchored(mutated),
-        lambda: test_every_page_citation_matches_the_record(registry, record, mutated),
-        lambda: test_every_non_record_number_on_the_page_states_its_reason(registry, mutated),
-        lambda: test_the_page_uses_design_values_only_as_registered(registry, record, mutated),
-        lambda: test_no_digit_on_the_page_stands_outside_an_anchored_number(mutated),
-        lambda: test_every_record_number_on_the_page_is_within_a_fifth_of_its_value(
-            registry, record, mutated),
-        lambda: test_the_page_keeps_its_qualifiers(registry, mutated),
-        lambda: test_the_page_cites_exactly_what_revision_11_cleared(registry, mutated),
-    ]
-    rejected = 0
-    for check in checks:
-        try:
-            check()
-        except AssertionError:
-            rejected += 1
-    assert rejected, f"planted error not caught: {label}"
+    with pytest.raises(AssertionError):
+        _page_check(check, registry, record, mutated)()
+
+
+def test_item_78_table_matches_the_planted_cases(text=None):
+    """Every claim in item 78's table names a check and planted cases that exist here, with
+    that check; and every planted case and every page check appears in the table."""
+    text = DOCUMENT.read_text(encoding="utf-8") if text is None else text
+    table = text[text.index("<!-- item-78-table -->"):text.index("<!-- /item-78-table -->")]
+    rows = [r for r in table.splitlines() if r.strip().startswith("|") and "`test_" in r]
+    planted = {label: check for label, check, _o, _n in PAGE_MUTATIONS}
+    seen_cases, seen_checks = set(), set()
+    for row in rows:
+        _claim, check_cell, cases_cell = [c.strip() for c in row.strip().strip("|").split("|")]
+        check = check_cell.strip("`")
+        cases = [c.strip().strip("`") for c in cases_cell.split(";")]
+        for case in cases:
+            assert planted.get(case) == check, f"item 78 row {row!r}: {case!r} is not a case of {check}"
+        seen_cases.update(cases)
+        seen_checks.add(check)
+    assert seen_cases == set(planted), f"planted cases missing from item 78: {set(planted) - seen_cases}"
+    assert seen_checks == {c for _l, c, _o, _n in PAGE_MUTATIONS}
+
+
+TABLE_MUTATIONS = [
+    ("a case renamed", "`page: a signed count`", "`page: a signed number`"),
+    ("a case put under the wrong check",
+     "| `test_every_number_on_the_page_is_anchored` | `page: anchor removed` |",
+     "| `test_every_page_citation_matches_the_record` | `page: anchor removed` |"),
+    ("a row dropped", "| a dash other than the three parsed signs used as a sign "
+     "| `test_no_digit_on_the_page_stands_outside_an_anchored_number` "
+     "| `page: a sign flipped with an en dash` |\n", ""),
+]
+
+
+@pytest.mark.parametrize("label,old,new", TABLE_MUTATIONS, ids=[m[0] for m in TABLE_MUTATIONS])
+def test_a_wrong_item_78_table_is_rejected(label, old, new):
+    text = DOCUMENT.read_text(encoding="utf-8")
+    assert old in text, f"mutation anchor for {label!r} no longer in item 78"
+    with pytest.raises(AssertionError):
+        test_item_78_table_matches_the_planted_cases(text.replace(old, new, 1))

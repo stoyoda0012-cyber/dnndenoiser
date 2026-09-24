@@ -143,6 +143,7 @@ Discarded records and superseded claims in earlier commits become readable.
 Nothing from a record is published — pushed or released — in the package README, the
 package documentation or a release note until the record's claims that would be quoted,
 and the place quoting them, have been independently reviewed and a person has decided
-what may be quoted. That decision is recorded in the record's preregistration, naming the
-place, the statements and the commit reviewed, and the numbers quoted there are tested
+what may be quoted. That decision is recorded in the record's preregistration or in the
+document that states the record's conditions, naming the place, the statements and the
+commit reviewed, and the numbers quoted there are tested
 as AGENTS.md §6, exception (b), requires.

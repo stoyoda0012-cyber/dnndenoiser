@@ -1351,8 +1351,8 @@ documentation" means published: the page exists on an unpushed branch until item
     (a) arm A's boundary in both directions, with its range across seeds (R3);
     (b) arm B's boundary in both directions, with its range across seeds, and that shift
     training did not remove the boundary (R6);
-    (b′) that at zero shift arm B's improvement was slightly smaller than arm A's and this
-    design cannot attribute why — without the number;
+    (b′) that at zero shift arm B's improvement was consistently smaller than arm A's and
+    this design cannot attribute why — without the number or an adjective of size;
     (c) R7 as a warning, for arm A: at ±1.0 eV the bias-corrected displacement with its
     SD, read as the denoised peak following only about a third of the shift; that the
     shortfall grew with the shift, as R7 registered, and that at ±4.0 eV the peak hardly
@@ -1377,21 +1377,32 @@ documentation" means published: the page exists on an unpushed branch until item
     arms C and D, the comparators, the other levels and arm B's gain at zero shift. The
     record keys are `CLEARED_FOR_WHEN_TO_TRUST` in
     `benchmarks/boundaries/position_shift/record_citations.py`.
-78. **What the tests enforce, and what they do not.** `tests/test_p2a_record_citations.py`
-    applies the Record section's rules to the page — every decimal anchored, every
-    record value recomputed at the precision quoted — and these as well, each shown by
-    planted errors to reject what it is for:
-    the page's record keys equal the proposed set;
-    an `n:` number must be `n:reg`, written with its decimal, and exactly equal in
-    magnitude to some design value read from the record;
-    no digit may stand in the rendered text outside a number whose anchor follows it
-    directly, written without an exponent or a leading dot — apart from three literals
-    (the core level's name, the metric's name, a method's name) and the markers of an
-    ordered list that starts at 1 after a blank line;
-    no dash other than the three parsed signs may stand before a digit;
-    no record number may be more than a fifth away from its value, however rounded;
-    and the qualifiers in `PAGE_REQUIRED_PHRASES` must be present in the rendered text,
-    which excludes HTML comments and link-reference definitions.
+78. **What the tests refuse, and what they do not.** Each claim below is shown by the
+    named planted cases in `test_a_planted_error_on_the_page_is_rejected`
+    (`tests/test_p2a_record_citations.py`), each of which requires the named check to
+    pass on the page and to fail on the mutated page. A claim with no such case is not
+    made here. `test_item_78_table_matches_the_planted_cases` fails if this table and the
+    planted cases fall out of step.
+
+<!-- item-78-table -->
+| The tests refuse | Check | Planted cases |
+|---|---|---|
+| a decimal on the page with no anchor | `test_every_number_on_the_page_is_anchored` | `page: anchor removed` |
+| a record number that differs from the record at the precision quoted | `test_every_page_citation_matches_the_record` | `page: boundary mistyped`; `page: rounded figure outside its precision` |
+| a record key on the page outside the proposed set | `test_the_page_cites_exactly_what_revision_11_cleared` | `page: an uncleared record number, correct and anchored` |
+| a proposed record key no longer cited on the page | `test_the_page_cites_exactly_what_revision_11_cleared` | `page: a cleared sentence removed` |
+| an `n:` anchor other than `n:reg` | `test_the_page_uses_design_values_only_as_registered` | `page: an uncleared record number under another non-record reason` |
+| an `n:reg` number that is no design value read from the record | `test_the_page_uses_design_values_only_as_registered` | `page: an uncleared record number relabelled as a design value` |
+| an `n:reg` number written without its decimal | `test_the_page_uses_design_values_only_as_registered` | `page: an uncleared difference passed off as an integer design value` |
+| a count with no anchor, bare, signed, sentence-final or glued to its unit | `test_no_digit_on_the_page_stands_outside_an_anchored_number` | `page: an unanchored count`; `page: a signed count`; `page: a sentence-final count`; `page: a unit-glued count` |
+| a number whose anchor is set off by a space | `test_no_digit_on_the_page_stands_outside_an_anchored_number` | `page: an anchored number set off by a space` |
+| a number in exponent form, with or without a leading dot | `test_no_digit_on_the_page_stands_outside_an_anchored_number` | `page: an exponent form`; `page: an integer mantissa with an exponent` |
+| a count at the start of a wrapped line, which Markdown renders as text | `test_no_digit_on_the_page_stands_outside_an_anchored_number` | `page: a count at the start of a wrapped line` |
+| a dash other than the three parsed signs used as a sign | `test_no_digit_on_the_page_stands_outside_an_anchored_number` | `page: a sign flipped with an en dash` |
+| a record number more than a fifth from its value, however rounded | `test_every_record_number_on_the_page_is_within_a_fifth_of_its_value` | `page: rounded until it says something else`; `page: R7 rounded to full pinning` |
+| a required qualifier missing from the rendered text, including one kept only in a comment or a link-reference definition | `test_the_page_keeps_its_qualifiers` | `page: a required qualifier deleted`; `page: a required qualifier hidden in a comment`; `page: a qualifier kept only in a link-reference definition` |
+<!-- /item-78-table -->
+
     **What passes regardless**, and is the review's to catch: a number written in words;
     a record value that coincides in magnitude with a design value and is marked
     `n:reg`; one design value swapped for another; a correct number moved onto another
@@ -1399,7 +1410,9 @@ documentation" means published: the page exists on an unpushed branch until item
     word inside a sentence that negates it, or deleted while its phrase survives in an
     unrelated sentence; a statement added without a number; and a sentence deleted
     whose numbers' keys are cited elsewhere on the page and which holds no required
-    phrase — with or without numbers.
+    phrase — with or without numbers. Digits are allowed outside anchors only in three
+    literals (the core level's name, the metric's name, a method's name) and in the
+    markers of an ordered list that starts at 1 after a blank line.
 79. **Registry keys added for the page**: arm B's negative-direction boundary and its
     range across seeds, the primary level's input SNR at zero shift, and four design
     counts. The Record section cites none of them; the unused-key check counts the page.
@@ -1437,9 +1450,10 @@ documentation" means published: the page exists on an unpushed branch until item
     tiers: a record's own report (the Record section and `report.md`) may restate its
     numbers if they are tested as §8.1 describes; anywhere else, only statements and
     numbers that the person who decides publication has cleared for that place after an
-    independent review, with the decision recorded in the record's preregistration, the
-    place linking to the record, and the numbers tested as §8.1 describes. The wording
-    was tightened after the second and third reviews (items 83 and 84).
+    independent review, with the decision recorded in the record's preregistration or in
+    the document that states the record's conditions, the place linking to the record,
+    and the numbers tested as §8.1 describes. The wording was tightened after the second
+    and third reviews (items 83 and 84), and its last form set by the owner.
 83. **What the second review of `0d62c60` found, and what changed.** Three blocking
     findings, confirmed and repaired:
     (i) the page said the model was trained "with the `noise2clean` method". The
@@ -1482,11 +1496,20 @@ documentation" means published: the page exists on an unpushed branch until item
     §6 (b) requires the clearance to follow an independent review and to cover the
     statements, not only the numbers; the Status line names the review; items 80 and 83
     no longer overclaim; the CHANGELOG no longer says every number is recomputed; two
-    overlong lines are rewrapped. **Not changed, for the owner:** the review found
-    "slightly smaller" for arm B at zero shift softer than the record, a paired
-    difference present in every run; the wording is the owner's (item 77 b′).
-85. **Confirmation.** *Not yet confirmed.* To be filled by the owner's decision: the date,
-    the statements cleared, and the commit the independent review examined.
+    overlong lines are rewrapped. The review also found "slightly smaller", for arm B at
+    zero shift, softer than the record, whose paired difference is negative in every
+    run; at the owner's direction the page now says "consistently smaller", with no
+    number and no adjective of size (item 77 b′).
+85. **Confirmation.** *Not yet confirmed.*
+    - **Reviewed:** the third independent review examined `8f058c5`, with the fixed
+      checklist used by all three reviews.
+    - **Changed after that review, not reviewed:** `38fd535`, which repaired its
+      findings (item 84), and the commit after it, which rewrote item 78 as a table tied
+      to the planted cases, replaced "slightly smaller" and set AGENTS.md §6 (b)'s last
+      wording. Neither was reviewed; every claim in item 78 is shown instead by its
+      planted cases, and the table by `test_item_78_table_matches_the_planted_cases`
+      with its own planted cases.
+    - **Date and statements cleared:** to be filled by the owner's decision.
 
 ## Record
 

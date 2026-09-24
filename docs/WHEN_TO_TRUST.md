@@ -35,7 +35,7 @@ amount — the shape of a charging offset or a calibration error.
   1.8<!--r:R6.pos--> eV** (1.8<!--r:R6.neg--> eV the other way; between
   1.79<!--r:R6.range.lo--> and 1.87<!--r:R6.range.hi--> eV over runs and directions). It
   did not remove it: beyond that, this model failed too. At zero shift its improvement
-  was slightly smaller than the first model's, and this design cannot attribute why.
+  was consistently smaller than the first model's; this design cannot attribute why.
 - **At ±1.0<!--n:reg--> eV, the denoised peak followed only about a third of the
   shift.** For the model trained without shifts, at a shift of +1.0<!--n:reg--> eV the
   maximum of the denoised spectrum sat −0.67<!--r:R7.+1--> ± 0.03<!--r:R7.+1.sd--> eV from
