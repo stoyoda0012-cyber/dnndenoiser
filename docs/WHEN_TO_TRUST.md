@@ -2,77 +2,92 @@
 
 A trained denoiser is only valid inside the distribution it was trained on. Outside
 it, the output can be worse than the input — and still look plausible. This page
-collects, one question at a time, what has been **measured** about where that happens.
-Each answer gives the number, the conditions it was measured under, and a link to the
-record that owns it. Anything not listed here has not been measured.
+gives what has been measured about where that happens, with the conditions and the
+record each answer comes from. It quotes only what has been cleared for quotation
+here; the records hold more, and anything neither here nor in a record has not been
+measured.
 
-<!-- Every number on this page carries an r: anchor (a value taken from the record)
-or an n: anchor (one that deliberately is not), and tests/test_p2a_record_citations.py
-recomputes each r: value from the record. Only the sentences listed in the P2-A
-preregistration's Revision 11 are cleared for quotation; the test refuses any other
-record key on this page. -->
+<!-- Every number on this page carries an r: anchor (a value recomputed from the record)
+or an n:reg anchor (a registered design value, checked against the record's design),
+and tests/test_p2a_record_citations.py enforces that and the proposed clearance in the
+P2-A preregistration's Revision 11. What the test cannot check is listed there. -->
 
 ## My spectra sit at a different energy than the training data. How far can I trust the model?
 
-**Which workflows this is about.** It applies when a model is trained on synthetic
-spectra — the `noise2clean` and `noise2noise` methods, which learn from clean synthetic
-references — or when a model trained on one measurement is reused on another whose
-energy scale differs, for example through sample charging or a calibration offset.
-The self-supervised moving-average method (`train --method moving-average`) trains on
-the frames of the measurement it denoises. **This measurement did not include it**:
-it says nothing about shifts between the frames of one measurement, such as charging
-that drifts during acquisition, and nothing about reusing a self-supervised model on
-another measurement.
+**What was measured.** A model trained on synthetic spectra with the `noise2clean`
+method, then given spectra whose peaks were all shifted in energy by the same amount —
+the shape of a charging offset or a calibration error.
 
-**What was measured.** A rigid shift of the whole spectrum, applied at inference to a
-model trained without one:
+- **Trained without shifts, it lost all of its benefit at about
+  0.5<!--r:R3.pos--> eV.** The boundary was 0.47<!--r:R3.pos--> eV toward higher energy
+  and 0.47<!--r:R3.neg--> eV toward lower; across the 20<!--r:n.seeds--> training runs it
+  fell between 0.45<!--r:R3.range.lo--> and 0.49<!--r:R3.range.hi--> eV. Beyond it the
+  SNR gain was negative: by this metric the output was further from the clean spectrum
+  than the noisy input was.
+- **Trained with shifts drawn from ±1.5<!--n:reg--> eV, the boundary moved to about
+  1.8<!--r:R6.pos--> eV** (1.8<!--r:R6.neg--> eV the other way; between
+  1.79<!--r:R6.range.lo--> and 1.87<!--r:R6.range.hi--> eV across runs). It did not remove
+  it: beyond that, this model failed too.
+- **The denoised peak followed only about a third of the shift.** For the model trained
+  without shifts, at a shift of +1.0<!--n:reg--> eV the highest point of the denoised
+  spectrum sat −0.67<!--r:R7.+1--> ± 0.03<!--r:R7.+1.sd--> eV from that of the clean
+  spectrum at the same shift, and at −1.0<!--n:reg--> eV
+  +0.63<!--r:R7.-1--> ± 0.04<!--r:R7.-1.sd--> eV (mean ± SD across runs, after
+  subtracting the same quantity at zero shift). The peak stayed short of where it should
+  have been by roughly two-thirds of the shift. This is read from the grid point of the
+  dominant peak's maximum. No mechanism is claimed.
 
-- A model trained with ±0.3<!--n:reg--> eV of per-peak position jitter and no rigid
-  shift **lost all of its SNR-gain benefit at a shift of about 0.5<!--r:R3.pos--> eV**
-  (0.47<!--r:R3.pos--> eV toward higher energy, 0.47<!--r:R3.neg--> eV toward lower).
-  Beyond that it made the spectrum worse than the noisy input.
-- Training with a rigid shift drawn per spectrum from ±1.5<!--n:reg--> eV **moved that
-  point to about 1.8<!--r:R6.pos--> eV** (1.8<!--r:R6.neg--> eV the other way). **It did
-  not remove it**: beyond that, this model failed too.
-- **The denoised peak does not follow the shift.** For the model trained without a
-  rigid shift, at a shift of ±1.0<!--n:reg--> eV the denoised peak moved the other way,
-  by −0.67<!--r:R7.+1--> / +0.63<!--r:R7.-1--> eV — roughly two-thirds of the shift.
-  No mechanism is claimed.
+**Under these conditions only.**
 
-**Under these conditions only.** Synthetic C 1s spectra from this package's generator
-(three peaks, 256 points on a 0.069<!--r:grid.step--> eV grid); a ResNet-FCNN at the
-reference recipe, trained on 2304 spectra, an equal mix of three Poisson noise levels;
-the numbers above are for the middle level, where the noisy input's SNR at zero shift
-is about 16<!--r:L1k.in.0--> dB; 20 independently seeded training runs; the MPS
-backend; the shift applied to the peaks under a background that does not move. On that
-grid, 0.47<!--r:R3.pos--> eV is about 6.8<!--r:R3.bins--> bins, or about
-0.39<!--r:R3.fwhm--> times the main peak's nominal width (1.2<!--r:fwhm.nominal--> eV
-FWHM). **Whether the eV figure, the bin figure or the width ratio carries over to your
-grid and line widths was not tested** — none of them should be assumed to.
+- *Data.* Synthetic C 1s spectra from this package's generator: three peaks,
+  256<!--r:n.points--> points on a 0.069<!--r:grid.step--> eV grid, with ±0.3<!--n:reg--> eV
+  of independent position jitter per peak in training. The peaks shift under a linear
+  background that stays in place, so this is not a translation of the whole spectrum.
+- *Model.* A ResNet-FCNN at the reference recipe, trained against clean references on
+  2304<!--r:n.train.A--> spectra: an equal mix of three Poisson noise levels.
+- *Noise model.* Training and test noise come from the same function, so the model's
+  noise model is exactly right by construction — which measured data never is. Two of
+  the three levels use a Gaussian approximation to the Poisson noise.
+- *Evaluation.* The numbers above are for the middle level, where the noisy input's SNR
+  at zero shift is about 16<!--r:L1k.in.0--> dB. Every level was in training, so
+  training and inference share one signal-to-noise regime.
+- *Metric.* SNR gain in dB against the clean spectrum at the same shift, averaged over
+  512<!--r:n.test--> test spectra per shift. The boundary is the median over runs of
+  each run's first crossing of zero gain; this estimator is biased low wherever the
+  curve wobbles near zero.
+- *Replicates and split.* The replicate is the training run, each with its own seed:
+  every ± and range above is across runs, and the spectra within one test set are not
+  treated as independent replicates. The two models were tested on identical spectra. Training and test spectra are generated
+  independently from disjoint random streams; the independently generated spectrum is
+  the unit that keeps them apart.
+- *Units.* On this grid 0.47<!--r:R3.pos--> eV is about 6.8<!--r:R3.bins--> bins, or about
+  0.39<!--r:R3.fwhm--> times the dominant peak's nominal width of
+  1.2<!--r:fwhm.nominal--> eV FWHM — which each spectrum varies, and which is narrower than
+  the three-peak envelope. Whether the eV figure, the bin figure or the width ratio
+  carries over to your grid and line widths was not tested.
+- *Backend and provenance.* Measured on the MPS backend; numbers are not bit-identical
+  across devices. The preregistration was not published before the measurement ran,
+  so that it came first is attested only by this repository's own history.
 
 **What to do.**
 
 1. Put the energy scale where the model expects it before denoising — correct for
    charging and calibration first.
-2. If you train on synthetic spectra, train across the shifts you expect, and test
-   beyond them: the boundary moves outward, it does not disappear.
-3. Check peak positions against the noisy input, and verify any position, area or
+2. Check peak positions against the noisy input, and verify any position, area or
    width downstream. A denoised spectrum is a model estimate, not a measurement.
 
-**Not established here.** Anything about measured spectra; other peak shapes,
-architectures, training-set sizes or noise levels (at the least noisy of the three
-levels this model did not help even without a shift; at the noisiest, no failure point
-appeared within ±4.0<!--n:reg--> eV); shifts that move peaks relative to each other,
-such as chemical shifts; and any general threshold for XPS.
+**Not established here.**
+
+- Anything about measured spectra.
+- The `noise2noise` and self-supervised moving-average methods, including shifts
+  between the frames of one measurement, and reusing any trained model on another
+  measurement.
+- Noise levels other than the one quoted.
+- Other peak shapes, grids, architectures, training-set sizes, or shift ranges in
+  training.
+- Training with shifts as a remedy, and what it costs at zero shift.
+- Shifts that move peaks relative to each other, such as chemical shifts.
+- Any general threshold for XPS.
 
 **Record:** [`benchmarks/boundaries/position_shift/`](../benchmarks/boundaries/position_shift/)
 — the report, the preregistration it was measured against, and how to re-run it.
-
-## Not yet measured
-
-- A model trained at one signal-to-noise ratio and applied at another.
-- Which architecture holds up best when the peaks move.
-- Anything on measured spectra with a known reference.
-
-These are planned as further records of the same kind. Until one exists, this page
-says nothing about them.

@@ -14,8 +14,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   where a trained model stops being trustworthy, one question at a time. The first
   answer is how far a shift in energy can be trusted, from the P2-A record: the
   conditions, what to do, and what was not established. Every number on the page is
-  recomputed from the record by a test, and only the statements the preregistration's
-  Revision 11 cleared may appear there.
+  anchored to the record or to its registered design, and a test recomputes each one;
+  the prose around the numbers is checked by review, not by the test.
 
 ### Fixed
 
