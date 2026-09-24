@@ -162,6 +162,11 @@ Python 3.12.11, `torch` 2.9.1, `numpy` 2.3.3. Elsewhere they are **reported,
 not required**. C4, C5 and C6's *tolerance* form are required wherever the suite
 runs.
 
+*The platform was added to this environment 2026-09-24 (Revision 5): macOS on
+Apple silicon (`Darwin-arm64`), the development machine the fixture and the
+Result were produced on; the Result section did not record it. The versions compare
+on their release number, without a wheel's build label.*
+
 *C7's scope was amended 2026-09-21 (Revision 2). The registered text put it with
 C4–C6, which was an oversight: C7 **is** C2's statistic at 30 epochs, so it
 carries exactly C2's environment dependence and cannot be required where C2 is
@@ -688,3 +693,34 @@ which claims survive a different BLAS is not something a single machine can
 tell you. The general rule this settles: **any criterion whose statistic is an
 exact comparison of floating-point results is a claim about one build**, and
 belongs behind the environment pin unless it has a tolerance form as well.
+
+## Revision 5 — 2026-09-24, from a Windows run
+
+The suite was run on Windows 11 (x86-64, Ryzen 9 8940HX) at the pinned
+versions, `torch` 2.9.1 in its `+cpu` and `+cu128` builds. Two findings, both
+about the gate, not the port.
+
+| # | Finding | Change |
+|---|---|---|
+| 1 | **The gate never admitted any Windows wheel.** It compared `torch.__version__` verbatim, and Windows wheels carry a build label (`2.9.1+cpu`, `2.9.1+cu128`). C0, C2, C3, C6's exactness, C7 and C1's tie-ambiguous cases skipped there for a reason that was not the real one | Versions compare on the release number alone |
+| 2 | **With the label mismatch removed, the gate would have required these criteria on x86-64, where they fail.** The Environment section already said the pin fixes Python, `torch` and `numpy` "but **not** the CPU microarchitecture", and makes results on another CPU reported, not required; the gate did not encode that. Removing the label check alone would have turned the section's "reported" into "required and failing" | The platform (`platform.system()-platform.machine()`) is part of the pin: `Darwin-arm64`, recorded in the fixture's `_environment`. `tests/test_p1_environment_gate.py` shows the gate refusing `Windows-AMD64` and `Linux-x86_64` and admitting the pin with or without a build label |
+
+**No criterion's statistic, tolerance or fixture value changed.** C7 keeps
+`1e-4`; a separate x86-64 tolerance would be a revision of a criterion, and
+"Revision of C2 requires a demonstration, not an argument" applies to it
+equally.
+
+**Reported, not required — x86-64, Windows 11, CPU**, as reported by the
+Windows run and not reproduced here:
+
+- C1 fails in the four tie-ambiguous cases, C2, C3 and C7 fail.
+- With numpy's SIMD dispatch turned off (`NPY_DISABLE_CPU_FEATURES`), C1's
+  targets match the pinned sha256 bit for bit, and C2 and C3 pass. That
+  attributes C1's difference to x86 SIMD `argsort` resolving ties differently —
+  the dependence Revision 3 confirmed across builds, now seen across
+  instruction sets — and C2's and C3's to the targets they train on.
+  **PLAUSIBLE**: one machine, one run.
+- C7 still fails with SIMD off: relative L∞ `1.8e-4` against `1e-4`. The cause
+  proposed, a difference between `torch`'s CPU kernels on x86-64 and arm64, is
+  **unverified**.
+

@@ -511,6 +511,7 @@
   },
   "_environment": {
     "note": "C0, C2, C3 and C7 are required only in this environment",
+    "platform": "Darwin-arm64",
     "python": "3.12.11",
     "torch": "2.9.1",
     "numpy": "2.3.3",

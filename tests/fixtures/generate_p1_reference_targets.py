@@ -31,6 +31,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
 import sys
 from pathlib import Path
 
@@ -189,6 +190,7 @@ def main() -> int:
         "c7_trained_output_epochs30_seed0": c7,
         "_environment": {
             "note": "C0, C2, C3 and C7 are required only in this environment",
+            "platform": f"{platform.system()}-{platform.machine()}",
             "python": sys.version.split()[0],
             "torch": torch.__version__,
             "numpy": np.__version__,
