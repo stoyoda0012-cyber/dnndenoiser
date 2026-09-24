@@ -719,8 +719,73 @@ Windows run and not reproduced here:
   attributes C1's difference to x86 SIMD `argsort` resolving ties differently —
   the dependence Revision 3 confirmed across builds, now seen across
   instruction sets — and C2's and C3's to the targets they train on.
-  **PLAUSIBLE**: one machine, one run.
+  **PLAUSIBLE**: one machine, one run. *(Upgraded to CONFIRMED for that
+  machine below, from the run's own output.)*
 - C7 still fails with SIMD off: relative L∞ `1.8e-4` against `1e-4`. The cause
   proposed, a difference between `torch`'s CPU kernels on x86-64 and arm64, is
   **unverified**.
+
+### The Windows run's output — received 2026-09-24, after Revision 5
+
+The findings above were written from the Windows run's summary. Its output
+followed and is recorded here. It is still the output of one machine, received
+as text, and not reproduced on it by anyone else; what was checked here is
+stated where it was.
+
+**Machine and build.** Windows 11, AMD Ryzen 9 8940HX (Zen 4, with AVX-512),
+Python 3.12.14, `torch` 2.9.1+cpu, `numpy` 2.3.3. To run the gated tests the
+run replaced `platform.system` and `platform.machine` after importing `torch`;
+nothing else in the gate or the tests was changed.
+
+**SIMD off** means
+`NPY_DISABLE_CPU_FEATURES="AVX F16C FMA3 AVX2 AVX512F AVX512CD AVX512_SKX AVX512_CLX AVX512_CNL AVX512_ICL"`:
+every AVX-family feature numpy dispatched to on that CPU, plus F16C and FMA3,
+leaving SSSE3, SSE41, POPCNT and SSE42. Which one of them decides the ties was
+not narrowed down.
+
+**C1.** Targets computed from the fixture's cases directly, outside pytest.
+"Tie rows" counts the rows whose neighbour set differs between the default and
+a stable `argsort`, on that build.
+
+| Case | Tie rows, SIMD on → off | sha256 equals the pinned value, SIMD on / off |
+|---|---|---|
+| `a_arange_W1` | 98 → 86 | no / **yes** |
+| `a_arange_W2` | 0 → 0 | yes / yes |
+| `a_arange_W5` | 98 → 107 | no / **yes** |
+| `a_arange_W10` | 0 → 0 | yes / yes |
+| `b_permuted_W5` | 98 → 90 | no / **yes** |
+| `c_clamp_n3_W10` | 0 → 0 | yes / yes |
+| `e_duplicate_index_W5` | 97 → 85 | no / **yes** |
+
+*Checked here:* the seven SIMD-off digests the run reported were compared with
+`cases/*/sha256` in `tests/fixtures/p1_reference_targets.json` and all seven are
+equal; the four SIMD-on digests equal none. The SIMD-off tie counts equal
+Revision 3's table, which was computed on the pinned build.
+
+**C2, C3, C7**, at `1bcbbf7`, with the platform replaced as above:
+
+| | SIMD on | SIMD off |
+|---|---|---|
+| C1 | 4 failed (the four tie-ambiguous cases) | passed |
+| C2, relative L∞ (limit `1e-4`) | `4.066e-3`, failed | passed |
+| C3 | failed: seed 5, port 33.245 dB vs reference 32.549 dB, \|Δ\| 0.696 dB > 0.5 | passed |
+| C7, relative L∞ (limit `1e-4`) | `3.351e-3`, failed | `1.825e-4`, failed |
+
+**Reading.**
+
+- **C1's difference is the SIMD `argsort` tie-break: CONFIRMED on this machine.**
+  Turning numpy's SIMD dispatch off, and changing nothing else, moves every
+  tie-ambiguous case from a wrong digest to the pinned one, bit for bit, and the
+  tie counts to the pinned build's. That is an intervention with an exact
+  outcome, not a correlation. It is confirmed for one CPU; which instruction set
+  is responsible, and whether other x86-64 CPUs behave the same, is not known.
+- **C2's and C3's failures with SIMD on follow from C1's targets.** With the
+  targets restored, both pass on this machine. This is the attribution above,
+  now observed rather than inferred.
+- **C7's remaining `1.825e-4` is not explained.** A difference between
+  `torch`'s CPU kernels on x86-64 and arm64 is the proposed cause and remains
+  **unverified**. On the same targets C2 is inside the limit at 20 epochs and C7
+  is not at 30, where the scheduler fires; the run did not report C2's value, so
+  how far the two are apart is not known. That C7's excess is small is not a
+  reason to widen its tolerance, and none is widened.
 
