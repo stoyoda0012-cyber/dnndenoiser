@@ -15,6 +15,10 @@ Rules enforced here, per line of the Record section:
 - each `r:` value, recomputed from the record, equals the quoted text at the
   precision quoted;
 - every `n:` key has a stated reason, and no `r:` key in the registry goes unused.
+
+`docs/WHEN_TO_TRUST.md` quotes the same record to users and is held to the same rules,
+over the whole page. It must also cite exactly the record keys Revision 11 cleared for
+it, `CLEARED_FOR_WHEN_TO_TRUST` in the registry: no fewer, and none besides.
 """
 from __future__ import annotations
 
@@ -30,9 +34,10 @@ BOUNDARY = REPO_ROOT / "benchmarks" / "boundaries" / "position_shift"
 REGISTRY = BOUNDARY / "record_citations.py"
 RECORD = BOUNDARY / "results" / "position_shift_boundary.json"
 DOCUMENT = REPO_ROOT / "docs" / "preregistration" / "P2A-position-shift-boundary.md"
+PAGE = REPO_ROOT / "docs" / "WHEN_TO_TRUST.md"
 
 pytestmark = pytest.mark.skipif(
-    not (REGISTRY.is_file() and RECORD.is_file() and DOCUMENT.is_file()),
+    not (REGISTRY.is_file() and RECORD.is_file() and DOCUMENT.is_file() and PAGE.is_file()),
     reason="benchmarks/ and docs/ are source-checkout trees, not part of the distribution",
 )
 
@@ -61,6 +66,11 @@ def record():
 def section():
     text = DOCUMENT.read_text(encoding="utf-8")
     return text[text.index("\n## Record\n"):]
+
+
+@pytest.fixture(scope="module")
+def page():
+    return PAGE.read_text(encoding="utf-8")
 
 
 def _quoted_value(token: str) -> tuple[float, float]:
@@ -141,10 +151,32 @@ def test_every_non_record_number_states_its_reason(registry, section):
     assert not unknown, f"non-record numbers with no stated reason: {unknown}"
 
 
-def test_no_citation_in_the_registry_goes_unused(registry, section):
-    used = {key for _ln, _tok, _pct, kind, key in _occurrences(section) if kind == "r"}
-    unused = sorted(set(registry.CITATIONS) - used)
-    assert not unused, f"registry keys the Record section never cites: {unused}"
+def _record_keys(text: str) -> set[str]:
+    return {key for _ln, _tok, _pct, kind, key in _occurrences(text) if kind == "r"}
+
+
+def test_no_citation_in_the_registry_goes_unused(registry, section, page):
+    unused = sorted(set(registry.CITATIONS) - _record_keys(section) - _record_keys(page))
+    assert not unused, f"registry keys neither the Record section nor the page cites: {unused}"
+
+
+def test_every_number_on_the_page_is_anchored(page):
+    test_every_number_in_the_record_section_is_anchored(page)
+
+
+def test_every_page_citation_matches_the_record(registry, record, page):
+    test_every_record_citation_matches_the_record(registry, record, page)
+
+
+def test_every_non_record_number_on_the_page_states_its_reason(registry, page):
+    test_every_non_record_number_states_its_reason(registry, page)
+
+
+def test_the_page_cites_exactly_what_revision_11_cleared(registry, page):
+    used = _record_keys(page)
+    cleared = registry.CLEARED_FOR_WHEN_TO_TRUST
+    assert used <= cleared, f"record keys on the page that were never cleared: {sorted(used - cleared)}"
+    assert cleared <= used, f"cleared keys the page no longer cites: {sorted(cleared - used)}"
 
 
 # The checks above are only worth anything if they fail on the errors they exist for.
@@ -166,6 +198,9 @@ MUTATIONS = [
 ]
 
 
+PAGE_TEXT = PAGE.read_text(encoding="utf-8") if PAGE.is_file() else ""
+
+
 @pytest.mark.parametrize("label,old,new", MUTATIONS, ids=[m[0] for m in MUTATIONS])
 def test_a_planted_error_is_rejected(registry, record, section, label, old, new):
     assert old in section, f"mutation anchor for {label!r} no longer in the section"
@@ -174,7 +209,39 @@ def test_a_planted_error_is_rejected(registry, record, section, label, old, new)
         lambda: test_every_number_in_the_record_section_is_anchored(mutated),
         lambda: test_every_record_citation_matches_the_record(registry, record, mutated),
         lambda: test_every_non_record_number_states_its_reason(registry, mutated),
-        lambda: test_no_citation_in_the_registry_goes_unused(registry, mutated),
+        lambda: test_no_citation_in_the_registry_goes_unused(registry, mutated, PAGE_TEXT),
+    ]
+    rejected = 0
+    for check in checks:
+        try:
+            check()
+        except AssertionError:
+            rejected += 1
+    assert rejected, f"planted error not caught: {label}"
+
+
+# The same, planted in the page. The last two are what the Revision 11 check exists for:
+# a number that is correct and anchored, but was never cleared for quotation here.
+PAGE_MUTATIONS = [
+    ("page: boundary mistyped", "0.47<!--r:R3.pos--> eV toward", "0.52<!--r:R3.pos--> eV toward"),
+    ("page: rounded figure outside its precision", "about 0.5<!--r:R3.pos--> eV",
+     "about 0.6<!--r:R3.pos--> eV"),
+    ("page: anchor removed", "about 1.8<!--r:R6.pos--> eV", "about 1.8 eV"),
+    ("page: an uncleared record number, correct and anchored", "No mechanism is claimed.",
+     "No mechanism is claimed. At zero shift it gained +11.4<!--r:A.gain.0--> dB."),
+    ("page: a cleared sentence removed", " (1.8<!--r:R6.neg--> eV the other way)", ""),
+]
+
+
+@pytest.mark.parametrize("label,old,new", PAGE_MUTATIONS, ids=[m[0] for m in PAGE_MUTATIONS])
+def test_a_planted_error_on_the_page_is_rejected(registry, record, section, page, label, old, new):
+    assert old in page, f"mutation anchor for {label!r} no longer on the page"
+    mutated = page.replace(old, new, 1)
+    checks = [
+        lambda: test_every_number_on_the_page_is_anchored(mutated),
+        lambda: test_every_page_citation_matches_the_record(registry, record, mutated),
+        lambda: test_every_non_record_number_on_the_page_states_its_reason(registry, mutated),
+        lambda: test_the_page_cites_exactly_what_revision_11_cleared(registry, mutated),
     ]
     rejected = 0
     for check in checks:

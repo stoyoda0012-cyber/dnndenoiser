@@ -17,6 +17,12 @@ of use, `<!--r:KEY-->` or `<!--n:KEY-->`, and this module says what each key mea
   threshold, a value from a discarded run quoted as history, a design-time
   measurement -- with the reason. They are allowed, and they are visible.
 
+The same anchors are used on `docs/WHEN_TO_TRUST.md`, the user-facing page that quotes
+this record. Revision 11 of the preregistration cleared only the sentences there that
+cite the keys in `CLEARED_FOR_WHEN_TO_TRUST` below, and the test requires that page to
+cite exactly those record keys: a new record number there is refused until a person
+clears it and the set is changed in the same commit.
+
 What this does not do: it cannot tell whether the prose around a number says the
 right thing about it. It pins each number to a stated source; whether the sentence
 reads that source correctly is a question for a reviewer, with the source now named.
@@ -149,6 +155,8 @@ CITATIONS = {
                lambda r: r["predictions"]["R5b"]["stats"]["cohens_dz"]),
     "R6.pos": ("boundary |delta|*, arm B, level 1000, positive direction, eV, median",
                lambda r: boundary(r, B, "positive", "median_first_crossing_eV")),
+    "R6.neg": ("boundary |delta|*, arm B, level 1000, negative direction, eV, median",
+               lambda r: boundary(r, B, "negative", "median_first_crossing_eV")),
     "R7.+4": ("bias-corrected argmax displacement, arm A, level 1000, delta +4.0, eV, mean",
               lambda r: agg(r, A, PRIMARY, 4.0, "argmax_displacement_bias_corrected_ev_mean")),
     "R7.-4": ("bias-corrected argmax displacement, arm A, level 1000, delta -4.0, eV, mean",
@@ -288,6 +296,8 @@ CITATIONS = {
                      lambda r: agg(r, A, "10000.0", 4.0, "snr_gain_db_mean")),
     "L10k.disp.+4": ("bias-corrected argmax displacement, arm A, level 10000, delta +4.0, eV",
                      lambda r: agg(r, A, "10000.0", 4.0, "argmax_displacement_bias_corrected_ev_mean")),
+    "L1k.in.0": ("input SNR, arm A, level 1000, delta 0, dB: the primary level's operating point",
+                 lambda r: runs_mean(r, A, PRIMARY, 0.0, "input_snr_db_mean")),
     "L10k.in.0": ("input SNR, arm A, level 10000, delta 0, dB: what makes it the noisiest level",
                   lambda r: runs_mean(r, A, "10000.0", 0.0, "input_snr_db_mean")),
     "L10k.in.+4": ("input SNR, arm A, level 10000, delta +4.0, dB, mean over runs",
@@ -324,6 +334,17 @@ CITATIONS = {
                         lambda r: abs(boundary(r, A, "positive", "kaplan_meier_median_eV")
                                       - boundary(r, A, "positive", "median_first_crossing_eV"))),
 }
+
+# The record keys `docs/WHEN_TO_TRUST.md` may cite, as cleared by Revision 11: the
+# boundary in both directions (with its conversions to bins and nominal FWHM, and what
+# those conversions are made from), where augmentation moved it, the displacement at
+# +/-1.0 eV, and the input SNR of the level these numbers describe.
+CLEARED_FOR_WHEN_TO_TRUST = frozenset({
+    "R3.pos", "R3.neg", "R3.bins", "R3.fwhm", "grid.step", "fwhm.nominal",
+    "R6.pos", "R6.neg",
+    "R7.+1", "R7.-1",
+    "L1k.in.0",
+})
 
 NON_RECORD = {
     "reg": "a registered design value or threshold from the preregistration, not a measurement",

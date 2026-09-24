@@ -1,10 +1,11 @@
 # Preregistration — P2-A: the position-shift boundary, and what augmentation does to it
 
-**Status: registered 2026-09-22; revised ten times (see Revision log); run six
+**Status: registered 2026-09-22; revised eleven times (see Revision log); run six
 times — the first two discarded for defects in the apparatus, the third to fifth
 superseded; the sixth, made under Revision 9, reproduced the fifth's measurement exactly.
 The result is in the Record section, last. Seven of eight predictions held and R5b failed.
-Not yet cleared for outward-facing quotation.** This line previously read "Not
+Cleared for outward-facing quotation only in the sentences of `docs/WHEN_TO_TRUST.md`
+that Revision 11 lists; nothing else here is.** This line previously read "Not
 implemented; not run" for a day after the record existed, because nothing checked it.
 Nothing below may be revised to match a result. When a prediction or a rule turns out to be
 wrong it is changed *visibly*, with the reason and the date — see **Revision log**.
@@ -1325,6 +1326,46 @@ prediction or decision rule changes.
     make the denoiser worse (README). Both are statements about practice that nothing
     here measures (item 72). `3af3b07` removed them, and neither its message nor any item
     of this log said so until now.
+
+### Revision 11 — 2026-09-25, a limited clearance for quotation
+
+Until this revision the Status line read "Not yet cleared for outward-facing
+quotation". The owner has cleared a limited set of statements for one page,
+`docs/WHEN_TO_TRUST.md`, which answers a user's question — how far a shift in energy
+can be trusted — from this record. Nothing measured, no prediction and no decision rule
+changes.
+
+77. **What is cleared, and where.** On that page only:
+    (a) the boundary of the model trained without a rigid shift, about 0.47 eV, in both
+    directions (R3);
+    (b) that training with a rigid shift drawn from ±1.5 eV moved it to about 1.8 eV, in
+    both directions, and did not remove it (R6);
+    (c) the conditions the numbers hold under, as designed, and the input SNR of the
+    level they describe;
+    (d) R7 as a warning, with its numbers at ±1.0 eV and without a mechanism;
+    (e) the boundary's conversions to bins of this grid and to the dominant peak's
+    nominal FWHM, stated as untested for any other grid or line width.
+    Every other statement in this document — R1, R2, R4, R5a, R5b, the comparators, the
+    other levels' numbers, the descriptive cells — remains uncleared. The set is
+    `CLEARED_FOR_WHEN_TO_TRUST` in `benchmarks/boundaries/position_shift/record_citations.py`.
+78. **How the clearance is enforced.** The page carries the Record section's anchors and
+    `tests/test_p2a_record_citations.py` applies the same rules to it: every number
+    anchored, every record value recomputed at the precision quoted, every non-record
+    number given a reason. It also requires the page's record keys to equal the cleared
+    set, so a correct, anchored but uncleared number is refused, as is a cleared sentence
+    removed without the set changing. Both are shown by planted errors in the same file.
+79. **Two keys were added to the registry for the page**: `R6.neg`, arm B's boundary in
+    the negative direction, and `L1k.in.0`, the primary level's input SNR at zero shift.
+    The Record section cites neither; the unused-key check now counts the page as well.
+80. **The page's draft was corrected on two points before it was written.** It gave the
+    input SNR of about 16 dB as though it were the training condition; training pools mix
+    three noise levels equally, and 16 dB is the evaluated level's input SNR at zero
+    shift. It also said that the self-supervised method shares one energy scale "by
+    construction" within a measurement; shifts between frames of one measurement were not
+    measured, and the page now says so.
+81. **AGENTS.md §6 was changed in the same commit.** Its rule against restating a numeric
+    result in a second place now excepts a number tied to its record and tested as §8.1
+    describes, which is what the page does. The exception was the owner's decision.
 
 
 ## Record

@@ -115,6 +115,7 @@ Further rules:
 - A single run is not evidence for a comparison. Report dispersion.
 - Prefer a paired comparison over comparing separately reported aggregates.
 - Do not restate a numeric result in a second place; link to the record that owns it.
+  A number tied to that record and tested as §8.1 describes is excepted.
 - Retractions, "undecided" verdicts, and negative results stay in the record. Do not
   delete or quietly soften them.
 - Do not promote an empirical regularity to a law.
