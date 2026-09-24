@@ -17,6 +17,13 @@ of use, `<!--r:KEY-->` or `<!--n:KEY-->`, and this module says what each key mea
   threshold, a value from a discarded run quoted as history, a design-time
   measurement -- with the reason. They are allowed, and they are visible.
 
+The same anchors are used on `docs/WHEN_TO_TRUST.md`, the user-facing page that quotes
+this record under the clearance Revision 11 records (item 85). The test requires that page to
+cite exactly the record keys in `CLEARED_FOR_WHEN_TO_TRUST` below, to use `n:` only for
+registered design values, to put no digit outside an anchored number, to keep every
+record number within a fifth of its value, and to keep the qualifiers in
+`PAGE_REQUIRED_PHRASES`. Revision 11, item 78, lists what that leaves unchecked.
+
 What this does not do: it cannot tell whether the prose around a number says the
 right thing about it. It pins each number to a stated source; whether the sentence
 reads that source correctly is a question for a reviewer, with the source now named.
@@ -149,6 +156,12 @@ CITATIONS = {
                lambda r: r["predictions"]["R5b"]["stats"]["cohens_dz"]),
     "R6.pos": ("boundary |delta|*, arm B, level 1000, positive direction, eV, median",
                lambda r: boundary(r, B, "positive", "median_first_crossing_eV")),
+    "R6.neg": ("boundary |delta|*, arm B, level 1000, negative direction, eV, median",
+               lambda r: boundary(r, B, "negative", "median_first_crossing_eV")),
+    "R6.range.lo": ("minimum first crossing over both directions, arm B, level 1000, eV",
+                    lambda r: float(min(crossings(r, B, "positive").min(), crossings(r, B, "negative").min()))),
+    "R6.range.hi": ("maximum first crossing over both directions, arm B, level 1000, eV",
+                    lambda r: float(max(crossings(r, B, "positive").max(), crossings(r, B, "negative").max()))),
     "R7.+4": ("bias-corrected argmax displacement, arm A, level 1000, delta +4.0, eV, mean",
               lambda r: agg(r, A, PRIMARY, 4.0, "argmax_displacement_bias_corrected_ev_mean")),
     "R7.-4": ("bias-corrected argmax displacement, arm A, level 1000, delta -4.0, eV, mean",
@@ -288,6 +301,14 @@ CITATIONS = {
                      lambda r: agg(r, A, "10000.0", 4.0, "snr_gain_db_mean")),
     "L10k.disp.+4": ("bias-corrected argmax displacement, arm A, level 10000, delta +4.0, eV",
                      lambda r: agg(r, A, "10000.0", 4.0, "argmax_displacement_bias_corrected_ev_mean")),
+    # design counts quoted on docs/WHEN_TO_TRUST.md
+    "n.train.A": ("training spectra in arm A's pool, over all three levels",
+                  lambda r: r["design"]["arms"][A]["n_train"]),
+    "n.points": ("energy points per spectrum", lambda r: r["design"]["data"]["n_energy_points"]),
+    "n.seeds": ("independently seeded training runs per arm", lambda r: r["design"]["inference"]["n_seeds"]),
+    "n.test": ("test spectra per level and shift", lambda r: r["design"]["data"]["n_test_per_level_per_delta"]),
+    "L1k.in.0": ("input SNR, arm A, level 1000, delta 0, dB: the primary level's operating point",
+                 lambda r: runs_mean(r, A, PRIMARY, 0.0, "input_snr_db_mean")),
     "L10k.in.0": ("input SNR, arm A, level 10000, delta 0, dB: what makes it the noisiest level",
                   lambda r: runs_mean(r, A, "10000.0", 0.0, "input_snr_db_mean")),
     "L10k.in.+4": ("input SNR, arm A, level 10000, delta +4.0, dB, mean over runs",
@@ -324,6 +345,46 @@ CITATIONS = {
                         lambda r: abs(boundary(r, A, "positive", "kaplan_meier_median_eV")
                                       - boundary(r, A, "positive", "median_first_crossing_eV"))),
 }
+
+# The record keys `docs/WHEN_TO_TRUST.md` may cite, as cleared in Revision 11: both
+# arms' boundaries in both directions with their range across seeds, arm A's in bins
+# and in nominal FWHM (and what those conversions are made from), the displacement at
+# +/-1.0 eV with its SD, the evaluated level's input SNR, and the design counts.
+CLEARED_FOR_WHEN_TO_TRUST = frozenset({
+    "R3.pos", "R3.neg", "R3.range.lo", "R3.range.hi",
+    "R3.bins", "R3.fwhm", "grid.step", "fwhm.nominal",
+    "R6.pos", "R6.neg", "R6.range.lo", "R6.range.hi",
+    "R7.+1", "R7.-1", "R7.+1.sd", "R7.-1.sd",
+    "L1k.in.0",
+    "n.train.A", "n.points", "n.seeds", "n.test",
+})
+
+# On that page an `n:` number is allowed only as `n:reg`, written with its decimal and
+# exactly equal in magnitude to one of these design values read from the record's design
+# block. A record value that happens to coincide with one still passes (item 78).
+def page_design_values(record):
+    design = record["design"]
+    values = {abs(d) for d in design["manipulated"]["delta_values_eV"]}
+    for arm in design["arms"].values():
+        values |= {arm["per_peak_jitter_eV"], arm["augmentation_halfwidth_eV"]}
+    return values
+
+
+# Qualifiers the proposal makes part of the cleared statements. Deleting one leaves every
+# number correct, so the number checks cannot see it; this list can. It cannot see a
+# qualifier reworded, a number moved onto another subject, or a direction flipped in
+# prose -- those remain a reviewer's to catch.
+PAGE_REQUIRED_PHRASES = (
+    "It did not remove it",
+    "No mechanism is claimed.",
+    "was not tested",
+    "biased low",
+    "exactly right by construction",
+    "does not establish that the output's peak sits where the reference's does",
+    "was not measured",
+    "consistently smaller",
+    "cannot attribute why",
+)
 
 NON_RECORD = {
     "reg": "a registered design value or threshold from the preregistration, not a measurement",

@@ -8,6 +8,7 @@ limitations.
 
 | Document | What it covers |
 |----------|----------------|
+| [WHEN_TO_TRUST.md](WHEN_TO_TRUST.md) | What has been measured about where a trained model stops being trustworthy, with the conditions and the record each answer comes from |
 | [QUICK_START.md](QUICK_START.md) | Installed-CLI workflow: generate → train → infer → evaluate, HDF5 schema, Python API example |
 | [../benchmarks/reference/README.md](../benchmarks/reference/README.md) | The reference measurement: what it measures, how to re-run it, and what its numbers do not support |
 | [FROM_THE_PAPERS.md](FROM_THE_PAPERS.md) | For a reader of the JVST or SIA paper: how to apply the method to your own measurements, and what is not available |

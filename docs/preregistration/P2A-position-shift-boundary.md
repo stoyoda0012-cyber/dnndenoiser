@@ -1,10 +1,13 @@
 # Preregistration — P2-A: the position-shift boundary, and what augmentation does to it
 
-**Status: registered 2026-09-22; revised ten times (see Revision log); run six
+**Status: registered 2026-09-22; revised eleven times (see Revision log); run six
 times — the first two discarded for defects in the apparatus, the third to fifth
 superseded; the sixth, made under Revision 9, reproduced the fifth's measurement exactly.
 The result is in the Record section, last. Seven of eight predictions held and R5b failed.
-Not yet cleared for outward-facing quotation.** This line previously read "Not
+Cleared for outward-facing quotation only on `docs/WHEN_TO_TRUST.md`, and only for the
+statements Revision 11, item 77, lists — confirmed by the owner on 2026-09-25 after an
+independent review (item 85). Nothing else here is cleared.**
+This line previously read "Not
 implemented; not run" for a day after the record existed, because nothing checked it.
 Nothing below may be revised to match a result. When a prediction or a rule turns out to be
 wrong it is changed *visibly*, with the reason and the date — see **Revision log**.
@@ -1326,6 +1329,194 @@ prediction or decision rule changes.
     here measures (item 72). `3af3b07` removed them, and neither its message nor any item
     of this log said so until now.
 
+### Revision 11 — 2026-09-25, a limited clearance for quotation, proposed and confirmed
+
+`docs/WHEN_TO_TRUST.md` answers a user's question — how far a shift in energy can be
+trusted — from this record. This revision proposes the statements it may quote. **The
+owner confirmed the clearance on 2026-09-25 (item 85).** Until then it was not in effect.
+The rule it was written under: it takes effect when the owner confirms it after an
+independent review of the page and of the Record-section claims it quotes, and the
+confirmation is recorded in item 85 with its date, the statements cleared and the commit
+reviewed. A review that passes does not confirm it. Until that confirmation is committed —
+together with the Status line, the page's opening and the position-shift README switched
+to say the clearance is in effect — the branch carrying the page is not pushed. Nothing
+measured, no prediction and no decision rule changes.
+
+The first draft of this revision (commit `9b8d99a`, never published) stated the
+clearance as already made, before any review. An independent review of that commit
+found it premature and the page wrong in places (item 80); second and third reviews of
+the repairs found more (items 83 and 84). This text replaces it. Here "goes into the
+documentation" means published: the page exists on an unpushed branch until item 85.
+
+77. **What is proposed, and where.** On `docs/WHEN_TO_TRUST.md` only:
+    (a) arm A's boundary in both directions, with its range across seeds (R3);
+    (b) arm B's boundary in both directions, with its range across seeds, and that shift
+    training did not remove the boundary (R6);
+    (b′) that at zero shift arm B's improvement was consistently smaller than arm A's and
+    this design cannot attribute why — without the number or an adjective of size;
+    (c) R7 as a warning, for arm A: at ±1.0 eV the bias-corrected displacement with its
+    SD, read as the denoised peak following only about a third of the shift; that the
+    shortfall grew with the shift, as R7 registered, and that at ±4.0 eV the peak hardly
+    followed, in words; that the displacement is a whole-spectrum grid maximum, not a
+    fitted position; no mechanism; and the Record's sentence "A positive M1 gain does not
+    establish that the output's peak sits where the reference's does", verbatim — but not
+    that the peak was already displaced inside the boundary, which rests on cells no
+    prediction names;
+    (c′) that the measured model is a ResNet-FCNN trained with the reference benchmark's
+    recipe by the measurement's own loop, and that neither the CLI's `train` nor its
+    `generate` at their defaults was measured;
+    (d) the conditions the numbers hold under — data, model, noise model, evaluated
+    level and its input SNR, metric and estimator, replicates and split, backend and
+    provenance — and the design counts;
+    (e) arm A's boundary in bins of this grid and in the dominant peak's nominal FWHM,
+    stated as untested for any other grid or line width;
+    (f) a list of what this record does not establish, and two pieces of advice the
+    record supports: correct the energy scale first, and verify positions downstream.
+    The page's content stops here: after this revision, sentences are added to it only
+    to repair a review finding.
+    Everything else in this document stays uncleared, including R1, R2, R4, R5a, R5b,
+    arms C and D, the comparators, the other levels and arm B's gain at zero shift. The
+    record keys are `CLEARED_FOR_WHEN_TO_TRUST` in
+    `benchmarks/boundaries/position_shift/record_citations.py`.
+78. **What the tests refuse, and what they do not.** Each claim below is shown by the
+    named planted cases in `test_a_planted_error_on_the_page_is_rejected`
+    (`tests/test_p2a_record_citations.py`), each of which requires the named check to
+    pass on the page and to fail on the mutated page. A claim with no such case is not
+    made here. `test_item_78_table_matches_the_planted_cases` fails if this table and the
+    planted cases fall out of step.
+
+<!-- item-78-table -->
+| The tests refuse | Check | Planted cases |
+|---|---|---|
+| a decimal on the page with no anchor | `test_every_number_on_the_page_is_anchored` | `page: anchor removed` |
+| a record number that differs from the record at the precision quoted | `test_every_page_citation_matches_the_record` | `page: boundary mistyped`; `page: rounded figure outside its precision` |
+| a record key on the page outside the proposed set | `test_the_page_cites_exactly_what_revision_11_cleared` | `page: an uncleared record number, correct and anchored` |
+| a proposed record key no longer cited on the page | `test_the_page_cites_exactly_what_revision_11_cleared` | `page: a cleared sentence removed` |
+| an `n:` anchor other than `n:reg` | `test_the_page_uses_design_values_only_as_registered` | `page: an uncleared record number under another non-record reason` |
+| an `n:reg` number that is no design value read from the record | `test_the_page_uses_design_values_only_as_registered` | `page: an uncleared record number relabelled as a design value` |
+| an `n:reg` number written without its decimal | `test_the_page_uses_design_values_only_as_registered` | `page: an uncleared difference passed off as an integer design value` |
+| a count with no anchor, bare, signed, sentence-final or glued to its unit | `test_no_digit_on_the_page_stands_outside_an_anchored_number` | `page: an unanchored count`; `page: a signed count`; `page: a sentence-final count`; `page: a unit-glued count` |
+| a number whose anchor is set off by a space | `test_no_digit_on_the_page_stands_outside_an_anchored_number` | `page: an anchored number set off by a space` |
+| a number in exponent form, with or without a leading dot | `test_no_digit_on_the_page_stands_outside_an_anchored_number` | `page: an exponent form`; `page: an integer mantissa with an exponent` |
+| a count at the start of a wrapped line, which Markdown renders as text | `test_no_digit_on_the_page_stands_outside_an_anchored_number` | `page: a count at the start of a wrapped line` |
+| a dash other than the three parsed signs used as a sign | `test_no_digit_on_the_page_stands_outside_an_anchored_number` | `page: a sign flipped with an en dash` |
+| a record number more than a fifth from its value, however rounded | `test_every_record_number_on_the_page_is_within_a_fifth_of_its_value` | `page: rounded until it says something else`; `page: R7 rounded to full pinning` |
+| a required qualifier missing from the rendered text, including one kept only in a comment or a link-reference definition | `test_the_page_keeps_its_qualifiers` | `page: a required qualifier deleted`; `page: a required qualifier hidden in a comment`; `page: a qualifier kept only in a link-reference definition` |
+<!-- /item-78-table -->
+
+    **What passes regardless**, and is the review's to catch: a number written in words;
+    a record value that coincides in magnitude with a design value and is marked
+    `n:reg`; one design value swapped for another; a correct number moved onto another
+    subject; a direction or sign flipped in prose; a qualifier reworded, kept word for
+    word inside a sentence that negates it, or deleted while its phrase survives in an
+    unrelated sentence; a statement added without a number; and a sentence deleted
+    whose numbers' keys are cited elsewhere on the page and which holds no required
+    phrase — with or without numbers. Digits are allowed outside anchors only in three
+    literals (the core level's name, the metric's name, a method's name) and in the
+    markers of an ordered list that starts at 1 after a blank line.
+79. **Registry keys added for the page**: arm B's negative-direction boundary and its
+    range across seeds, the primary level's input SNR at zero shift, and four design
+    counts. The Record section cites none of them; the unused-key check counts the page.
+80. **What the first review of `9b8d99a` found, and what changed.** Five blocking
+    findings, all confirmed; (v) was only partly repaired, as the second review found
+    (item 83):
+    (i) R7 was misread. Its displacement is the denoised maximum minus the clean
+    maximum *at the same shift*, so a negative displacement at a positive shift means the
+    denoised peak moved part of the way with the shift and stopped short, not that it
+    moved the other way. The
+    page, and the wording the owner was shown when choosing how to quote R7, said the
+    latter. The page no longer uses "opposite" or "the other way" for R7;
+    (ii) the page said no failure point appeared at the noisiest level. The Record shows
+    a positive gain there with the peak displaced by the full shift; the sentence is gone, and
+    other levels are not quoted;
+    (iii) advice to train across expected shifts went past `claim_scope`, which excludes
+    recommending augmentation as the mitigation; it is gone, and the page lists training
+    with shifts as a remedy among what is not established;
+    (iv) the page claimed the result for `noise2noise` and for reusing a model on another
+    measurement, neither measured; it now names `noise2clean` only;
+    (v) the page, the CHANGELOG and the position-shift README claimed the test refused
+    any uncleared number; it did not, as item 78 now states, and the checks were widened.
+    Its should-fix and minor findings — a claim that nothing unlisted was measured,
+    statements outside the proposed set, the missing §6 conditions and dispersion, the
+    order of review and clearance, the breadth of the AGENTS.md §6 exception, a
+    statement broader than its metric, the width caveats, three descriptions of the
+    cleared set, the Record's closing line, and a planted test that relied on a key used
+    once — were worked on in `0d62c60`. Several were repaired only in part; the second
+    and third reviews say which (items 83 and 84).
+81. **Corrections made to the draft before `9b8d99a`**: the input SNR the draft quoted is
+    the evaluated level's at zero shift, not a training condition — training mixes three
+    levels equally; and shifts between the frames of one measurement were never
+    measured, so the self-supervised method is listed as not established.
+82. **AGENTS.md §6 was changed with this revision**, at the owner's direction, in two
+    tiers: a record's own report (the Record section and `report.md`) may restate its
+    numbers if they are tested as §8.1 describes; anywhere else, only statements and
+    numbers that the person who decides publication has cleared for that place after an
+    independent review, with the decision recorded in the record's preregistration or in
+    the document that states the record's conditions, the place linking to the record,
+    and the numbers tested as §8.1 describes. The wording was tightened after the second
+    and third reviews (items 83 and 84), and its last form set by the owner.
+83. **What the second review of `0d62c60` found, and what changed.** Three blocking
+    findings, confirmed and repaired:
+    (i) the page said the model was trained "with the `noise2clean` method". The
+    measurement trains with its own loop at the reference benchmark's recipe
+    (ResNet-FCNN), not with the CLI, whose `train` defaults differ in architecture and
+    optimiser; the page now says which model was measured and that the CLI's defaults
+    were not;
+    (ii) the page, docs index and CHANGELOG sat in the tree as if cleared; the page now
+    says the statements are proposed, and the branch is not pushed before item 85;
+    (iii) the tests accepted signed, sentence-final and unit-glued counts, integer
+    `n:reg` values within half a unit of a design value, rounding that changed a number's
+    meaning, and a required phrase hidden in a comment; each is now refused and shown
+    refused, and item 78 lists what still passes.
+    Should-fix and minor findings repaired: R7's lead is limited to ±1.0 eV and the
+    shortfall's growth is stated; the Record's caveat on M1 is quoted; the claim that
+    nothing unrecorded was measured is gone; the gating condition was reworded in the
+    Status line, here, the position-shift README and VERIFICATION.md, though not yet
+    alike (item 84); the quoted level is
+    said to use the Gaussian approximation; arm B's smaller improvement at zero shift is
+    stated without a number; ranges are said to pool both directions; the interpolation,
+    the jitter in test spectra, "binding energy" and the grid-maximum limit are fixed, and
+    one overlong line, though two more were introduced (item 84); the page's opening no
+    longer says the output "still looks plausible",
+    which no metric here measures. AGENTS.md §6 (b) now requires the decision to be
+    recorded beside the record.
+84. **What the third review of `8f058c5` found, and what changed.** One blocking
+    finding, confirmed: item 78 again overstated the tests. A number with its anchor set
+    off by a space, an integer mantissa with an exponent, a sign written with an en dash,
+    a count at the start of a wrapped line taken for a list marker, and a qualifier kept
+    only in a link-reference definition all passed. Each is now refused and shown
+    refused, and item 78 is rewritten, with three more cases that still pass. No reader
+    was misled: every number on the page matched the record. Should-fix and minor
+    findings repaired: the page says the CLI's `generate` defaults were not measured
+    either; the displacement is said to be a mean over test spectra; the list of what is
+    not established names jitter width, noise model, optimisation budget and window-edge
+    effects beyond ±1.5 eV; the page no longer asserts device dependence, which was never
+    compared, nor that the grid maximum is the dominant peak's, nor advice to check
+    against the noisy input, which item 77 does not propose; "goes into the
+    documentation" is said to mean published, in the documents that gate it; AGENTS.md
+    §6 (b) requires the clearance to follow an independent review and to cover the
+    statements, not only the numbers; the Status line names the review; items 80 and 83
+    no longer overclaim; the CHANGELOG no longer says every number is recomputed; two
+    overlong lines are rewrapped. The review also found "slightly smaller", for arm B at
+    zero shift, softer than the record, whose paired difference is negative in every
+    run; at the owner's direction the page now says "consistently smaller", with no
+    number and no adjective of size (item 77 b′).
+85. **Confirmation — 2026-09-25.** The owner cleared statements (a) to (f) of item 77,
+    as they stand in `95de3b4`, for outward-facing quotation on `docs/WHEN_TO_TRUST.md`
+    only. Nothing else in this document or the record is cleared, on that page or
+    elsewhere.
+    - **Reviewed:** the third independent review examined `8f058c5`, with the fixed
+      checklist used by all three reviews.
+    - **Changed after that review, not reviewed:** `38fd535`, which repaired its
+      findings (item 84), and `95de3b4`, which rewrote item 78 as a table tied to the
+      planted cases, replaced "slightly smaller" and set AGENTS.md §6 (b)'s last
+      wording. Neither was reviewed; every claim in item 78 is shown instead by its
+      planted cases, and the table by `test_item_78_table_matches_the_planted_cases`
+      with its own planted cases.
+    - **This confirmation's commit** changes no statement on the page. It records the
+      decision here and switches the Status line, the page's opening, the Record
+      section's closing line and the position-shift README from "proposed" to
+      "cleared".
 
 ## Record
 
@@ -1651,4 +1842,6 @@ arm A `train_seconds` range as 36.3<!--n:history--> to 364.1<!--n:history--> sec
 its maximum was 482.9<!--n:history-->. The audits behind Revision 4 caught it.
 
 Nothing from this record goes into the README, the package documentation or any
-release note until a person has decided what may be published.
+release note until a person has decided what may be published — published meaning pushed
+or released, not present on an unpushed branch. Revision 11 records one such decision,
+for `docs/WHEN_TO_TRUST.md`, confirmed on 2026-09-25 (item 85).

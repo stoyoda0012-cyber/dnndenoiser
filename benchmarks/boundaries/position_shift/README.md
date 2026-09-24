@@ -233,10 +233,13 @@ wrong; the claim "all self-checks passed" was.
 from a clean working tree — a full run from a tree with uncommitted or untracked
 changes is refused, because the record would name a commit that is not what ran.
 
-**Not yet cleared for outward-facing quotation.** Two things remain: an independent
-review of the claims the preregistration's Record section makes, and a person's
-decision about what may be published. Until both, no number from here goes into the
-package README, the documentation or a release note.
+**Cleared for outward-facing quotation only on one page.** Revision 11 of the
+preregistration clears the statements its item 77 lists for
+[`docs/WHEN_TO_TRUST.md`](../../../docs/WHEN_TO_TRUST.md), confirmed by the owner on
+2026-09-25 after an independent review of the page and of the Record-section claims it
+quotes. For everything else here, no number is published — pushed or released — in the
+package README, the documentation or a release note until a person decides otherwise
+in the same way.
 
 ## Things about a record from this design that are easy to misread
 

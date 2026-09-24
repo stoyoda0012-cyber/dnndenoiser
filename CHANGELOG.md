@@ -8,6 +8,16 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **[`docs/WHEN_TO_TRUST.md`](docs/WHEN_TO_TRUST.md)** — what has been measured about
+  where a trained model stops being trustworthy, one question at a time. The first
+  answer is how far a shift in energy can be trusted, from the P2-A record: the
+  conditions, what to do, and what was not established. Every number on the page is
+  anchored to the record or to its registered design; a test recomputes the record's
+  and matches the design's, within limits the preregistration lists. The prose around
+  the numbers is checked by review, not by the test.
+
 ### Fixed
 
 - **Text files were opened in the locale's encoding, so a Japanese Windows
