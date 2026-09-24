@@ -3,7 +3,7 @@
 A trained denoiser is only valid inside the distribution it was trained on. Outside
 it, the output can be worse than the input. This page gives what has been measured
 about where that happens, with the conditions and the record each answer comes from.
-It quotes a limited set of statements proposed for quotation here; the record holds
+It quotes a limited set of statements cleared for quotation here; the record holds
 more.
 
 **Which model was measured.** A ResNet-FCNN trained with the recipe of this

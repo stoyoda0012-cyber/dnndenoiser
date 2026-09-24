@@ -17,7 +17,7 @@ Rules enforced here, per line of the Record section:
 - every `n:` key has a stated reason, and no `r:` key in the registry goes unused.
 
 `docs/WHEN_TO_TRUST.md` quotes the same record to users and is held to the same rules,
-over the whole page, and to further rules for the clearance Revision 11 proposes:
+over the whole page, and to further rules for the clearance Revision 11 records:
 - its record keys equal `CLEARED_FOR_WHEN_TO_TRUST`: no fewer, and none besides;
 - an `n:` number is `n:reg` and its magnitude is a design value read from the record, so
   an uncleared record value cannot be relabelled as a design value;

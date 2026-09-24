@@ -18,7 +18,7 @@ of use, `<!--r:KEY-->` or `<!--n:KEY-->`, and this module says what each key mea
   measurement -- with the reason. They are allowed, and they are visible.
 
 The same anchors are used on `docs/WHEN_TO_TRUST.md`, the user-facing page that quotes
-this record under the clearance Revision 11 proposes. The test requires that page to
+this record under the clearance Revision 11 records (item 85). The test requires that page to
 cite exactly the record keys in `CLEARED_FOR_WHEN_TO_TRUST` below, to use `n:` only for
 registered design values, to put no digit outside an anchored number, to keep every
 record number within a fifth of its value, and to keep the qualifiers in
@@ -346,7 +346,7 @@ CITATIONS = {
                                       - boundary(r, A, "positive", "median_first_crossing_eV"))),
 }
 
-# The record keys `docs/WHEN_TO_TRUST.md` may cite, as proposed in Revision 11: both
+# The record keys `docs/WHEN_TO_TRUST.md` may cite, as cleared in Revision 11: both
 # arms' boundaries in both directions with their range across seeds, arm A's in bins
 # and in nominal FWHM (and what those conversions are made from), the displacement at
 # +/-1.0 eV with its SD, the evaluated level's input SNR, and the design counts.

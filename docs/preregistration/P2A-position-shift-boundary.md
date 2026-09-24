@@ -4,9 +4,9 @@
 times — the first two discarded for defects in the apparatus, the third to fifth
 superseded; the sixth, made under Revision 9, reproduced the fifth's measurement exactly.
 The result is in the Record section, last. Seven of eight predictions held and R5b failed.
-Not yet cleared for outward-facing quotation. Revision 11 proposes a limited clearance
-for `docs/WHEN_TO_TRUST.md`, which takes effect only when the owner confirms it, after an
-independent review, in that revision's item 85.**
+Cleared for outward-facing quotation only on `docs/WHEN_TO_TRUST.md`, and only for the
+statements Revision 11, item 77, lists — confirmed by the owner on 2026-09-25 after an
+independent review (item 85). Nothing else here is cleared.**
 This line previously read "Not
 implemented; not run" for a day after the record existed, because nothing checked it.
 Nothing below may be revised to match a result. When a prediction or a rule turns out to be
@@ -1329,11 +1329,12 @@ prediction or decision rule changes.
     here measures (item 72). `3af3b07` removed them, and neither its message nor any item
     of this log said so until now.
 
-### Revision 11 — 2026-09-25, a limited clearance for quotation, proposed
+### Revision 11 — 2026-09-25, a limited clearance for quotation, proposed and confirmed
 
 `docs/WHEN_TO_TRUST.md` answers a user's question — how far a shift in energy can be
 trusted — from this record. This revision proposes the statements it may quote. **The
-clearance is not in effect.** It takes effect when the owner confirms it after an
+owner confirmed the clearance on 2026-09-25 (item 85).** Until then it was not in effect.
+The rule it was written under: it takes effect when the owner confirms it after an
 independent review of the page and of the Record-section claims it quotes, and the
 confirmation is recorded in item 85 with its date, the statements cleared and the commit
 reviewed. A review that passes does not confirm it. Until that confirmation is committed —
@@ -1500,16 +1501,22 @@ documentation" means published: the page exists on an unpushed branch until item
     zero shift, softer than the record, whose paired difference is negative in every
     run; at the owner's direction the page now says "consistently smaller", with no
     number and no adjective of size (item 77 b′).
-85. **Confirmation.** *Not yet confirmed.*
+85. **Confirmation — 2026-09-25.** The owner cleared statements (a) to (f) of item 77,
+    as they stand in `95de3b4`, for outward-facing quotation on `docs/WHEN_TO_TRUST.md`
+    only. Nothing else in this document or the record is cleared, on that page or
+    elsewhere.
     - **Reviewed:** the third independent review examined `8f058c5`, with the fixed
       checklist used by all three reviews.
     - **Changed after that review, not reviewed:** `38fd535`, which repaired its
-      findings (item 84), and the commit after it, which rewrote item 78 as a table tied
-      to the planted cases, replaced "slightly smaller" and set AGENTS.md §6 (b)'s last
+      findings (item 84), and `95de3b4`, which rewrote item 78 as a table tied to the
+      planted cases, replaced "slightly smaller" and set AGENTS.md §6 (b)'s last
       wording. Neither was reviewed; every claim in item 78 is shown instead by its
       planted cases, and the table by `test_item_78_table_matches_the_planted_cases`
       with its own planted cases.
-    - **Date and statements cleared:** to be filled by the owner's decision.
+    - **This confirmation's commit** changes no statement on the page. It records the
+      decision here and switches the Status line, the page's opening, the Record
+      section's closing line and the position-shift README from "proposed" to
+      "cleared".
 
 ## Record
 
@@ -1836,5 +1843,5 @@ its maximum was 482.9<!--n:history-->. The audits behind Revision 4 caught it.
 
 Nothing from this record goes into the README, the package documentation or any
 release note until a person has decided what may be published — published meaning pushed
-or released, not present on an unpushed branch. Revision 11 proposes one
-such decision, for `docs/WHEN_TO_TRUST.md`; it is not in effect until item 85 records it.
+or released, not present on an unpushed branch. Revision 11 records one such decision,
+for `docs/WHEN_TO_TRUST.md`, confirmed on 2026-09-25 (item 85).
