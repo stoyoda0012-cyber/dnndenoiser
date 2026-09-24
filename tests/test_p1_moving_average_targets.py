@@ -26,7 +26,7 @@ from dnndenoiser.training.selfsupervised import moving_average_targets
 from tests.p1_environment import skip_if_tie_ambiguous_outside_pin
 
 PINNED = json.loads(
-    (Path(__file__).parent / "fixtures" / "p1_reference_targets.json").read_text()
+    (Path(__file__).parent / "fixtures" / "p1_reference_targets.json").read_text(encoding="utf-8")
 )
 CASES = PINNED["cases"]
 

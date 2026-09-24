@@ -134,6 +134,27 @@ class TestHDF5Export:
                 assert set(['clean', 'noisy', 'energy']).issubset(f.keys())
                 assert f['clean'].shape == (20, 64)
 
+    @pytest.mark.parametrize("fmt,suffix", [('jsonl', '.jsonl'), ('csv', '.csv')])
+    def test_save_manifest(self, fmt, suffix, tmp_path):
+        """Should write one record per sample, with the encoding named.
+
+        Under CI's ``PYTHONWARNDEFAULTENCODING=1`` and the ``EncodingWarning``
+        filter in ``pyproject.toml``, an ``open`` without ``encoding`` fails here
+        rather than only on a non-UTF-8 locale such as cp932.
+        """
+        gen = SyntheticGenerator(
+            'C1s_single',
+            NoiseConfig(poisson_level=1000),
+            GeneratorConfig(n_energy_points=64)
+        )
+        _, _, _, meta = gen.generate_batch(3, seed=42)
+
+        path = SyntheticGenerator.save_manifest(tmp_path / 'manifest', meta, format=fmt)
+
+        assert path.suffix == suffix
+        lines = path.read_text(encoding='utf-8').splitlines()
+        assert len(lines) == 3 + (fmt == 'csv')
+
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

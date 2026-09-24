@@ -1355,7 +1355,7 @@ class SyntheticGenerator:
 
         if format == 'jsonl':
             filepath = filepath.with_suffix('.jsonl')
-            with open(filepath, 'w') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 for meta in metadata_list:
                     f.write(json.dumps(meta.to_dict()) + '\n')
 
@@ -1363,7 +1363,7 @@ class SyntheticGenerator:
             filepath = filepath.with_suffix('.csv')
             if metadata_list:
                 fieldnames = list(metadata_list[0].to_dict().keys())
-                with open(filepath, 'w', newline='') as f:
+                with open(filepath, 'w', newline='', encoding='utf-8') as f:
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
                     for meta in metadata_list:

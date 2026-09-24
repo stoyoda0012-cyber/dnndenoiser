@@ -23,6 +23,7 @@ exposed, so the gate follows the mathematics rather than a hand-maintained list.
 from __future__ import annotations
 
 import json
+import platform
 import sys
 from pathlib import Path
 
@@ -31,20 +32,48 @@ import pytest
 import torch
 
 PINNED = json.loads(
-    (Path(__file__).parent / "fixtures" / "p1_reference_targets.json").read_text()
+    (Path(__file__).parent / "fixtures" / "p1_reference_targets.json").read_text(encoding="utf-8")
 )
 ENV = PINNED["_environment"]
 
-_MISMATCH = [
-    f"{name}: have {have}, pinned {want}"
-    for name, have, want in (
-        ("python", ".".join(map(str, sys.version_info[:2])),
-         ".".join(ENV["python"].split(".")[:2])),
-        ("torch", torch.__version__, ENV["torch"]),
-        ("numpy", np.__version__, ENV["numpy"]),
-    )
-    if have != want
-]
+
+
+def environment_mismatches(platform_id: str, python: str, torch_version: str,
+                           numpy_version: str) -> list[str]:
+    """Where an environment differs from the pin; empty means it is the pin.
+
+    The platform is part of the pin because the same three versions do not give
+    the same numbers on another CPU architecture: on Windows x86-64, numpy's
+    SIMD ``argsort`` breaks ties differently (C1) and ``torch``'s CPU kernels
+    reduce in a different order (C7). The preregistration never fixed the CPU,
+    and makes results on another one reported, not required.
+
+    Versions compare on the release alone: a wheel's local label, as in
+    ``2.9.1+cpu`` or ``2.9.1+cu128``, names how it was built, and the platform
+    field already carries that distinction.
+    """
+    def release(version: str) -> str:
+        return version.split("+")[0]
+
+    return [
+        f"{name}: have {have}, pinned {want}"
+        for name, have, want in (
+            ("platform", platform_id, ENV["platform"]),
+            ("python", ".".join(python.split(".")[:2]),
+             ".".join(ENV["python"].split(".")[:2])),
+            ("torch", release(torch_version), ENV["torch"]),
+            ("numpy", release(numpy_version), ENV["numpy"]),
+        )
+        if have != want
+    ]
+
+
+_MISMATCH = environment_mismatches(
+    f"{platform.system()}-{platform.machine()}",
+    ".".join(map(str, sys.version_info[:3])),
+    torch.__version__,
+    np.__version__,
+)
 IN_PINNED_ENVIRONMENT = not _MISMATCH
 MISMATCH_REASON = "; ".join(_MISMATCH)
 

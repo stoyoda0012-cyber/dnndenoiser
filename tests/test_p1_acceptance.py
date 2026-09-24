@@ -39,7 +39,7 @@ from dnndenoiser.training.selfsupervised import (
 )
 
 _FIXTURES = Path(__file__).parent / "fixtures"
-PINNED = json.loads((_FIXTURES / "p1_reference_targets.json").read_text())
+PINNED = json.loads((_FIXTURES / "p1_reference_targets.json").read_text(encoding="utf-8"))
 REFERENCE_OUTPUTS = dict(np.load(_FIXTURES / "p1_reference_outputs.npz"))
 ENV = PINNED["_environment"]
 

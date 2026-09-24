@@ -22,13 +22,13 @@ def test_the_three_declared_versions_agree():
     # interpreter is not a test of that interpreter.
     pyproject_match = re.search(
         r"^version\s*=\s*[\"']([^\"']+)[\"']\s*$",
-        (REPO_ROOT / "pyproject.toml").read_text(), re.MULTILINE,
+        (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"), re.MULTILINE,
     )
     assert pyproject_match, "pyproject.toml has no top-level version"
     pyproject = pyproject_match.group(1)
 
     citation = re.search(
-        r"^version:\s*(\S+)\s*$", (REPO_ROOT / "CITATION.cff").read_text(), re.MULTILINE
+        r"^version:\s*(\S+)\s*$", (REPO_ROOT / "CITATION.cff").read_text(encoding="utf-8"), re.MULTILINE
     )
     assert citation, "CITATION.cff has no top-level 'version:' key"
 
@@ -40,7 +40,7 @@ def test_the_three_declared_versions_agree():
 
 def test_the_changelog_has_a_section_for_this_version():
     """A released version that the changelog does not mention is not documented."""
-    changelog = (REPO_ROOT / "CHANGELOG.md").read_text()
+    changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     assert f"## [{dnndenoiser.__version__}]" in changelog, (
         f"CHANGELOG.md has no '## [{dnndenoiser.__version__}]' section"
     )
@@ -55,7 +55,7 @@ def test_packaging_metadata_carries_the_license_and_the_urls():
     against a built wheel so the check is cheap enough to always run; the
     wheel's own ``METADATA`` was verified by hand when these were added.
     """
-    pyproject = (REPO_ROOT / "pyproject.toml").read_text()
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
     assert re.search(r'^license\s*=\s*["\']MIT["\']', pyproject, re.MULTILINE), (
         "no license declared: the terms would be left to be guessed"

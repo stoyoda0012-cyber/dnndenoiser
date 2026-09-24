@@ -24,6 +24,12 @@ on:
 # macOS is opt-in. The macOS matrix runs on workflow_dispatch only — never on
 # push or pull request — and there is no scheduled macOS run. Trigger it from
 # the Actions tab ("Run workflow") or with `gh workflow run ci.yml`.
+#
+# Windows runs on every push and pull request. A cp932 (Japanese Windows) locale
+# broke the suite through open()/read_text() calls without `encoding`, which a
+# UTF-8 runner cannot see; the runner's own locale is cp1252, so the test job
+# also sets PYTHONWARNDEFAULTENCODING=1, which together with the filter in
+# pyproject.toml fails such a call on every OS.
 
 jobs:
   lint:
@@ -44,11 +50,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # See the note at the top of this file: push and PR run Linux only;
-        # macOS is opt-in via the Actions tab ("Run workflow") or
+        # See the note at the top of this file: push and PR run Linux and
+        # Windows; macOS is opt-in via the Actions tab ("Run workflow") or
         # `gh workflow run ci.yml`.
-        os: ${{ github.event_name == 'workflow_dispatch' && fromJSON('["ubuntu-latest","macos-latest"]') || fromJSON('["ubuntu-latest"]') }}
+        os: ${{ github.event_name == 'workflow_dispatch' && fromJSON('["ubuntu-latest","windows-latest","macos-latest"]') || fromJSON('["ubuntu-latest","windows-latest"]') }}
         python-version: ["3.10", "3.12"]
+
+    env:
+      PYTHONWARNDEFAULTENCODING: "1"
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -71,15 +80,22 @@ jobs:
       - name: Run test suite (incl. import-boundary)
         run: pytest -q
 
+      # bash on every OS (Git Bash on Windows) and RUNNER_TEMP rather than /tmp,
+      # so the same script runs everywhere. PYTHONWARNINGS names the CLI module
+      # exactly: `evaluate -o` writes JSON, and no pytest test reaches it.
       - name: CLI end-to-end smoke (generate -> train -> infer -> evaluate, CPU)
+        shell: bash
+        env:
+          PYTHONWARNINGS: "error::EncodingWarning:dnndenoiser.cli"
         run: |
+          T="$RUNNER_TEMP"
           dnndenoiser --help
-          dnndenoiser generate -o /tmp/smoke.h5 -n 32 --peak-set C1s_single
-          dnndenoiser train -d /tmp/smoke.h5 -o /tmp/smoke.pt \
+          dnndenoiser generate -o "$T/smoke.h5" -n 32 --peak-set C1s_single
+          dnndenoiser train -d "$T/smoke.h5" -o "$T/smoke.pt" \
             --arch FCNN --epochs 1 --batch-size 16 --device cpu
-          dnndenoiser infer -d /tmp/smoke.h5 -m /tmp/smoke.pt \
-            -o /tmp/smoke_out.h5 --batch-size 16 --device cpu
-          dnndenoiser evaluate -d /tmp/smoke_out.h5
+          dnndenoiser infer -d "$T/smoke.h5" -m "$T/smoke.pt" \
+            -o "$T/smoke_out.h5" --batch-size 16 --device cpu
+          dnndenoiser evaluate -d "$T/smoke_out.h5" -o "$T/smoke_metrics.json"
 
   build:
     name: build + archive-cleanliness + clean-install smoke

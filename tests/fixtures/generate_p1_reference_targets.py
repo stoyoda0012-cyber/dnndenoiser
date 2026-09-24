@@ -31,6 +31,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
 import sys
 from pathlib import Path
 
@@ -189,6 +190,7 @@ def main() -> int:
         "c7_trained_output_epochs30_seed0": c7,
         "_environment": {
             "note": "C0, C2, C3 and C7 are required only in this environment",
+            "platform": f"{platform.system()}-{platform.machine()}",
             "python": sys.version.split()[0],
             "torch": torch.__version__,
             "numpy": np.__version__,
@@ -197,7 +199,7 @@ def main() -> int:
         },
     }
     path = Path(__file__).with_name("p1_reference_targets.json")
-    path.write_text(json.dumps(out, indent=2) + "\n")
+    path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
 
     # C2 and C7 state a statistic over the reference's own array, so the array
     # is pinned rather than only its digest: 16 KB each, and it lets the test

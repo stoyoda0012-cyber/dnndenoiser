@@ -81,3 +81,8 @@ ignore = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Inert unless the interpreter runs with PYTHONWARNDEFAULTENCODING=1 (CI sets
+# it): then an open()/read_text()/write_text() without `encoding` in this
+# project's own code fails the suite instead of passing on a UTF-8 machine and
+# failing on a cp932 one. Third-party modules are left out of the filter.
+filterwarnings = ["error::EncodingWarning:(dnndenoiser|tests)"]
