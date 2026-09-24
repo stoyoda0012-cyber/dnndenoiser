@@ -236,7 +236,8 @@ changes is refused, because the record would name a commit that is not what ran.
 **Not yet cleared for outward-facing quotation.** Revision 11 of the preregistration
 proposes a limited clearance for one page,
 [`docs/WHEN_TO_TRUST.md`](../../../docs/WHEN_TO_TRUST.md); it takes effect only when the
-owner confirms it there, after an independent review. Until then, and for everything
+owner confirms it in Revision 11, after an independent review of the page and of the
+Record-section claims it quotes. Until then, and for everything
 the proposal does not list, no number from here goes into the package README, the
 documentation or a release note.
 

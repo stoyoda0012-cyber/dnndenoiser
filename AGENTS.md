@@ -118,7 +118,8 @@ Further rules:
   Two exceptions, each only for numbers tied to that record and tested as §8.1
   describes: (a) the record's own report — its preregistration's Record section and its
   `report.md`; (b) anywhere else, only where a person has cleared those numbers for
-  quotation in that place, and only with a link to the record.
+  quotation in that place and the decision is recorded beside the record, and only with
+  a link to the record.
 - Retractions, "undecided" verdicts, and negative results stay in the record. Do not
   delete or quietly soften them.
 - Do not promote an empirical regularity to a law.

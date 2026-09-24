@@ -20,7 +20,8 @@ of use, `<!--r:KEY-->` or `<!--n:KEY-->`, and this module says what each key mea
 The same anchors are used on `docs/WHEN_TO_TRUST.md`, the user-facing page that quotes
 this record under the clearance Revision 11 proposes. The test requires that page to
 cite exactly the record keys in `CLEARED_FOR_WHEN_TO_TRUST` below, to use `n:` only for
-registered design values, to anchor every integer, and to keep the qualifiers in
+registered design values, to put no digit outside an anchored number, to keep every
+record number within a fifth of its value, and to keep the qualifiers in
 `PAGE_REQUIRED_PHRASES`. Revision 11, item 78, lists what that leaves unchecked.
 
 What this does not do: it cannot tell whether the prose around a number says the
@@ -358,9 +359,9 @@ CLEARED_FOR_WHEN_TO_TRUST = frozenset({
     "n.train.A", "n.points", "n.seeds", "n.test",
 })
 
-# On that page an `n:` number is allowed only as `n:reg`, and only if its magnitude is
-# one of these registered design values, read from the record's design block -- so an
-# uncleared record value cannot be passed off as a design value.
+# On that page an `n:` number is allowed only as `n:reg`, written with its decimal and
+# exactly equal in magnitude to one of these design values read from the record's design
+# block. A record value that happens to coincide with one still passes (item 78).
 def page_design_values(record):
     design = record["design"]
     values = {abs(d) for d in design["manipulated"]["delta_values_eV"]}
@@ -379,6 +380,9 @@ PAGE_REQUIRED_PHRASES = (
     "was not tested",
     "biased low",
     "exactly right by construction",
+    "does not establish that the output's peak sits where the reference's does",
+    "was not measured",
+    "cannot attribute why",
 )
 
 NON_RECORD = {

@@ -141,7 +141,7 @@ Discarded records and superseded claims in earlier commits become readable.
 5. Merge after CI and review.
 
 Nothing from a record goes into the package README, the package documentation or a
-release note until the record's claims have been reviewed and a person has decided
-what may be quoted. That decision is recorded beside the record, naming the place, the statements and
+release note until the record's claims that would be quoted, and the place quoting
+them, have been independently reviewed and a person has decided what may be quoted. That decision is recorded beside the record, naming the place, the statements and
 the commit reviewed, and the numbers quoted there are tested as AGENTS.md §6, exception
 (b), requires.

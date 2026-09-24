@@ -17,14 +17,14 @@ Rules enforced here, per line of the Record section:
 - every `n:` key has a stated reason, and no `r:` key in the registry goes unused.
 
 `docs/WHEN_TO_TRUST.md` quotes the same record to users and is held to the same rules,
-over the whole page, and to four more, for the clearance Revision 11 proposes:
+over the whole page, and to further rules for the clearance Revision 11 proposes:
 - its record keys equal `CLEARED_FOR_WHEN_TO_TRUST`: no fewer, and none besides;
 - an `n:` number is `n:reg` and its magnitude is a design value read from the record, so
   an uncleared record value cannot be relabelled as a design value;
-- no integer appears without an anchor, so a count cannot slip in unanchored;
-- the qualifiers in `PAGE_REQUIRED_PHRASES` are present.
-Numbers written as words, a qualifier reworded, a correct number moved onto another
-subject, and a direction flipped in prose all pass these checks. They are a reviewer's.
+- no digit appears outside an anchored number, and no record number is more than 20 %
+  from its value however it is rounded;
+- the qualifiers in `PAGE_REQUIRED_PHRASES` are present in the visible text.
+What passes regardless is listed in Revision 11, item 78: it is a reviewer's.
 """
 from __future__ import annotations
 
@@ -178,7 +178,10 @@ def test_every_non_record_number_on_the_page_states_its_reason(registry, page):
     test_every_non_record_number_states_its_reason(registry, page)
 
 
-PAGE_INTEGER = re.compile(r"(?<![\w.#\-−+])(?P<int>\d+)(?![\w.]|<!--[rn]:)")
+# Digits on the page that are not a quoted number: the core level's name, the metric's
+# name, and ordered-list markers.
+PAGE_LITERALS = re.compile(r"\bC 1s\b|\bM1\b|\bnoise2noise\b|^\s*\d+\.\s", re.M)
+ANCHORED_NUMBER = re.compile(r"[+\-−]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+\-−]?\d+)?\s?%?<!--[rn]:[^>]*?-->")
 
 
 def _prose(text: str) -> str:
@@ -192,22 +195,43 @@ def test_the_page_uses_design_values_only_as_registered(registry, record, page):
     for lineno, token, _pct, kind, key in _occurrences(_prose(page)):
         if kind != "n":
             continue
-        value, half_unit = _quoted_value(token)
+        value, _half_unit = _quoted_value(token)
         if key != "reg":
             problems.append(f"line {lineno}: {token} is n:{key}; only n:reg is allowed on the page")
-        elif not any(abs(abs(value) - d) <= half_unit + 1e-12 for d in design):
-            problems.append(f"line {lineno}: {token} is marked n:reg but is no design value")
+        elif "." not in token or not any(abs(abs(value) - d) < 1e-9 for d in design):
+            problems.append(f"line {lineno}: {token} is marked n:reg but is not a design value "
+                            "written out with its decimal")
     assert not problems, "\n".join(problems)
 
 
-def test_no_integer_on_the_page_goes_unanchored(page):
-    bare = [(n, m.group("int")) for n, line in enumerate(_prose(page).splitlines(), start=1)
-            for m in PAGE_INTEGER.finditer(line)]
-    assert not bare, "integers on the page without an anchor (line, token): " + repr(bare)
+def test_no_digit_on_the_page_stands_outside_an_anchored_number(page):
+    """Catches a signed, sentence-final or unit-glued count, and exponent or bare-decimal forms."""
+    rest = PAGE_LITERALS.sub(" ", ANCHORED_NUMBER.sub(" ", _prose(page)))
+    rest = ANCHOR.sub(" ", rest)
+    bare = [(n, line.strip()) for n, line in enumerate(rest.splitlines(), start=1)
+            if re.search(r"\d", line)]
+    assert not bare, "digits on the page outside an anchored number (line, text): " + repr(bare)
+
+
+def test_every_record_number_on_the_page_is_within_a_fifth_of_its_value(registry, record, page):
+    """Rounding may not change what a number says: '0' for 0.47 passes the precision check.
+
+    A fifth, not a tenth, because an SD quoted to one significant figure (0.03 for 0.034)
+    is legitimately 12 % off."""
+    problems = []
+    for lineno, token, _pct, kind, key in _occurrences(_prose(page)):
+        if kind != "r" or key not in registry.CITATIONS:
+            continue
+        actual = float(registry.CITATIONS[key][1](record))
+        quoted, _ = _quoted_value(token)
+        if abs(quoted - actual) > 0.2 * abs(actual):
+            problems.append(f"line {lineno}: {token} for {key!r} is more than 20 % from {actual!r}")
+    assert not problems, "\n".join(problems)
 
 
 def test_the_page_keeps_its_qualifiers(registry, page):
-    missing = [p for p in registry.PAGE_REQUIRED_PHRASES if p not in " ".join(page.split())]
+    visible = " ".join(ANCHOR.sub("", _prose(page)).split())
+    missing = [p for p in registry.PAGE_REQUIRED_PHRASES if p not in visible]
     assert not missing, f"qualifiers the clearance requires, missing from the page: {missing}"
 
 
@@ -266,16 +290,28 @@ PAGE_MUTATIONS = [
     ("page: rounded figure outside its precision", "about\n  0.5<!--r:R3.pos--> eV",
      "about\n  0.6<!--r:R3.pos--> eV"),
     ("page: anchor removed", "about\n  1.8<!--r:R6.pos--> eV", "about\n  1.8 eV"),
-    ("page: an uncleared record number, correct and anchored", "No mechanism is claimed.",
-     "No mechanism is claimed. At zero shift it gained +11.4<!--r:A.gain.0--> dB."),
-    ("page: an uncleared record number relabelled as a design value", "No mechanism is claimed.",
-     "No mechanism is claimed. At zero shift it gained +11.4<!--n:reg--> dB."),
+    ("page: an uncleared record number, correct and anchored", "(M1 is the SNR gain.)",
+     "(M1 is the SNR gain.) At zero shift it gained +11.4<!--r:A.gain.0--> dB."),
+    ("page: an uncleared record number relabelled as a design value", "(M1 is the SNR gain.)",
+     "(M1 is the SNR gain.) At zero shift it gained +11.4<!--n:reg--> dB."),
     ("page: an uncleared record number under another non-record reason",
-     "No mechanism is claimed.", "No mechanism is claimed. B beat D by +4.5<!--n:design--> dB."),
-    ("page: an unanchored count", "No mechanism is claimed.",
-     "No mechanism is claimed. It gained 11 dB at zero shift."),
+     "(M1 is the SNR gain.)", "(M1 is the SNR gain.) B beat D by +4.5<!--n:design--> dB."),
+    ("page: an unanchored count", "(M1 is the SNR gain.)",
+     "(M1 is the SNR gain.) It gained 11 dB at zero shift."),
     ("page: a cleared sentence removed", " (1.8<!--r:R6.neg--> eV the other way;", " ("),
-    ("page: a required qualifier deleted", " No mechanism is claimed.", ""),
+    ("page: a required qualifier deleted", " No\n  mechanism is claimed.", ""),
+    ("page: a required qualifier hidden in a comment", " No\n  mechanism is claimed.",
+     " <!-- No mechanism is claimed. -->"),
+    ("page: a signed count", "(M1 is the SNR gain.)", "(M1 is the SNR gain.) It gained +11 dB."),
+    ("page: a sentence-final count", "(M1 is the SNR gain.)",
+     "(M1 is the SNR gain.) The gain in dB was 11."),
+    ("page: a unit-glued count", "(M1 is the SNR gain.)", "(M1 is the SNR gain.) It gained 11dB."),
+    ("page: an exponent form", "(M1 is the SNR gain.)", "(M1 is the SNR gain.) It gained .13e1 dB."),
+    ("page: an uncleared difference passed off as an integer design value",
+     "(M1 is the SNR gain.)", "(M1 is the SNR gain.) B beat D by 4<!--n:reg--> dB."),
+    ("page: rounded until it says something else", "0.47<!--r:R3.pos--> eV toward",
+     "0<!--r:R3.pos--> eV toward"),
+    ("page: R7 rounded to full pinning", "−0.67<!--r:R7.+1-->", "−1<!--r:R7.+1-->"),
 ]
 
 
@@ -288,7 +324,9 @@ def test_a_planted_error_on_the_page_is_rejected(registry, record, section, page
         lambda: test_every_page_citation_matches_the_record(registry, record, mutated),
         lambda: test_every_non_record_number_on_the_page_states_its_reason(registry, mutated),
         lambda: test_the_page_uses_design_values_only_as_registered(registry, record, mutated),
-        lambda: test_no_integer_on_the_page_goes_unanchored(mutated),
+        lambda: test_no_digit_on_the_page_stands_outside_an_anchored_number(mutated),
+        lambda: test_every_record_number_on_the_page_is_within_a_fifth_of_its_value(
+            registry, record, mutated),
         lambda: test_the_page_keeps_its_qualifiers(registry, mutated),
         lambda: test_the_page_cites_exactly_what_revision_11_cleared(registry, mutated),
     ]
