@@ -227,3 +227,37 @@ class TestTransformerLengthConstraint:
             num_features=100, num_hidden_units=100, layer_type=arch, encoder_output_dim=64,
         )
         assert model(torch.randn(2, 100))[0].shape == (2, 100)
+
+
+class TestRecurrentArchitecturesReadOneStep:
+    """GRU, LSTM and bi-LSTM read the whole spectrum as a single time step.
+
+    The README and the reference benchmark's README say so, because the names
+    suggest recurrence along the energy axis, which these models do not do: the
+    recurrent layer's input is the full spectrum (``input_size`` = number of energy
+    points) at sequence length 1. If that ever changes, those two documents and the
+    reference measurement's reading change with it, and this test says so first.
+    """
+
+    @pytest.mark.parametrize("arch", ["GRU", "LSTM", "bi-LSTM"])
+    def test_the_recurrent_layer_sees_one_step_of_the_whole_spectrum(self, arch):
+        model = DenoisingNetwork(
+            num_features=256, num_hidden_units=100, layer_type=arch, encoder_output_dim=64,
+        )
+        assert model.encoder.input_size == 256
+        seen = []
+        model.encoder.register_forward_hook(lambda _m, inputs, _o: seen.append(inputs[0].shape))
+        model(torch.randn(4, 256))
+        assert seen == [torch.Size([4, 1, 256])]
+
+    def test_the_experimental_sequential_variant_is_what_steps_through_energy(self):
+        """The contrast the documents draw, and a model the check above would refuse."""
+        model = DenoisingNetwork(
+            num_features=256, num_hidden_units=100, layer_type="bi-LSTM-seq", encoder_output_dim=64,
+        )
+        lstm = model.true_seq_bilstm.lstm
+        assert lstm.input_size == 1
+        seen = []
+        lstm.register_forward_hook(lambda _m, inputs, _o: seen.append(inputs[0].shape))
+        model(torch.randn(4, 256))
+        assert seen == [torch.Size([4, 256, 1])]

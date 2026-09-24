@@ -20,6 +20,11 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **The documentation did not say that GRU, LSTM and bi-LSTM read the spectrum as
+  one time step.** Their names suggest recurrence along the energy axis; each takes
+  the whole spectrum as a single step (sequence length 1), so the recurrence never
+  runs. The README and the reference benchmark's README now say so, and a test pins
+  it. Nothing about the models or the measured numbers changed.
 - **Text files were opened in the locale's encoding, so a Japanese Windows
   (cp932) machine failed three tests and could mis-write output.** Every
   `open()`, `read_text()` and `write_text()` in the package and the tests now
