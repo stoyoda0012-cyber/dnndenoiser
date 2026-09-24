@@ -31,7 +31,7 @@ import pytest
 import torch
 
 PINNED = json.loads(
-    (Path(__file__).parent / "fixtures" / "p1_reference_targets.json").read_text()
+    (Path(__file__).parent / "fixtures" / "p1_reference_targets.json").read_text(encoding="utf-8")
 )
 ENV = PINNED["_environment"]
 

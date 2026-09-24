@@ -8,6 +8,17 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **Text files were opened in the locale's encoding, so a Japanese Windows
+  (cp932) machine failed three tests and could mis-write output.** Every
+  `open()`, `read_text()` and `write_text()` in the package and the tests now
+  names UTF-8: `evaluate -o`'s metrics JSON, `SyntheticGenerator.save_manifest`
+  and the tests reading `pyproject.toml`, `CITATION.cff`, `CHANGELOG.md` and the
+  P1 fixture. `PYTHONUTF8=1` was the only workaround before. CI now runs on
+  Windows on every push, and with `PYTHONWARNDEFAULTENCODING=1` on every OS, so
+  a call without an encoding fails there.
+
 ## [0.1.2] - 2026-09-22
 
 ### Added

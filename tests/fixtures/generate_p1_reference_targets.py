@@ -197,7 +197,7 @@ def main() -> int:
         },
     }
     path = Path(__file__).with_name("p1_reference_targets.json")
-    path.write_text(json.dumps(out, indent=2) + "\n")
+    path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
 
     # C2 and C7 state a statistic over the reference's own array, so the array
     # is pinned rather than only its digest: 16 KB each, and it lets the test

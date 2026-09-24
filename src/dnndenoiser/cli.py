@@ -836,7 +836,7 @@ def cmd_evaluate(args):
         }
 
         output_path = Path(args.output)
-        with open(output_path, 'w') as f:
+        with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(metrics, f, indent=2)
         print(f"\nMetrics saved: {output_path}")
 
