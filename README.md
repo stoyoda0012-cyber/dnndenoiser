@@ -112,6 +112,13 @@ encoder output 64) — a property of the model, reproducible with
 | ResNet-FCNN | 658K | 0.001 | any |
 | Transformer | 862K | 0.001 | **must be divisible by 8** |
 
+**GRU, LSTM and bi-LSTM do not step along the energy axis.** Each reads the whole
+spectrum as a single time step — sequence length 1, with every energy point an input
+feature — so the recurrence never runs, and the recurrent layer acts as a gated
+fully-connected layer. Their results, including the reference benchmark's, say nothing
+about recurrent processing of a spectrum. The experimental `bi-LSTM-seq` is the variant
+that reads one energy point per step.
+
 The Transformer reads the spectrum as patches of 8 energy points, so its input
 length has to be a whole number of them; it refuses anything else at
 construction, naming the nearest usable lengths. No other architecture here has

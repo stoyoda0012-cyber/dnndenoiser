@@ -138,6 +138,11 @@ independently drawn synthetic test spectra, scored the reported SNR gain.*
   therefore confounded with architecture by design. The secondary `matched-budget`
   condition exists precisely so that this confound can be inspected rather than
   forgotten — and where the two conditions disagree, the disagreement *is* the finding.
+- anything about **recurrent processing** of a spectrum. `GRU`, `LSTM` and `bi-LSTM`
+  read the whole spectrum as a single time step — sequence length 1, every energy
+  point an input feature — so their recurrence never runs. Their rows measure those
+  models as built, not what a recurrent network stepping along the energy axis would
+  do.
 - that the ranking holds on **measured** spectra. Everything here is synthetic, drawn
   from this package's own generator, and evaluated against a reference that only exists
   because the data is synthetic. Distribution shift is the dominant failure mode of a
