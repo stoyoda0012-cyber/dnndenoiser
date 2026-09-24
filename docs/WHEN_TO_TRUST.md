@@ -10,6 +10,8 @@ more.
 repository's reference benchmark, by the measurement's own training loop. The CLI's
 `train` command, at its defaults (the FCNN architecture and different optimiser
 settings), was not measured, and these numbers should not be assumed to hold for it.
+Nor were the CLI's `generate` defaults, which differ from the data below: no position
+jitter, one noise level, and exact Poisson noise.
 
 <!-- Numbers on this page carry r: anchors (recomputed from the record) or n:reg anchors
 (registered design values, matched against the record's design); see
@@ -42,7 +44,7 @@ amount — the shape of a charging offset or a calibration error.
   subtracting the same quantity at zero shift): short of where it should have been by
   roughly two-thirds of the shift. The shortfall grew with the shift; at
   ±4.0<!--n:reg--> eV the peak hardly followed at all. The maximum is a grid point of
-  the whole spectrum, which is the dominant peak's, not a fitted peak position. No
+  the whole spectrum, not a fitted peak position. No
   mechanism is claimed. A positive M1 gain does not establish that the output's peak
   sits where the reference's does. (M1 is the SNR gain.)
 
@@ -50,8 +52,9 @@ amount — the shape of a charging offset or a calibration error.
 
 - *Data.* Synthetic C 1s spectra from this package's generator: three peaks,
   256<!--r:n.points--> points on a 0.069<!--r:grid.step--> eV grid, with ±0.3<!--n:reg--> eV
-  of independent position jitter per peak in training and test spectra alike. The peaks shift under a linear
-  background that stays in place, so this is not a translation of the whole spectrum.
+  of independent position jitter per peak in training and test spectra alike. The
+  peaks shift under a linear background that stays in place, so this is not a
+  translation of the whole spectrum.
 - *Training.* 2304<!--r:n.train.A--> spectra per model: an equal mix of three Poisson
   noise levels.
 - *Noise model.* Training and test noise come from the same function, so the model's
@@ -64,7 +67,9 @@ amount — the shape of a charging offset or a calibration error.
 - *Metric.* SNR gain in dB against the clean spectrum at the same shift, averaged over
   512<!--r:n.test--> test spectra per shift. The boundary is the median over runs of
   each run's first crossing of zero gain, linearly interpolated between the shifts
-  tested; this estimator is biased low wherever the curve wobbles near zero.
+  tested; this estimator is biased low wherever the curve wobbles near zero. The
+  displacement is likewise a mean over each run's test spectra, so it does not say how
+  individual spectra behaved.
 - *Replicates and split.* The replicate is the training run, each with its own seed:
   every ± above is across runs and every range across runs and both directions, and
   the spectra within one test set are not treated as independent replicates. The two
@@ -76,7 +81,7 @@ amount — the shape of a charging offset or a calibration error.
   1.2<!--r:fwhm.nominal--> eV FWHM — which each spectrum varies, and which is narrower than
   the three-peak envelope. Whether the eV figure, the bin figure or the width ratio
   carries over to your grid and line widths was not tested.
-- *Backend and provenance.* Measured on the MPS backend; numbers are not bit-identical
+- *Backend and provenance.* Measured on the MPS backend; the numbers were not compared
   across devices. The preregistration was not published before the measurement ran,
   so that it came first is attested only by this repository's own history.
 
@@ -84,8 +89,8 @@ amount — the shape of a charging offset or a calibration error.
 
 1. Put the energy scale where the model expects it before denoising — correct for
    charging and calibration first.
-2. Check peak positions against the noisy input, and verify any position, area or
-   width downstream. A denoised spectrum is a model estimate, not a measurement.
+2. Verify any position, area or width downstream. A denoised spectrum is a model
+   estimate, not a measurement.
 
 **Not established here.**
 
@@ -94,8 +99,11 @@ amount — the shape of a charging offset or a calibration error.
   between the frames of one measurement, and reusing any trained model on another
   measurement.
 - Noise levels other than the one quoted.
-- Other peak shapes, grids, architectures, training-set sizes, or shift ranges in
-  training.
+- Other peak shapes, grids, architectures, training-set sizes, jitter widths, noise
+  models, optimisation budgets, or shift ranges in training.
+- Separating the loss from effects of the window's edge beyond ±1.5<!--n:reg--> eV,
+  where the boundary of the model trained with shifts and the displacement at
+  ±4.0<!--n:reg--> eV lie.
 - Training with shifts as a remedy.
 - Shifts that move peaks relative to each other, such as chemical shifts.
 - Any general threshold for XPS.

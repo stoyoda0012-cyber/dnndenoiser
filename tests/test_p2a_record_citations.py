@@ -179,14 +179,41 @@ def test_every_non_record_number_on_the_page_states_its_reason(registry, page):
 
 
 # Digits on the page that are not a quoted number: the core level's name, the metric's
-# name, and ordered-list markers.
-PAGE_LITERALS = re.compile(r"\bC 1s\b|\bM1\b|\bnoise2noise\b|^\s*\d+\.\s", re.M)
-ANCHORED_NUMBER = re.compile(r"[+\-−]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+\-−]?\d+)?\s?%?<!--[rn]:[^>]*?-->")
+# name and a method's name. Ordered-list markers are handled by `_without_list_markers`.
+PAGE_LITERALS = re.compile(r"\bC 1s\b|\bM1\b|\bnoise2noise\b")
+# A number counts as anchored only if the anchor follows it directly (a space is allowed
+# only before a percent sign) and it is written plainly: no exponent, no leading dot.
+ANCHORED_NUMBER = re.compile(r"(?<![\w.])[+\-−]?\d+(?:\.\d+)?(?:\s?%)?<!--[rn]:[^>]*?-->")
+LIST_MARKER = re.compile(r"^(\s*)(\d+)\.\s")
+# Dashes that render like a minus sign but are not one of the three signs parsed.
+LOOKALIKE_SIGN = re.compile(r"[–—‒﹣－]\d")
 
 
 def _prose(text: str) -> str:
-    """The page without its HTML comments, keeping the anchors (which are comments too)."""
-    return re.sub(r"<!--(?![rn]:).*?-->", "", text, flags=re.S)
+    """The rendered text's source: no HTML comments except the anchors, and no
+    link-reference definitions, which Markdown never shows."""
+    text = re.sub(r"<!--(?![rn]:).*?-->", "", text, flags=re.S)
+    return re.sub(r"^ {0,3}\[[^\]]+\]:.*$", "", text, flags=re.M)
+
+
+def _without_list_markers(text: str) -> str:
+    """Blank the marker of a real ordered list: one that starts at 1 after a blank line and
+    counts up by one. A number at the start of a wrapped line inside a paragraph is not a
+    list marker -- Markdown renders it as text -- and is left in place to be caught."""
+    out, expected = [], None
+    for line in text.splitlines():
+        m = LIST_MARKER.match(line)
+        if not line.strip():
+            expected = 1
+        elif m and expected is not None and int(m.group(2)) == expected:
+            line = line[:m.end(1)] + " " * (m.end() - m.end(1)) + line[m.end():]
+            expected += 1
+            out.append(line)
+            continue
+        elif m or (expected == 1):
+            expected = None if expected == 1 else expected
+        out.append(line)
+    return "\n".join(out)
 
 
 def test_the_page_uses_design_values_only_as_registered(registry, record, page):
@@ -205,8 +232,13 @@ def test_the_page_uses_design_values_only_as_registered(registry, record, page):
 
 
 def test_no_digit_on_the_page_stands_outside_an_anchored_number(page):
-    """Catches a signed, sentence-final or unit-glued count, and exponent or bare-decimal forms."""
-    rest = PAGE_LITERALS.sub(" ", ANCHORED_NUMBER.sub(" ", _prose(page)))
+    """Catches a signed, sentence-final or unit-glued count, a number with its anchor set off
+    by a space, exponent and bare-decimal forms, and a sign written with a dash."""
+    prose = _prose(page)
+    lookalikes = [(n, line.strip()) for n, line in enumerate(prose.splitlines(), start=1)
+                  if LOOKALIKE_SIGN.search(line)]
+    assert not lookalikes, "a dash used as a sign before a number (line, text): " + repr(lookalikes)
+    rest = PAGE_LITERALS.sub(" ", ANCHORED_NUMBER.sub(" ", _without_list_markers(prose)))
     rest = ANCHOR.sub(" ", rest)
     bare = [(n, line.strip()) for n, line in enumerate(rest.splitlines(), start=1)
             if re.search(r"\d", line)]
@@ -312,13 +344,25 @@ PAGE_MUTATIONS = [
     ("page: rounded until it says something else", "0.47<!--r:R3.pos--> eV toward",
      "0<!--r:R3.pos--> eV toward"),
     ("page: R7 rounded to full pinning", "−0.67<!--r:R7.+1-->", "−1<!--r:R7.+1-->"),
+    ("page: an anchored number set off by a space", "0.47<!--r:R3.pos--> eV toward",
+     "9 <!--r:R3.pos--> eV toward"),
+    ("page: an integer mantissa with an exponent", "0.47<!--r:R3.pos--> eV toward",
+     "9e0<!--r:R3.pos--> eV toward"),
+    ("page: a sign flipped with an en dash", "+0.63<!--r:R7.-1-->", "–0.63<!--r:R7.-1-->"),
+    ("page: a count at the start of a wrapped line", "(M1 is the SNR gain.)",
+     "(M1 is the SNR gain.) Its gain in dB was\n  11. Beyond"),
+    ("page: a qualifier kept only in a link-reference definition",
+     (" No\n  mechanism is claimed.", "**Record:**"),
+     ("", '[nm]: #record "No mechanism is claimed."\n\n**Record:**')),
 ]
 
 
 @pytest.mark.parametrize("label,old,new", PAGE_MUTATIONS, ids=[m[0] for m in PAGE_MUTATIONS])
 def test_a_planted_error_on_the_page_is_rejected(registry, record, section, page, label, old, new):
-    assert old in page, f"mutation anchor for {label!r} no longer on the page"
-    mutated = page.replace(old, new, 1)
+    mutated = page
+    for o, n in (zip(old, new) if isinstance(old, tuple) else [(old, new)]):
+        assert o in mutated, f"mutation anchor for {label!r} no longer on the page"
+        mutated = mutated.replace(o, n, 1)
     checks = [
         lambda: test_every_number_on_the_page_is_anchored(mutated),
         lambda: test_every_page_citation_matches_the_record(registry, record, mutated),

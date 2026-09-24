@@ -237,8 +237,9 @@ changes is refused, because the record would name a commit that is not what ran.
 proposes a limited clearance for one page,
 [`docs/WHEN_TO_TRUST.md`](../../../docs/WHEN_TO_TRUST.md); it takes effect only when the
 owner confirms it in Revision 11, after an independent review of the page and of the
-Record-section claims it quotes. Until then, and for everything
-the proposal does not list, no number from here goes into the package README, the
+Record-section claims it quotes. Until then — published meaning pushed or released —
+and for everything
+the proposal does not list, no number from here is published in the package README, the
 documentation or a release note.
 
 ## Things about a record from this design that are easy to misread

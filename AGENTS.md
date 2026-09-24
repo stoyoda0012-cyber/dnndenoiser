@@ -117,9 +117,10 @@ Further rules:
 - Do not restate a numeric result in a second place; link to the record that owns it.
   Two exceptions, each only for numbers tied to that record and tested as §8.1
   describes: (a) the record's own report — its preregistration's Record section and its
-  `report.md`; (b) anywhere else, only where a person has cleared those numbers for
-  quotation in that place and the decision is recorded beside the record, and only with
-  a link to the record.
+  `report.md`; (b) anywhere else, only where, after an independent review (§8), the
+  person who decides publication has cleared those statements and their numbers for
+  quotation in that place, the decision is recorded in the record's preregistration, and
+  the place links to the record.
 - Retractions, "undecided" verdicts, and negative results stay in the record. Do not
   delete or quietly soften them.
 - Do not promote an empirical regularity to a law.
