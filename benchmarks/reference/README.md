@@ -141,7 +141,12 @@ independently drawn synthetic test spectra, scored the reported SNR gain.*
 - that the ranking holds on **measured** spectra. Everything here is synthetic, drawn
   from this package's own generator, and evaluated against a reference that only exists
   because the data is synthetic. Distribution shift is the dominant failure mode of a
-  denoiser (`AGENTS.md` §5); nothing in this benchmark probes it. Note in particular
+  denoiser (`AGENTS.md` §5); nothing in this benchmark probes it.
+  [`benchmarks/boundaries/position_shift/`](../boundaries/position_shift/) does, on
+  one axis — a rigid energy shift — for `ResNet-FCNN` only, starting from *this*
+  benchmark's own primary condition for that architecture, which it reproduces
+  within its consistency anchor. Read its README for what it supports; no number
+  from it is repeated here. Note in particular
   that the training noise and the test noise come from the *same* function, so the
   model's noise model is exactly correct by construction — a condition measured data
   never satisfies.
