@@ -98,3 +98,6 @@ CLAUDE.md
 tmp/
 temp/
 *.tmp
+
+# P2-B per-seed partial results (resumable; the record is results/snr_transfer.json)
+benchmarks/boundaries/snr_transfer/.partial/

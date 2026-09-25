@@ -106,19 +106,27 @@ separately wherever a ratio is quoted.
    just named.
 
 **Pairing.** For each seed, both methods and every training level are evaluated on
-the **same test arrays**: fresh single frames of the seed's sample at each inference
-flux, independent of every training frame. Differences between cells are computed
-within seed.
+the **same test arrays**: 512 fresh single frames of the seed's sample at each
+inference flux, independent of every training frame. Differences between cells are
+computed within seed.
+
+**Normalisation, fixed at implementation.** The moving-average method normalises its
+training stack by the stack's own global minimum and maximum, as the CLI's
+moving-average path does. At inference, at any flux, the test frames are transformed
+with the **training stack's** constants and the output is transformed back before it is
+scored — so a model trained at one flux sees data from another flux through the
+training flux's scale, as a model redeployed across exposures would. noise2clean uses
+no normalisation beyond the generator's, as in P2-A. Every frame and every pool
+spectrum is drawn by the generator's own noise function, `add_noise`.
 
 ### Replicates and split
 
 - **The replicate is the seed.** A seed draws a new clean sample (its per-peak
   position, width and intensity), its training frames, its test frames, the
   noise2clean pool, and the model initialisation and batch order.
-- **Seeds: 20**, as in P2-A. Rough cost, scaling SIA's reported training time for
-  one element on the same backend linearly with frames: about 25 minutes of
-  moving-average training per seed over the five levels, so about 8 hours for 20
-  seeds, plus noise2clean.
+- **Seeds: 20**, as in P2-A. Measured at implementation on the development machine
+  (MPS): about 10 minutes per seed for both methods over the five levels, so about
+  3.5 hours for 20 seeds.
 - **Saving and resuming.** Because the run is long, each seed's results are written
   to their own file as that seed finishes, with the commit, the working-tree state and
   the script's hash. A resumed run continues only from files written at the **same
@@ -215,16 +223,34 @@ run.
 
 ## Self-checks that void the record
 
-Completed at implementation and audited before registration. At least:
-- the realised count at each level matches its λ;
-- every level's noise is exact Poisson (no Gaussian approximation anywhere);
-- no test frame is byte-identical to a training frame, and the test arrays are
-  identical across methods and training levels within a seed;
-- the moving-average targets are the library's `moving_average_targets(W=1)`;
-- **not a self-check, descriptive only:** the noise2clean diagonal cell at λ = 100 is
-  reported beside P2-A's Δ = 0 operating point, with no tolerance and no condition. The
-  two differ in noise model (exact Poisson here, the Gaussian approximation there) and
-  in training data (one level here, three there), and the record says so.
+The run refuses to write a record if any fails. Each is shown to reject a named wrong
+input in `tests/test_snr_transfer_gates.py`.
+
+1. **Exact Poisson.** Every training and test frame, at every level, is a whole
+   number of counts at that level's scale. Refuses Gaussian-approximated frames and
+   frames drawn at another level.
+2. **Realised flux.** The mean count at the spectrum's maximum over the training frames
+   is λ within five standard errors. Refuses frames at another flux.
+3. **Equal exposure.** λ · N equals the registered total at every level, to within one
+   frame. Refuses equal frame counts.
+4. **Targets.** At W = 1, every target row is bit-identical to one of its frame's
+   adjacent frames in acquisition order — checked without the library's target
+   function. Refuses W = 2 and a frame as its own target.
+5. **No leakage.** No test frame is byte-identical to a training frame, and the seed's
+   clean sample is not in any noise2clean pool. Refuses both.
+6. **Same test arrays.** Every model of both methods, at every training level, was
+   evaluated at each inference level on the array drawn for that level. Refuses a model
+   evaluated on another level's array.
+7. **Architecture.** The ResNet-FCNN's parameter count equals the reference benchmark's
+   recorded count. Refuses another architecture.
+
+The rule for a failed positive control, the threshold table and resuming only at the
+same commit are tested in the same file.
+
+**Not a self-check, descriptive only:** the noise2clean diagonal cell at λ = 100 is
+reported beside P2-A's Δ = 0 operating point, with no tolerance and no condition. The
+two differ in noise model (exact Poisson here, the Gaussian approximation there) and
+in training data (one level here, three there), and the record says so.
 
 ## What this record will not support
 
@@ -239,7 +265,7 @@ Completed at implementation and audited before registration. At least:
 ## Before registration
 
 1. ~~The owner decides the design and the predictions~~ — done 2026-09-25.
-2. The apparatus is implemented under `benchmarks/boundaries/snr_transfer/`, reusing
+2. ~~The apparatus is implemented~~ — done: `benchmarks/boundaries/snr_transfer/`, reusing
    what P2-A's apparatus does through a shared module; P2-A's own script is not
    edited, because its hash is in its record.
 3. An independent audit of this document and the apparatus, with a fixed checklist.
