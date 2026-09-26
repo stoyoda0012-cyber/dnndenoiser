@@ -14,7 +14,7 @@ record may be quoted, is the first author of the SIA paper discussed below
 ([10.1002/sia.70123](https://doi.org/10.1002/sia.70123)). A result that appears to
 agree with that paper serves the author's interest; so does one framed to appear
 independent of it. The safeguards are the ones this repository already uses: the
-design, predictions and decision rules are fixed and published before any run; every
+design, predictions and decision rules are fixed and published before the first full run; every
 outcome is recorded whichever way it falls; the claims are independently reviewed
 before any of them is cleared for quotation.
 
@@ -125,8 +125,8 @@ spectrum is drawn by the generator's own noise function, `add_noise`.
 - **The replicate is the seed.** A seed draws a new clean sample (its per-peak
   position, width and intensity), its training frames, its test frames, the
   noise2clean pool, and the model initialisation and batch order.
-- **Seeds: 20**, as in P2-A. Measured at implementation on the development machine
-  (MPS): about 10 minutes per seed for both methods over the five levels, so about
+- **Seeds: 20**, as in P2-A. Estimated, by extrapolating a 2-epoch timing run on the
+  development machine (MPS): about 10 minutes per seed for both methods over the five levels, so about
   3.5 hours for 20 seeds.
 - **Device.** The full run is made on the MPS backend of the development machine, as
   P2-A was; the script refuses a full run without an explicit device. Floating-point
@@ -255,9 +255,11 @@ input in `tests/test_snr_transfer_gates.py`.
 5. **No leakage.** No test frame is byte-identical to a training frame, and the seed's
    clean sample is not in any noise2clean pool. Refuses both. It is an identity check,
    not a proof that the random streams are independent.
-6. **Model inputs.** For all 50 cells, the array actually passed to each network is
-   that inference level's test array under that model's normalisation, rebuilt apart
-   from the evaluation code. Refuses an input shifted by five bins, another model's
+6. **Model inputs.** For all 50 cells, the array each network actually received —
+   captured at the network's own call boundary by a forward pre-hook — is that
+   inference level's test array under that model's normalisation, rebuilt apart from
+   the evaluation code. Refuses an input shifted by five bins, a call that passes the
+   network a shifted array while the prepared one stays right, another model's
    normalisation, a missing cell and an empty set.
 7. **Architecture.** Every trained model's parameter count equals the reference
    benchmark's recorded count. Refuses another architecture; an architecture with the
@@ -269,7 +271,13 @@ resuming, and preparing the output directory are tested in the same file.
 **Statistics recorded beside the predictions.** R1 reports each cell's Holm-adjusted *p*
 within its family of three. For noise2clean the same statistics as for the moving
 average — the sign counts, *p* and Holm-adjusted *p* for R1 to R4, and the per-cell M1
-and M2 — are recorded, **descriptively**: none of them is a prediction.
+and M2 — are recorded, **descriptively**: none of them is a prediction. They are
+computed for every cell and pair, with no exclusion and no stopping rule, so R1's
+failure cannot remove anything recorded for noise2clean.
+
+**Every gain is a finite number.** A resumed seed file, and the whole record before it
+is written, are refused if any gain is NaN, infinite or not a number: a NaN counts as
+neither sign and would read as a non-supporting result it is not.
 
 **Not a self-check, descriptive only:** the noise2clean diagonal cell at λ = 100 is
 reported beside P2-A's Δ = 0 operating point, with no tolerance and no condition. The
@@ -301,7 +309,11 @@ The record says so, and it is not a re-measurement of P2-A under the same condit
    edited, because its hash is in its record.
 3. An independent audit of this document and the apparatus, with a fixed checklist —
    the first was of commit `6459e5b`; its findings and their repair are in the commit
-   that follows it, and a second audit, of the repair, is to follow.
+   that follows it (`2046086`). A second audit, of `2046086`, found one blocking defect
+   — self-check 6 hashed the prepared input rather than what the network received —
+   and three smaller ones; all four are repaired in the commit after it, each shown by
+   a planted-error test. At the owner's decision there is no third audit: the second
+   audit stated that the repair and its tests are sufficient to check.
 4. The owner approves, and this document is **published before the first full run**.
 
 **What was run before registration, disclosed.** The predictions were fixed in

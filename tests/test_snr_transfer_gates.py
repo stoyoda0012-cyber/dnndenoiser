@@ -304,3 +304,34 @@ def test_the_output_directory_refuses_an_unwritable_place(p2b, tmp_path):
 def test_r1_reports_holm_adjusted_p(p2b):
     p = p2b.evaluate_predictions(_fake_seeds(p2b, {}))
     assert all("holm_adjusted_p" in c for c in p["R1"]["cells"].values())
+
+
+def test_same_test_arrays_refuses_a_call_that_passes_the_network_something_else(p2b, sample,
+                                                                                monkeypatch):
+    """The second audit's case: the array handed to `denoise` altered at the call, while the
+    local `inputs` stays right. Only a hash taken at the network's call boundary sees it."""
+    original = p2b.denoise
+    monkeypatch.setattr(p2b, "denoise",
+                        lambda model, inputs, device: original(model, np.roll(inputs, 5, axis=1), device))
+    evaluated, test, norms = _evaluated_cells(p2b, sample)
+    with pytest.raises(p2b.SelfCheckFailure, match="not that level's test array"):
+        p2b.check_same_test_arrays(evaluated, test, norms)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), "1.0", None, True])
+def test_a_resumed_seed_with_a_non_finite_or_non_numeric_gain_is_refused(p2b, tmp_path, bad):
+    result = _complete_result(p2b, 0)
+    result["gains_db"]["moving_average"] = {**result["gains_db"]["moving_average"],
+                                            p2b.cell(4.0, 9.0): bad}
+    path = tmp_path / "seed_00.json"
+    _write(path, _stamp(), result)
+    with pytest.raises(p2b.SelfCheckFailure, match="not a finite number"):
+        p2b.load_resumable(path, _stamp(), 0)
+
+
+def test_noise2clean_statistics_keep_every_cell_when_r1_fails(p2b):
+    """The second audit's case: reusing the prediction logic dropped noise2clean's cells."""
+    seeds = _fake_seeds(p2b, {45.0: False, 100.0: False})
+    d = p2b.descriptive_statistics(seeds, "noise2clean")
+    assert d["descriptive_only"] is True
+    assert (len(d["R1_cells"]), len(d["R2_cells"]), len(d["R3_cells"]), len(d["R4_pairs"])) == (3, 10, 10, 10)

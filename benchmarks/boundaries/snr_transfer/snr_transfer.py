@@ -433,17 +433,27 @@ def denoise(model, inputs: np.ndarray, device: str, batch_size: int = 512) -> np
 
 
 def evaluate(model, test: np.ndarray, clean: np.ndarray, device: str, norm=None) -> tuple:
-    """Mean SNR gain over the test frames, and the hash of the array the network received."""
+    """Mean SNR gain over the test frames, and the hash of what the network received.
+
+    The hash is taken at the network's own call boundary, by a forward pre-hook, so it is
+    what the model actually got -- not a local variable that the call might not pass on.
+    """
     inputs = test.astype(np.float64)
     if norm is not None:
         inputs = (inputs - norm["min"]) / (norm["max"] - norm["min"])
     inputs = inputs.astype(np.float32)
-    output = denoise(model, inputs, device)
+    received = []
+    handle = model.register_forward_pre_hook(
+        lambda _m, args: received.append(args[0].detach().cpu().numpy().copy()))
+    try:
+        output = denoise(model, inputs, device)
+    finally:
+        handle.remove()
     if norm is not None:
         output = output * (norm["max"] - norm["min"]) + norm["min"]
     reference = np.broadcast_to(clean, test.shape)
     gain = common.snr_db(output, reference) - common.snr_db(test, reference)
-    return float(np.mean(gain)), _array_hash(inputs)
+    return float(np.mean(gain)), _array_hash(np.concatenate(received, axis=0).astype(np.float32))
 
 
 # --------------------------------------------------------------------------------------
@@ -545,7 +555,23 @@ def load_resumable(path: Path, stamp: dict, seed_index: int) -> dict | None:
     for method in ("moving_average", "noise2clean"):
         if set(result.get("gains_db", {}).get(method, {})) != cells:
             raise SelfCheckFailure(f"{path.name} does not hold all 25 cells for {method}")
+    check_gains_finite([result])
     return saved
+
+
+def check_gains_finite(seeds: list) -> dict:
+    """Every gain is a finite number. A NaN would count as neither sign in a sign test
+    and so read as a non-supporting result it is not. Run on resumed seeds and on the
+    whole record before it is written."""
+    for seed in seeds:
+        for method, cells in seed["gains_db"].items():
+            for name, value in cells.items():
+                if isinstance(value, bool) or not isinstance(value, (int, float)) \
+                        or not np.isfinite(value):
+                    raise SelfCheckFailure(
+                        f"seed {seed.get('seed_index')} {method} {name} is {value!r}, "
+                        "not a finite number")
+    return {"seeds_checked": len(seeds)}
 
 
 def prepare_output(out_dir: Path) -> Path:
@@ -634,6 +660,33 @@ def evaluate_predictions(seeds: list, method: str = "moving_average") -> dict:
     return {"R1": r1, "R2": r2, "R3": r3, "R4": r4, "levels_removed_by_R1": reduced}
 
 
+def descriptive_statistics(seeds: list, method: str) -> dict:
+    """The same sign counts, p and Holm-adjusted p as the predictions, for EVERY cell and
+    pair, with no exclusion and no stopping rule: descriptive, never a verdict. Used for
+    noise2clean, so that R1's failure cannot remove what is recorded for it."""
+    n = len(seeds)
+    above = [(t, i) for t in LAMBDAS for i in LAMBDAS if t > i]
+    below = [(t, i) for t in LAMBDAS for i in LAMBDAS if t < i]
+    families = {
+        "R1_cells": {str(lam): (m1(seeds, method, lam, lam), True) for lam in R1_LEVELS},
+        "R2_cells": {cell(t, i): (m2(seeds, method, t, i) - R2_MARGIN_DB, True) for t, i in above},
+        "R3_cells": {cell(t, i): (m2(seeds, method, t, i), False) for t, i in below},
+        "R4_pairs": {f"{a}|{b}": (-m2(seeds, method, a, b) + m2(seeds, method, b, a), True)
+                     for a, b in below},
+    }
+    out = {"descriptive_only": True}
+    for name, tests in families.items():
+        try:
+            k = R1_K if name == "R1_cells" else common.threshold_for_family(len(tests), n, ALPHA)
+        except ValueError:          # too few seeds for any threshold (quick runs only)
+            k = n + 1
+        cells = {c: common.sign_test(v, pos, k) for c, (v, pos) in tests.items()}
+        for c, p in zip(cells.values(), common.holm([c["one_sided_binomial_p"] for c in cells.values()])):
+            c["holm_adjusted_p"] = p
+        out[name] = cells
+    return out
+
+
 def aggregates(seeds: list) -> dict:
     out = {}
     for method in ("moving_average", "noise2clean"):
@@ -711,6 +764,7 @@ def run(args) -> dict:
         seeds.append(result)
         print(f"seed {seed_index} done ({time.perf_counter() - start:.0f} s)", flush=True)
 
+    check_gains_finite(seeds)
     record = {
         "record_version": RECORD_VERSION,
         "generated_utc": datetime.now(timezone.utc).isoformat(),
@@ -735,7 +789,7 @@ def run(args) -> dict:
         "seeds": seeds,
         "aggregates": aggregates(seeds),
         "predictions": evaluate_predictions(seeds),
-        "noise2clean_descriptive": evaluate_predictions(seeds, "noise2clean"),
+        "noise2clean_descriptive": descriptive_statistics(seeds, "noise2clean"),
         "p2a_beside_noise2clean": p2a_beside_noise2clean(seeds),
         "total_wall_clock_seconds": time.perf_counter() - start,
     }
