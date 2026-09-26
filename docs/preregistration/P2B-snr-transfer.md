@@ -1,11 +1,12 @@
 # Preregistration — P2-B: training and inference at different signal-to-noise ratios
 
-**Status: DRAFT — not registered; implemented; no full run made.** The design and
+**Status: registered 2026-09-26, on the owner's approval, after two independent audits
+(of `6459e5b` and `2046086`) and a check of the repair `d548985`; published before the
+first full run (`AGENTS.md` §8.1). Implemented; no full run made yet.** The design and
 the predictions were decided by the owner on 2026-09-25, before the apparatus was
-written; what was tried while writing it is listed under "Before registration". This
-document becomes a registration only when the owner approves it, after an independent
-audit, and it is **published (pushed) before the first full run** (`AGENTS.md` §8.1). Nothing below may later be revised to match a result; a change
-after registration is made visibly, with the reason and the date, in a Revision log.
+written; what was tried while writing it is listed under "Before registration". Nothing
+below may be revised to match a result; a change after registration is made visibly,
+with the reason and the date, in the Revision log at the end.
 
 ## Conflict of interest
 
@@ -314,7 +315,8 @@ The record says so, and it is not a re-measurement of P2-A under the same condit
    and three smaller ones; all four are repaired in the commit after it, each shown by
    a planted-error test. At the owner's decision there is no third audit: the second
    audit stated that the repair and its tests are sufficient to check.
-4. The owner approves, and this document is **published before the first full run**.
+4. ~~The owner approves, and this document is published before the first full run~~ —
+   approved 2026-09-26; published with the commit that records the approval.
 
 **What was run before registration, disclosed.** The predictions were fixed in
 `dbea58f`, before the apparatus existed. While writing it: quick smoke runs (2 seeds,
@@ -323,3 +325,7 @@ printed output — from 2-epoch models — was used only to see the code finish 
 positive-control rule branch; and a timing
 run of 2 epochs of each method at λ = 4, which computed no gain. No full-size model was
 trained and no registered cell was measured.
+
+## Revision log
+
+None since registration.
