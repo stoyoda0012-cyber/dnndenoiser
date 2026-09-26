@@ -9,6 +9,7 @@ preregistration registers.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -48,25 +49,61 @@ def test_exact_poisson_accepts_the_library_draw_and_refuses_a_gaussian_one(p2b, 
         p2b.check_exact_poisson(gaussian.astype(np.float32), sample, 20.0)
 
 
-def test_exact_poisson_refuses_frames_drawn_at_another_level(p2b, sample):
+def test_exact_poisson_refuses_frames_at_a_level_that_does_not_divide_the_declared_one(p2b, sample):
     frames = p2b.draw_frames(sample, 45.0, 64, 1)
     with pytest.raises(p2b.SelfCheckFailure, match="not whole counts"):
         p2b.check_exact_poisson(frames, sample, 20.0)
 
 
-def test_realised_flux_accepts_the_level_and_refuses_another(p2b, sample):
-    frames = p2b.draw_frames(sample, 9.0, 2000, 2)
-    p2b.check_realised_flux(frames, sample, 9.0)
-    with pytest.raises(p2b.SelfCheckFailure, match="mean count at the maximum"):
-        p2b.check_realised_flux(frames * (20.0 / 9.0), sample, 9.0)
+def test_exact_poisson_for_the_pool_refuses_a_gaussian_pool(p2b):
+    pool = p2b.n2c_pool(0, 2, 32)
+    p2b.check_exact_poisson_pool(pool, 20.0)
+    rng = np.random.default_rng(0)
+    noisy = pool["clean"] + rng.standard_normal(pool["clean"].shape) * 0.05
+    with pytest.raises(p2b.SelfCheckFailure, match="pool at lambda = 20.0 is not whole counts"):
+        p2b.check_exact_poisson_pool({"clean": pool["clean"], "noisy": noisy}, 20.0)
 
 
-def test_equal_exposure_accepts_the_registered_counts_and_refuses_equal_frames(p2b):
+LEVEL_MIXUPS = [(real, declared) for real in (4.0, 9.0, 20.0, 45.0, 100.0)
+                for declared in (4.0, 9.0, 20.0, 45.0, 100.0) if real != declared]
+
+
+def test_noise_level_accepts_every_registered_level(p2b, sample):
+    for i, lam in enumerate(p2b.LAMBDAS):
+        p2b.check_noise_level(p2b.draw_frames(sample, lam, 200, 10 + i), sample, lam)
+
+
+@pytest.mark.parametrize("real,declared", LEVEL_MIXUPS)
+def test_noise_level_refuses_every_mix_up_of_registered_levels(p2b, sample, real, declared):
+    """The audit's case: frames drawn at 4 declared as 20 passed the old mean-based check,
+    and the integer check, because the generator returns every level at one amplitude."""
+    frames = p2b.draw_frames(sample, real, 200, 7)
+    with pytest.raises(p2b.SelfCheckFailure, match="not drawn at the declared level"):
+        p2b.check_noise_level(frames, sample, declared)
+
+
+def test_noise_level_refuses_a_pool_drawn_at_another_level(p2b):
+    pool = p2b.n2c_pool(0, 0, 64)          # drawn at lambda = 4
+    p2b.check_noise_level(pool["noisy"], pool["clean"], 4.0)
+    with pytest.raises(p2b.SelfCheckFailure, match="not drawn at the declared level"):
+        p2b.check_noise_level(pool["noisy"], pool["clean"], 20.0)
+
+
+def test_equal_exposure_accepts_the_registered_counts_and_refuses_equal_frames(p2b, sample):
     registered = {lam: p2b.n_frames(lam) for lam in p2b.LAMBDAS}
     assert registered == {4.0: 12500, 9.0: 5556, 20.0: 2500, 45.0: 1111, 100.0: 500}
-    p2b.check_equal_exposure(registered, 1)
+    drawn = {lam: np.zeros((n, 1)) for lam, n in registered.items()}
+    p2b.check_equal_exposure(drawn, 1)
     with pytest.raises(p2b.SelfCheckFailure, match="lambda \\* N"):
-        p2b.check_equal_exposure({lam: 2500 for lam in p2b.LAMBDAS}, 1)
+        p2b.check_equal_exposure({lam: np.zeros((2500, 1)) for lam in p2b.LAMBDAS}, 1)
+
+
+def test_equal_exposure_counts_the_rows_drawn_not_the_rows_planned(p2b):
+    """The audit's case: the old check saw only the planned counts."""
+    drawn = {lam: np.zeros((p2b.n_frames(lam), 1)) for lam in p2b.LAMBDAS}
+    drawn[4.0] = drawn[4.0][:-5]
+    with pytest.raises(p2b.SelfCheckFailure, match="lambda = 4.0 has 12495 frames"):
+        p2b.check_equal_exposure(drawn, 1)
 
 
 def test_targets_check_accepts_w1_and_refuses_w2(p2b, sample):
@@ -101,11 +138,50 @@ def test_leakage_check_refuses_the_sample_in_the_pool(p2b, sample):
         p2b.check_no_leakage(train, test, pool, sample)
 
 
-def test_same_test_arrays_refuses_a_model_evaluated_on_another_level(p2b):
-    hashes = {4.0: "a", 9.0: "b"}
-    p2b.check_same_test_arrays({("moving_average", 4.0, 9.0): "b"}, hashes)
-    with pytest.raises(p2b.SelfCheckFailure, match="different test array"):
-        p2b.check_same_test_arrays({("noise2clean", 4.0, 9.0): "a"}, hashes)
+def _evaluated_cells(p2b, sample, shift_one=None):
+    """Run `evaluate` for every cell with a stand-in model; optionally corrupt one input."""
+    test = {lam: p2b.draw_frames(sample, lam, 8, 20 + i) for i, lam in enumerate(p2b.LAMBDAS)}
+    norms = {lam: {"min": -0.1, "max": 1.3 + lam / 1000} for lam in p2b.LAMBDAS}
+    model = p2b.build_model()
+    evaluated = {}
+    for method in ("moving_average", "noise2clean"):
+        for t in p2b.LAMBDAS:
+            for i in p2b.LAMBDAS:
+                array = test[i]
+                if shift_one == (method, t, i):
+                    array = np.roll(array, 5, axis=1)
+                norm = norms[t] if method == "moving_average" else None
+                _gain, digest = p2b.evaluate(model, array, sample, "cpu", norm)
+                evaluated[(method, t, i)] = digest
+    return evaluated, test, norms
+
+
+def test_same_test_arrays_accepts_what_evaluate_actually_fed(p2b, sample):
+    evaluated, test, norms = _evaluated_cells(p2b, sample)
+    p2b.check_same_test_arrays(evaluated, test, norms)
+
+
+def test_same_test_arrays_refuses_an_input_shifted_by_five_bins(p2b, sample):
+    """The audit's case: the old check hashed the array handed in, not what the network saw."""
+    evaluated, test, norms = _evaluated_cells(p2b, sample, ("moving_average", 20.0, 45.0))
+    with pytest.raises(p2b.SelfCheckFailure, match="not that level's test array"):
+        p2b.check_same_test_arrays(evaluated, test, norms)
+
+
+def test_same_test_arrays_refuses_another_levels_normalisation(p2b, sample):
+    evaluated, test, norms = _evaluated_cells(p2b, sample)
+    swapped = {**norms, 9.0: norms[45.0]}
+    with pytest.raises(p2b.SelfCheckFailure, match="not that level's test array"):
+        p2b.check_same_test_arrays(evaluated, test, swapped)
+
+
+def test_same_test_arrays_refuses_a_missing_cell_and_an_empty_set(p2b, sample):
+    evaluated, test, norms = _evaluated_cells(p2b, sample)
+    del evaluated[("noise2clean", 4.0, 100.0)]
+    with pytest.raises(p2b.SelfCheckFailure, match="never evaluated"):
+        p2b.check_same_test_arrays(evaluated, test, norms)
+    with pytest.raises(p2b.SelfCheckFailure, match="never evaluated"):
+        p2b.check_same_test_arrays({}, test, norms)
 
 
 def test_parameter_count_refuses_another_architecture(p2b):
@@ -162,13 +238,69 @@ def test_when_r1_fails_at_two_levels_r2_to_r4_are_not_evaluated(p2b):
     assert all(p[r]["evaluated"] is False for r in ("R2", "R3", "R4"))
 
 
-def test_a_resumed_run_refuses_a_seed_file_from_another_commit(p2b, tmp_path):
-    stamp = {"code_commit": "a" * 40, "working_tree_clean": True, "scripts": {}}
+def _stamp(**over):
+    base = {"code_commit": "a" * 40, "working_tree_clean": True, "scripts": {"x.py": "1"},
+            "environment": {"device_requested_resolved_to": "mps", "torch": "2.9.1"},
+            "settings": {"n_seeds": 20}}
+    return {**base, **over}
+
+
+def _complete_result(p2b, seed_index):
+    cells = {p2b.cell(t, i): 0.0 for t in p2b.LAMBDAS for i in p2b.LAMBDAS}
+    return {"seed_index": seed_index, "gains_db": {"moving_average": cells, "noise2clean": cells}}
+
+
+def _write(path, stamp, result):
+    path.write_text(json.dumps({"stamp": stamp, "result": result}), encoding="utf-8")
+
+
+def test_a_resumed_run_accepts_a_matching_complete_seed(p2b, tmp_path):
+    path = tmp_path / "seed_03.json"
+    _write(path, _stamp(), _complete_result(p2b, 3))
+    assert p2b.load_resumable(path, _stamp(), 3)["result"]["seed_index"] == 3
+
+
+@pytest.mark.parametrize("field,value", [
+    ("code_commit", "b" * 40),
+    ("environment", {"device_requested_resolved_to": "cpu", "torch": "2.9.1"}),
+    ("environment", {"device_requested_resolved_to": "mps", "torch": "2.11.0"}),
+    ("settings", {"n_seeds": 2}),
+    ("scripts", {"x.py": "2"}),
+])
+def test_a_resumed_run_refuses_another_commit_environment_or_setting(p2b, tmp_path, field, value):
+    """The audit's case: a seed from MPS reused under CPU would have been recorded as CPU."""
     path = tmp_path / "seed_00.json"
-    path.write_text('{"stamp": ' + __import__("json").dumps({**stamp, "code_commit": "b" * 40})
-                    + ', "result": {}}', encoding="utf-8")
-    with pytest.raises(p2b.SelfCheckFailure, match="same commit from a clean tree"):
-        p2b.load_resumable(path, stamp)
-    path.write_text('{"stamp": ' + __import__("json").dumps(stamp) + ', "result": {"x": 1}}',
-                    encoding="utf-8")
-    assert p2b.load_resumable(path, stamp) == {"stamp": stamp, "result": {"x": 1}}
+    _write(path, _stamp(**{field: value}), _complete_result(p2b, 0))
+    with pytest.raises(p2b.SelfCheckFailure, match="same environment"):
+        p2b.load_resumable(path, _stamp(), 0)
+
+
+def test_a_resumed_run_refuses_the_wrong_seed_and_an_incomplete_one(p2b, tmp_path):
+    path = tmp_path / "seed_05.json"
+    _write(path, _stamp(), _complete_result(p2b, 4))
+    with pytest.raises(p2b.SelfCheckFailure, match="holds seed 4, not 5"):
+        p2b.load_resumable(path, _stamp(), 5)
+    partial = _complete_result(p2b, 5)
+    partial["gains_db"]["noise2clean"] = {}
+    _write(path, _stamp(), partial)
+    with pytest.raises(p2b.SelfCheckFailure, match="all 25 cells for noise2clean"):
+        p2b.load_resumable(path, _stamp(), 5)
+
+
+def test_the_output_directory_is_made_and_proven_writable_before_any_seed(p2b, tmp_path):
+    """The audit's case: a full run created only .partial, so the final save would fail."""
+    target = tmp_path / "not" / "yet" / "there"
+    assert p2b.prepare_output(target) == target / "snr_transfer.json"
+    assert target.is_dir() and not any(target.iterdir())
+
+
+def test_the_output_directory_refuses_an_unwritable_place(p2b, tmp_path):
+    blocker = tmp_path / "a_file"
+    blocker.write_text("x", encoding="utf-8")
+    with pytest.raises(OSError):
+        p2b.prepare_output(blocker / "sub")
+
+
+def test_r1_reports_holm_adjusted_p(p2b):
+    p = p2b.evaluate_predictions(_fake_seeds(p2b, {}))
+    assert all("holm_adjusted_p" in c for c in p["R1"]["cells"].values())

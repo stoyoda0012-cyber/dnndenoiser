@@ -1,10 +1,10 @@
 # Preregistration — P2-B: training and inference at different signal-to-noise ratios
 
-**Status: DRAFT — not registered, not implemented, not run.** The design and the
-predictions were decided by the owner on 2026-09-25; the self-checks are completed at
-implementation. This document becomes a registration only when the owner approves it,
-after an independent audit, and it is **published (pushed) before the first run**
-(`AGENTS.md` §8.1). Nothing below may later be revised to match a result; a change
+**Status: DRAFT — not registered; implemented; no full run made.** The design and
+the predictions were decided by the owner on 2026-09-25, before the apparatus was
+written; what was tried while writing it is listed under "Before registration". This
+document becomes a registration only when the owner approves it, after an independent
+audit, and it is **published (pushed) before the first full run** (`AGENTS.md` §8.1). Nothing below may later be revised to match a result; a change
 after registration is made visibly, with the reason and the date, in a Revision log.
 
 ## Conflict of interest
@@ -32,8 +32,8 @@ conditions, and it says so before any result exists. The differences are:
 | | SIA | P2-B |
 |---|---|---|
 | Data | measured AR-HAXPES frames of one multilayer sample | synthetic spectra from this package's generator |
-| Where performance is judged | depth profiles, after an L1-regularised inversion, against a pseudo-ground truth | single-frame spectra, against the synthetic clean spectrum |
-| Noise | the instrument's detector noise | exact Poisson noise, drawn by the same function for training and test |
+| Where performance is judged | mainly depth profiles, after an L1-regularised inversion, against a pseudo-ground truth; single-frame spectra are also compared (its Fig. 3) | single-frame spectra, against the synthetic clean spectrum |
+| Noise | the instrument's detector noise, which the paper reports as purely Poisson with no detectable Gaussian read-noise floor | exact Poisson noise, drawn by the same function for training and test |
 | Signal | five core levels, resampled per element | one synthetic core-level envelope |
 | Reference | pseudo-ground truth from the frame average | the noise-free spectrum, known exactly because it is synthetic |
 
@@ -78,9 +78,10 @@ separately wherever a ratio is quoted.
   frame). The end points are SIA's frame counts.
 - **What that confounds, stated now.** Because the frame count falls as flux rises,
   **a training level's S/N and its number of training frames cannot be separated in
-  this design.** A difference between training levels is a difference in both; this
-  record will not attribute it to either. That is SIA's design too, and the reason it
-  is kept.
+  this design** — nor its number of optimiser updates: at a fixed 50 epochs and batch
+  32, the moving-average model takes about 19 550 updates at λ = 4 and 800 at λ = 100.
+  A difference between training levels is a difference in all three; this record will
+  not attribute it to any one. That is SIA's design too, and the reason it is kept.
 
 ### Two training methods, on the same test data
 
@@ -127,11 +128,17 @@ spectrum is drawn by the generator's own noise function, `add_noise`.
 - **Seeds: 20**, as in P2-A. Measured at implementation on the development machine
   (MPS): about 10 minutes per seed for both methods over the five levels, so about
   3.5 hours for 20 seeds.
+- **Device.** The full run is made on the MPS backend of the development machine, as
+  P2-A was; the script refuses a full run without an explicit device. Floating-point
+  results are not expected to be bit-identical on another backend.
 - **Saving and resuming.** Because the run is long, each seed's results are written
-  to their own file as that seed finishes, with the commit, the working-tree state and
-  the script's hash. A resumed run continues only from files written at the **same
-  commit** from a clean tree, and refuses otherwise; the record states which seeds, if
-  any, came from a resumed run.
+  to their own git-ignored file as that seed finishes, stamped with the commit, the
+  working-tree state, the hashes of the script and the shared module, the device and
+  library versions, and the settings. A resumed run reuses a file only if its stamp
+  matches exactly, it holds the expected seed and all 50 cells; otherwise it refuses.
+  So a record is always one environment, and every seed carries its own environment.
+  The record states which seeds, if any, came from a resumed run. The output directory
+  is created and proven writable before the first seed.
 - **Split.** Training frames, test frames and the noise2clean pool come from disjoint
   random streams; the unit that prevents leakage is the independently drawn frame (for
   the moving-average method) and the independently generated spectrum (for
@@ -179,9 +186,10 @@ would let a prediction hold that its own correction does not support.
 - **R1 — positive control, at λ = 20, 45 and 100.** The diagonal cell's M1 is positive
   in at least 19 of 20 seeds — P2-A's positive-control rule, stricter than the
   family-of-3 threshold of 16. **Why only these levels:** the SIA paper reports that
-  training at its most photon-starved exposure, 4.8 s/frame, failed structurally — the
-  denoiser's output lost its diversity, and all three cells trained there shared one
-  wrong reconstruction whatever they were applied to. λ = 4 sits at that exposure's
+  training at its most photon-starved exposure, 4.8 s/frame, failed structurally — in
+  its 4.8 s Self-DNN cell the pixel-level diversity of the output collapsed, and all
+  three cells trained at 4.8 s showed the same kind of wrong layer arrangement whatever
+  they were applied to (its §3.4 and Fig. 5). λ = 4 sits at that exposure's
   place in the 25-fold range (the lowest flux), and λ = 9 between it and SIA's 24 s;
   λ = 20, 45 and 100 cover SIA's 24 s and 120 s. The mapping is by relative flux only:
   the synthetic counts are not SIA's. So whether the method helps at λ = 4 and 9 is
@@ -226,31 +234,50 @@ run.
 The run refuses to write a record if any fails. Each is shown to reject a named wrong
 input in `tests/test_snr_transfer_gates.py`.
 
-1. **Exact Poisson.** Every training and test frame, at every level, is a whole
-   number of counts at that level's scale. Refuses Gaussian-approximated frames and
-   frames drawn at another level.
-2. **Realised flux.** The mean count at the spectrum's maximum over the training frames
-   is λ within five standard errors. Refuses frames at another flux.
+1. **Exact Poisson.** (a) Every training and test frame, at every level, is a whole
+   number of counts at that level's scale; (b) so is every noise2clean pool spectrum,
+   each at its own maximum. Refuses Gaussian-approximated frames and pools, and frames
+   drawn at a level that does not divide the declared one. This alone does not identify
+   the level.
+2. **Noise level.** λ estimated from the analytic Poisson variance — a bin of clean
+   value c in a spectrum of maximum m has variance m·c/λ at the clean scale — lies
+   within a factor 1.3 of the declared λ, for every training frame stack, test stack and
+   noise2clean pool. The registered levels are about 2.2 apart, so any mix-up is refused;
+   the test refuses all 20 ordered pairs of different registered levels. (A check of the
+   mean count, used in the first draft, could not tell levels apart: the generator
+   returns every level at the clean spectrum's amplitude.)
 3. **Equal exposure.** λ · N equals the registered total at every level, to within one
-   frame. Refuses equal frame counts.
+   frame, with N the number of rows actually drawn. Refuses equal frame counts and a
+   stack short of its planned count.
 4. **Targets.** At W = 1, every target row is bit-identical to one of its frame's
    adjacent frames in acquisition order — checked without the library's target
    function. Refuses W = 2 and a frame as its own target.
 5. **No leakage.** No test frame is byte-identical to a training frame, and the seed's
-   clean sample is not in any noise2clean pool. Refuses both.
-6. **Same test arrays.** Every model of both methods, at every training level, was
-   evaluated at each inference level on the array drawn for that level. Refuses a model
-   evaluated on another level's array.
-7. **Architecture.** The ResNet-FCNN's parameter count equals the reference benchmark's
-   recorded count. Refuses another architecture.
+   clean sample is not in any noise2clean pool. Refuses both. It is an identity check,
+   not a proof that the random streams are independent.
+6. **Model inputs.** For all 50 cells, the array actually passed to each network is
+   that inference level's test array under that model's normalisation, rebuilt apart
+   from the evaluation code. Refuses an input shifted by five bins, another model's
+   normalisation, a missing cell and an empty set.
+7. **Architecture.** Every trained model's parameter count equals the reference
+   benchmark's recorded count. Refuses another architecture; an architecture with the
+   same count would pass.
 
-The rule for a failed positive control, the threshold table and resuming only at the
-same commit are tested in the same file.
+The rule for a failed positive control, the threshold table, R1's Holm-adjusted *p*,
+resuming, and preparing the output directory are tested in the same file.
+
+**Statistics recorded beside the predictions.** R1 reports each cell's Holm-adjusted *p*
+within its family of three. For noise2clean the same statistics as for the moving
+average — the sign counts, *p* and Holm-adjusted *p* for R1 to R4, and the per-cell M1
+and M2 — are recorded, **descriptively**: none of them is a prediction.
 
 **Not a self-check, descriptive only:** the noise2clean diagonal cell at λ = 100 is
 reported beside P2-A's Δ = 0 operating point, with no tolerance and no condition. The
-two differ in noise model (exact Poisson here, the Gaussian approximation there) and
-in training data (one level here, three there), and the record says so.
+two differ in noise model (exact Poisson here, the Gaussian approximation there), in
+training data (one level here, three there) and in the test set (here 512 noisy frames
+of one clean spectrum per seed, there independently generated spectra, so a seed mean
+averages over different things and the spread across seeds means different things).
+The record says so, and it is not a re-measurement of P2-A under the same conditions.
 
 ## What this record will not support
 
@@ -259,7 +286,11 @@ in training data (one level here, three there), and the record says so.
   rule;
 - a general S/N-transfer rule for XPS denoising: one peak set, one architecture, one
   target window, one budget design;
-- separating a training level's S/N from its number of training frames;
+- separating a training level's S/N from its number of training frames or optimiser
+  updates;
+- reading a lack of output diversity as SIA's structural failure. Within a seed there is
+  one clean spectrum, so an output close to it and nearly the same for every frame
+  scores well here; this record does not measure diversity;
 - attributing the difference between the two methods to information, data or recipe.
 
 ## Before registration
@@ -268,5 +299,15 @@ in training data (one level here, three there), and the record says so.
 2. ~~The apparatus is implemented~~ — done: `benchmarks/boundaries/snr_transfer/`, reusing
    what P2-A's apparatus does through a shared module; P2-A's own script is not
    edited, because its hash is in its record.
-3. An independent audit of this document and the apparatus, with a fixed checklist.
+3. An independent audit of this document and the apparatus, with a fixed checklist —
+   the first was of commit `6459e5b`; its findings and their repair are in the commit
+   that follows it, and a second audit, of the repair, is to follow.
 4. The owner approves, and this document is **published before the first full run**.
+
+**What was run before registration, disclosed.** The predictions were fixed in
+`dbea58f`, before the apparatus existed. While writing it: quick smoke runs (2 seeds,
+2 epochs, frame counts divided by 50, 32 test frames, a 64-spectrum pool), whose
+printed output — from 2-epoch models — was used only to see the code finish and the
+positive-control rule branch; and a timing
+run of 2 epochs of each method at λ = 4, which computed no gain. No full-size model was
+trained and no registered cell was measured.

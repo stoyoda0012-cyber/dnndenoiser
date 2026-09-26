@@ -211,11 +211,13 @@ def _array_hash(array: np.ndarray) -> str:
 
 
 def check_exact_poisson(frames: np.ndarray, clean: np.ndarray, lam: float) -> dict:
-    """Self-check 1: every value is a whole number of counts at this level's scale.
+    """Self-check 1a: every value is a whole number of counts at this level's scale.
 
     Exact Poisson draws are integers before `add_poisson_noise` scales them back by
-    data_max / lambda. A Gaussian approximation, a different lambda, or a different
-    scale leaves non-integers. Tolerance: float32 rounding of counts up to ~10**3.
+    data_max / lambda. A Gaussian approximation, or a scale that is not an integer
+    multiple of the true one, leaves non-integers. Tolerance: float32 rounding of counts
+    up to ~10**3. This alone does NOT identify the level: frames drawn at a lambda that
+    divides the declared one also land on whole counts. Self-check 2 does that.
     """
     counts = frames.astype(np.float64) * lam / float(np.max(np.maximum(clean, 0.0)))
     worst = float(np.max(np.abs(counts - np.round(counts))))
@@ -226,28 +228,63 @@ def check_exact_poisson(frames: np.ndarray, clean: np.ndarray, lam: float) -> di
     return {"lambda": lam, "worst_integer_residual": worst}
 
 
-def check_realised_flux(frames: np.ndarray, clean: np.ndarray, lam: float) -> dict:
-    """Self-check 2: the mean count at the spectrum's maximum is lambda, within 5 SE."""
-    peak = int(np.argmax(clean))
-    counts = frames[:, peak].astype(np.float64) * lam / float(clean[peak])
-    se = np.sqrt(lam / len(counts))
-    deviation = float(np.mean(counts) - lam)
-    if abs(deviation) > 5.0 * se:
+def check_exact_poisson_pool(pool: dict, lam: float) -> dict:
+    """Self-check 1b: the same for the noise2clean pool, each row at its own scale."""
+    clean = pool["clean"].astype(np.float64)
+    scale = lam / np.max(np.maximum(clean, 0.0), axis=1, keepdims=True)
+    counts = pool["noisy"].astype(np.float64) * scale
+    worst = float(np.max(np.abs(counts - np.round(counts))))
+    if worst > 1e-3:
         raise SelfCheckFailure(
-            f"mean count at the maximum is {np.mean(counts):.3f}, expected {lam} "
-            f"(deviation {deviation:.3f}, 5 SE = {5 * se:.3f})")
-    return {"lambda": lam, "mean_count_at_maximum": float(np.mean(counts)),
-            "five_se": float(5 * se)}
+            f"the noise2clean pool at lambda = {lam} is not whole counts (worst residual "
+            f"{worst:.3g}); its noise is not exact Poisson at this level")
+    return {"lambda": lam, "worst_integer_residual": worst}
 
 
-def check_equal_exposure(frame_counts: dict, divisor: int) -> dict:
-    """Self-check 3: lambda * N is the registered total at every level, to one frame."""
-    for lam, n in frame_counts.items():
+LEVEL_TOLERANCE = 1.3   # registered levels are about 2.2x apart
+
+
+def _lambda_from_variance(noisy: np.ndarray, clean: np.ndarray) -> float:
+    """lambda estimated from the analytic Poisson variance, not from the generator.
+
+    A bin with clean value c, in a spectrum of maximum m, has expected count lambda*c/m,
+    returned as count*m/lambda, so its variance is m*c/lambda. Pooled over every bin and
+    every row: lambda = sum(m*c) / sum((noisy - clean)**2).
+    """
+    clean = np.maximum(clean.astype(np.float64), 0.0)
+    m = np.max(clean, axis=-1, keepdims=True)
+    residual = noisy.astype(np.float64) - clean
+    return float(np.sum(np.broadcast_to(m * clean, residual.shape)) / np.sum(residual**2))
+
+
+def check_noise_level(noisy: np.ndarray, clean: np.ndarray, lam: float) -> dict:
+    """Self-check 2: the level is the declared one, from the noise variance.
+
+    The mean cannot tell levels apart -- the generator returns every level at the clean
+    spectrum's amplitude -- but the variance falls as 1/lambda. The estimate must lie
+    within a factor LEVEL_TOLERANCE of the declared lambda; every registered level is
+    about 2.2x from its neighbour, so any mix-up is refused. `clean` is one spectrum
+    (broadcast over frames) or one per row (the noise2clean pool).
+    """
+    estimate = _lambda_from_variance(noisy, np.broadcast_to(clean, noisy.shape))
+    ratio = estimate / lam
+    if not (1.0 / LEVEL_TOLERANCE <= ratio <= LEVEL_TOLERANCE):
+        raise SelfCheckFailure(
+            f"noise variance gives lambda = {estimate:.2f}, declared {lam}; the frames "
+            "were not drawn at the declared level")
+    return {"lambda": lam, "lambda_from_variance": estimate}
+
+
+def check_equal_exposure(train_frames: dict, divisor: int) -> dict:
+    """Self-check 3: lambda * N is the registered total at every level, to one frame --
+    N being the number of rows actually drawn, not the number planned."""
+    counts = {lam: int(len(frames)) for lam, frames in train_frames.items()}
+    for lam, n in counts.items():
         if abs(lam * n - TOTAL_EXPOSURE / divisor) > lam:
             raise SelfCheckFailure(
                 f"lambda = {lam} has {n} frames; lambda * N = {lam * n}, not "
                 f"{TOTAL_EXPOSURE / divisor} to within one frame")
-    return {"frames_per_level": {str(k): v for k, v in frame_counts.items()}}
+    return {"frames_per_level": {str(k): v for k, v in counts.items()}}
 
 
 def check_targets_are_neighbours(normalised: np.ndarray, targets: np.ndarray) -> dict:
@@ -282,22 +319,41 @@ def check_no_leakage(train_frames: dict, test_frames: dict, pool_clean: dict,
     return {"test_frames_in_training": 0, "sample_in_pool": []}
 
 
-def check_same_test_arrays(evaluated: dict, test_hashes: dict) -> dict:
-    """Self-check 6: every model, of both methods, saw the same test array per level.
+def expected_model_input(test: np.ndarray, norm) -> np.ndarray:
+    """What a model should receive for a test array: the array, or for the moving
+    average the array under the training stack's min-max, as float32 -- computed here,
+    apart from `evaluate`, so that self-check 6 has something to compare against."""
+    if norm is None:
+        return np.asarray(test, dtype=np.float32)
+    return ((test.astype(np.float64) - norm["min"]) / (norm["max"] - norm["min"])).astype(np.float32)
+
+
+def check_same_test_arrays(evaluated: dict, test_frames: dict, norms: dict) -> dict:
+    """Self-check 6: every model saw, at every inference level, exactly the input it should.
 
     `evaluated` holds, per (method, train level, inference level), the hash of the array
-    actually passed to the model; `test_hashes` the hash taken when the arrays were drawn.
+    actually passed to the network. It is compared with the hash of the input rebuilt
+    from the drawn test array and that model's normalisation. All 50 cells must be there.
     """
+    required = {(m, t, i) for m in ("moving_average", "noise2clean")
+                for t in LAMBDAS for i in LAMBDAS}
+    missing = required - set(evaluated)
+    if missing:
+        raise SelfCheckFailure(f"{len(missing)} cell(s) were never evaluated: {sorted(missing)[:3]}")
     for (method, train, infer), digest in evaluated.items():
-        if digest != test_hashes[infer]:
+        norm = norms[train] if method == "moving_average" else None
+        if digest != _array_hash(expected_model_input(test_frames[infer], norm)):
             raise SelfCheckFailure(
-                f"{method} trained at {train} was evaluated at {infer} on a different "
-                "test array from the others")
+                f"{method} trained at {train} was evaluated at {infer} on an input that is "
+                "not that level's test array under the model's normalisation")
     return {"cells_checked": len(evaluated)}
 
 
 def check_parameter_count(model: DenoisingNetwork, expected: int) -> dict:
-    """Self-check 7: the architecture is the one the reference benchmark counts."""
+    """Self-check 7: the architecture is the one the reference benchmark counts.
+
+    Run on every trained model. A different architecture with the same count would pass;
+    the count is the reference benchmark's recorded value, not this script's."""
     count = sum(p.numel() for p in model.parameters())
     if count != expected:
         raise SelfCheckFailure(f"{ARCH} has {count} parameters, expected {expected}")
@@ -377,17 +433,17 @@ def denoise(model, inputs: np.ndarray, device: str, batch_size: int = 512) -> np
 
 
 def evaluate(model, test: np.ndarray, clean: np.ndarray, device: str, norm=None) -> tuple:
-    """Mean SNR gain over the test frames, and the hash of the array the model saw."""
-    seen = test
+    """Mean SNR gain over the test frames, and the hash of the array the network received."""
     inputs = test.astype(np.float64)
     if norm is not None:
         inputs = (inputs - norm["min"]) / (norm["max"] - norm["min"])
+    inputs = inputs.astype(np.float32)
     output = denoise(model, inputs, device)
     if norm is not None:
         output = output * (norm["max"] - norm["min"]) + norm["min"]
     reference = np.broadcast_to(clean, test.shape)
     gain = common.snr_db(output, reference) - common.snr_db(test, reference)
-    return float(np.mean(gain)), _array_hash(seen)
+    return float(np.mean(gain)), _array_hash(inputs)
 
 
 # --------------------------------------------------------------------------------------
@@ -398,7 +454,6 @@ def evaluate(model, test: np.ndarray, clean: np.ndarray, device: str, norm=None)
 def run_seed(seed_index: int, device: str, settings: dict, expected_params: int) -> dict:
     sample = draw_sample(seed_index)
     frame_counts = {lam: n_frames(lam, settings["frame_divisor"]) for lam in LAMBDAS}
-    checks = {"3_equal_exposure": check_equal_exposure(frame_counts, settings["frame_divisor"])}
 
     train_frames = {lam: draw_frames(sample, lam, frame_counts[lam], train_frame_stream(seed_index, i))
                     for i, lam in enumerate(LAMBDAS)}
@@ -407,43 +462,52 @@ def run_seed(seed_index: int, device: str, settings: dict, expected_params: int)
                    for i, lam in enumerate(LAMBDAS)}
     pools = {lam: n2c_pool(seed_index, i, settings["n2c_pool"]) for i, lam in enumerate(LAMBDAS)}
 
-    checks["1_exact_poisson"] = [check_exact_poisson(f, sample, lam)
-                                 for frames in (train_frames, test_frames)
-                                 for lam, f in frames.items()]
-    checks["2_realised_flux"] = [check_realised_flux(f, sample, lam) for lam, f in train_frames.items()]
-    checks["5_no_leakage"] = check_no_leakage(
-        train_frames, test_frames, {lam: p["clean"] for lam, p in pools.items()}, sample)
-    test_hashes = {lam: _array_hash(t) for lam, t in test_frames.items()}
+    checks = {
+        "1a_exact_poisson_frames": [check_exact_poisson(f, sample, lam)
+                                    for frames in (train_frames, test_frames)
+                                    for lam, f in frames.items()],
+        "1b_exact_poisson_pool": [check_exact_poisson_pool(pools[lam], lam) for lam in LAMBDAS],
+        "2_noise_level": (
+            [check_noise_level(f, sample, lam) for frames in (train_frames, test_frames)
+             for lam, f in frames.items()]
+            + [check_noise_level(pools[lam]["noisy"], pools[lam]["clean"], lam) for lam in LAMBDAS]),
+        "3_equal_exposure": check_equal_exposure(train_frames, settings["frame_divisor"]),
+        "5_no_leakage": check_no_leakage(
+            train_frames, test_frames, {lam: p["clean"] for lam, p in pools.items()}, sample),
+        "7_parameter_count": [],
+    }
     input_snr = {str(lam): float(np.mean(common.snr_db(t, np.broadcast_to(sample, t.shape))))
                  for lam, t in test_frames.items()}
 
     gains = {"moving_average": {}, "noise2clean": {}}
     training = {"moving_average": {}, "noise2clean": {}}
-    evaluated = {}
+    evaluated, norms = {}, {}
     for i, train_lam in enumerate(LAMBDAS):
         model, norm, info = train_moving_average(
             train_frames[train_lam], device, TORCH_SEED_BASE + seed_index * 100 + i,
             settings["epochs"])
-        if i == 0 and seed_index == 0:
-            checks["7_parameter_count"] = check_parameter_count(model, expected_params)
+        checks["7_parameter_count"].append(check_parameter_count(model, expected_params))
+        norms[train_lam] = norm
         training["moving_average"][str(train_lam)] = {**info, "normalisation": norm}
         for infer_lam in LAMBDAS:
             gain, digest = evaluate(model, test_frames[infer_lam], sample, device, norm)
-            gains["moving_average"][f"{train_lam}->{infer_lam}"] = gain
+            gains["moving_average"][cell(train_lam, infer_lam)] = gain
             evaluated[("moving_average", train_lam, infer_lam)] = digest
 
         model, info = train_noise2clean(pools[train_lam], device,
                                         TORCH_SEED_BASE + seed_index * 100 + 50 + i,
                                         settings["epochs"])
+        checks["7_parameter_count"].append(check_parameter_count(model, expected_params))
         training["noise2clean"][str(train_lam)] = info
         for infer_lam in LAMBDAS:
             gain, digest = evaluate(model, test_frames[infer_lam], sample, device)
-            gains["noise2clean"][f"{train_lam}->{infer_lam}"] = gain
+            gains["noise2clean"][cell(train_lam, infer_lam)] = gain
             evaluated[("noise2clean", train_lam, infer_lam)] = digest
 
-    checks["6_same_test_arrays"] = check_same_test_arrays(evaluated, test_hashes)
+    checks["6_same_test_arrays"] = check_same_test_arrays(evaluated, test_frames, norms)
     return {"seed_index": seed_index, "gains_db": gains, "input_snr_db": input_snr,
             "training": training, "self_checks": checks,
+            "environment": common.environment_record(device),
             "sample_sha256": _array_hash(sample)}
 
 
@@ -452,23 +516,46 @@ def run_seed(seed_index: int, device: str, settings: dict, expected_params: int)
 # --------------------------------------------------------------------------------------
 
 
-def seed_stamp() -> dict:
-    """What a seed file must match for a resumed run to reuse it."""
+def seed_stamp(device: str, settings: dict) -> dict:
+    """What a seed file must match for a resumed run to reuse it: the commit, a clean
+    tree, the scripts, the device and library versions, and the settings. A run that
+    resumes is therefore one environment, and the record says which it was."""
     return {"code_commit": common.git("rev-parse", "HEAD"),
             "working_tree_clean": common.working_tree_status() == "",
-            "scripts": {Path(s).name: common.sha256(s) for s in SCRIPTS}}
+            "scripts": {Path(s).name: common.sha256(s) for s in SCRIPTS},
+            "environment": common.environment_record(device),
+            "settings": settings}
 
 
-def load_resumable(path: Path, stamp: dict) -> dict | None:
+def load_resumable(path: Path, stamp: dict, seed_index: int) -> dict | None:
+    """A saved seed, if it matches the stamp, is the expected seed and is complete."""
     if not path.exists():
         return None
     saved = json.loads(path.read_text(encoding="utf-8"))
     if saved.get("stamp") != stamp or not stamp["working_tree_clean"]:
         raise SelfCheckFailure(
-            f"{path.name} was written at a different commit, tree state or script; a run "
-            "resumes only from files written at the same commit from a clean tree. "
-            "Move the seed files away to start again.")
+            f"{path.name} was written at a different commit, tree state, script, device, "
+            "library version or setting; a run resumes only from files written at the "
+            "same commit from a clean tree in the same environment. Move the seed files "
+            "away to start again.")
+    result = saved.get("result", {})
+    if result.get("seed_index") != seed_index:
+        raise SelfCheckFailure(f"{path.name} holds seed {result.get('seed_index')}, not {seed_index}")
+    cells = {cell(t, i) for t in LAMBDAS for i in LAMBDAS}
+    for method in ("moving_average", "noise2clean"):
+        if set(result.get("gains_db", {}).get(method, {})) != cells:
+            raise SelfCheckFailure(f"{path.name} does not hold all 25 cells for {method}")
     return saved
+
+
+def prepare_output(out_dir: Path) -> Path:
+    """Create the output directory and prove it writable BEFORE any seed runs, so a
+    run of hours cannot end on a failed save."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    probe = out_dir / ".write_probe"
+    probe.write_text("ok", encoding="utf-8")
+    probe.unlink()
+    return out_dir / "snr_transfer.json"
 
 
 # --------------------------------------------------------------------------------------
@@ -503,11 +590,15 @@ def _family(tests: dict, n: int) -> dict:
             "passed": all(c["passed"] for c in cells.values()), "cells": cells}
 
 
-def evaluate_predictions(seeds: list) -> dict:
+def evaluate_predictions(seeds: list, method: str = "moving_average") -> dict:
+    """The registered predictions for the moving average; for noise2clean, the same
+    statistics, recorded descriptively."""
     n = len(seeds)
-    method = "moving_average"
     r1_cells = {str(lam): common.sign_test(m1(seeds, method, lam, lam), True, R1_K)
                 for lam in R1_LEVELS}
+    for c, p in zip(r1_cells.values(),
+                    common.holm([c["one_sided_binomial_p"] for c in r1_cells.values()])):
+        c["holm_adjusted_p"] = p
     failed = [float(lam) for lam, c in r1_cells.items() if not c["passed"]]
     r1 = {"k_required": R1_K, "cells": r1_cells, "failed_levels": failed,
           "passed": not failed,
@@ -569,8 +660,13 @@ def p2a_beside_noise2clean(seeds: list) -> dict:
     here = float(np.mean(m1(seeds, "noise2clean", 100.0, 100.0)))
     return {"available": True, "p2a_arm_A_level_1000_delta_0_gain_db": p2a,
             "noise2clean_lambda_100_diagonal_gain_db": here,
-            "differences_stated": "exact Poisson here, the Gaussian approximation in P2-A; "
-                                  "one training level here, three in P2-A"}
+            "differences_stated": [
+                "noise: exact Poisson here, the Gaussian approximation in P2-A",
+                "training: one level here, three in P2-A",
+                "test set: 512 noisy frames of ONE clean spectrum per seed here, "
+                "independently generated spectra per seed in P2-A, so a seed mean averages "
+                "over different things and the spread across seeds means different things",
+                "this is not a re-measurement of P2-A under the same conditions"]}
 
 
 # --------------------------------------------------------------------------------------
@@ -586,22 +682,25 @@ def run(args) -> dict:
         settings.update(QUICK_OVERRIDES)
         if args.output_dir is None:
             raise SystemExit("--quick requires --output-dir outside results/")
+    if not quick and args.device == "auto":
+        raise SystemExit("a full run needs an explicit --device (registered: mps)")
     device = common.resolve_device(args.device)
     provenance = common.provenance_record(quick=quick, preregistration=PREREGISTRATION,
                                           scripts=SCRIPTS)
     out_dir = Path(args.output_dir) if args.output_dir else HERE / "results"
+    record_path = prepare_output(out_dir)
     # Per-seed files live in a git-ignored directory, so that writing them does not make
     # the tree dirty and a resumed run can still verify it is clean.
     seed_dir = out_dir / "seeds" if quick else HERE / ".partial"
     seed_dir.mkdir(parents=True, exist_ok=True)
-    stamp = seed_stamp()
+    stamp = seed_stamp(device, settings)
     expected_params = reference_parameter_count()
 
     seeds, resumed = [], []
     start = time.perf_counter()
     for seed_index in range(settings["n_seeds"]):
         path = seed_dir / f"seed_{seed_index:02d}.json"
-        saved = None if quick else load_resumable(path, stamp)
+        saved = None if quick else load_resumable(path, stamp, seed_index)
         if saved is not None:
             seeds.append(saved["result"])
             resumed.append(seed_index)
@@ -612,7 +711,7 @@ def run(args) -> dict:
         seeds.append(result)
         print(f"seed {seed_index} done ({time.perf_counter() - start:.0f} s)", flush=True)
 
-    return {
+    record = {
         "record_version": RECORD_VERSION,
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "quick_mode": quick,
@@ -629,31 +728,32 @@ def run(args) -> dict:
             "n_seeds": settings["n_seeds"], "epochs": settings["epochs"],
             "generator_config": GENERATOR_CONFIG_KWARGS, "peak_set_id": PEAK_SET_ID,
             "noise": "exact Poisson (use_gaussian_approx=False) at every level",
-            "confound": "a training level's S/N and its number of training frames are not "
-                        "separable in this design",
+            "confound": "a training level's S/N, its number of training frames and its "
+                        "number of optimiser updates are not separable in this design",
         },
         "resumed_seeds": resumed,
         "seeds": seeds,
         "aggregates": aggregates(seeds),
         "predictions": evaluate_predictions(seeds),
+        "noise2clean_descriptive": evaluate_predictions(seeds, "noise2clean"),
         "p2a_beside_noise2clean": p2a_beside_noise2clean(seeds),
         "total_wall_clock_seconds": time.perf_counter() - start,
     }
+    return record, record_path
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--quick", action="store_true", help="smoke run: not a record")
     parser.add_argument("--output-dir", default=None)
-    parser.add_argument("--device", default="auto")
+    parser.add_argument("--device", default="auto",
+                        help="a full run requires it explicitly; the registration uses mps")
     args = parser.parse_args(argv)
     try:
-        record = run(args)
+        record, path = run(args)
     except SelfCheckFailure as failure:
         print(f"SELF-CHECK FAILED -- no record written:\n{failure}", file=sys.stderr)
         return 2
-    out_dir = Path(args.output_dir) if args.output_dir else HERE / "results"
-    path = out_dir / "snr_transfer.json"
     path.write_text(json.dumps(record, indent=1), encoding="utf-8")
     print(f"record written: {path}")
     return 0
