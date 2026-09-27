@@ -20,6 +20,17 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **`infer` could not take the frame stack a moving-average model was trained on.**
+  It read only a `noisy` dataset, where a stack holds `frames`, and it did not
+  resample, where `train` resamples a stack that is not 256 points — so a measured
+  1024-channel stack failed with a `KeyError`, or with a PyTorch shape error that did
+  not say why. `infer` now reads `frames` when there is no `noisy`, and resamples to
+  the checkpoint's length with the function `train` uses; every array it writes is
+  then on the resampled grid. Found by running the self-supervised route on measured
+  frames from the public repository alone.
+- **`evaluate` printed the MSE of measured-scale data as `0.000000`.** It now prints
+  it in scientific notation. The saved JSON was already exact.
+
 - **The documentation did not say that GRU, LSTM and bi-LSTM read the spectrum as
   one time step.** Their names suggest recurrence along the energy axis; each takes
   the whole spectrum as a single step (sequence length 1), so the recurrence never
@@ -33,6 +44,16 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   P1 fixture. `PYTHONUTF8=1` was the only workaround before. CI now runs on
   Windows on every push, and with `PYTHONWARNDEFAULTENCODING=1` on every OS, so
   a call without an encoding fails there.
+
+### Documentation
+
+- **QUICK_START says how to train one model on several channels of one stack** —
+  the emission-angle channels of an angle-resolved measurement, for example — by
+  offsetting each channel's `frame_index`, and why numbering them one after another
+  would mix neighbours across channels. A test shows both.
+- **QUICK_START warns that a mean reference rewards an output that barely changes
+  from frame to frame**, so an SNR against it can rank a model that returns nearly
+  the same spectrum for every frame above one that does not.
 
 ## [0.1.2] - 2026-09-22
 
