@@ -653,11 +653,34 @@ def cmd_infer(args):
     # Load data
     print("\nLoading data...")
     with h5py.File(args.data, 'r') as f:
-        noisy = f['noisy'][:]
+        if 'noisy' in f:
+            noisy = f['noisy'][:]
+        elif 'frames' in f:
+            # A frame stack (the moving-average schema): denoise its frames, so the
+            # file a model was trained on can be passed to it as it is.
+            noisy = f['frames'][:]
+            print("  Frame stack: denoising its 'frames'.")
+        else:
+            print(f"Error: {args.data} has neither a 'noisy' dataset nor a frame stack's "
+                  "'frames'", file=sys.stderr)
+            sys.exit(1)
         energy = f['energy'][:]
         clean = f['clean'][:] if 'clean' in f else None
         angles = f['angles'][:] if 'angles' in f else None
         times = f['times'][:] if 'times' in f else None
+
+    if noisy.shape[-1] != n_features:
+        # Training resamples a stack that is not the network's length; the input has
+        # to pass through the same resampling, or the first layer refuses it with a
+        # shape error that does not say why. Everything written below -- noisy,
+        # clean, denoised and energy -- is then on the resampled grid.
+        from dnndenoiser.training.selfsupervised import resample
+        print(f"  Resampling {noisy.shape[-1]} -> {n_features} points, as training does; "
+              "the output file holds every array on the resampled grid.")
+        noisy = resample(noisy, n_features)
+        if clean is not None:
+            clean = resample(clean, n_features)
+        energy = np.linspace(float(energy[0]), float(energy[-1]), n_features)
 
     original_shape = noisy.shape
     print(f"  Input shape: {original_shape}")
@@ -811,7 +834,9 @@ def cmd_evaluate(args):
     print(f"\n{'Metric':<20} {'Input':<15} {'Output':<15} {'Improvement':<15}")
     print("-" * 65)
     print(f"{'SNR (dB)':<20} {np.mean(snr_input):<15.2f} {np.mean(snr_output):<15.2f} {np.mean(snr_gain):+.2f} dB")
-    print(f"{'MSE':<20} {np.mean(mse_input):<15.6f} {np.mean(mse_output):<15.6f} {np.mean(mse_reduction):.1f}% reduction")
+    # Scientific notation: a measured stack's MSE can sit far below 1e-6, where six
+    # fixed decimals printed 0.000000 for input and output alike.
+    print(f"{'MSE':<20} {np.mean(mse_input):<15.3e} {np.mean(mse_output):<15.3e} {np.mean(mse_reduction):.1f}% reduction")
 
     # Per-sample statistics
     print(f"\n{'Statistic':<20} {'SNR Gain (dB)':<15} {'MSE Reduction (%)':<15}")

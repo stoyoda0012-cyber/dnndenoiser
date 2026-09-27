@@ -135,7 +135,26 @@ method being reproduced — so `--arch`, `--lr`, `--lr-drop-period`,
 `--lr=0.05`, or an abbreviation argparse would accept). `--epochs`,
 `--batch-size`, `--seed`, `--window` and `--device` still apply.
 
-Stacks that are not 256 points are resampled.
+Stacks that are not 256 points are resampled — by `train`, and by `infer` in the
+same way, so the stack a model was trained on can be passed to it as it is:
+
+```bash
+dnndenoiser infer -d stack.h5 -m model.pt -o denoised.h5
+```
+
+`infer` reads a frame stack's `frames` when the file has no `noisy`. When it
+resamples, every array it writes — `noisy`, `clean`, `denoised` and `energy` —
+is on the resampled grid.
+
+**Several channels in one stack.** To train one model on the frames of several
+channels — the emission-angle channels of an angle-resolved measurement, for
+example — put them in one stack and give channel *k* the indices
+*k* × *stride* + *t*, with *t* the acquisition order within the channel and the
+stride larger than any channel's number of frames. Every frame's `--window`
+nearest others are then in its own channel, and the min–max normalisation is
+taken over all channels together. Numbering the channels one after another
+instead would make the last frame of one channel a neighbour of the first frame
+of the next.
 
 ### Loading a checkpoint safely
 
@@ -149,7 +168,12 @@ on files you produced or otherwise trust.
 **Evaluating this is not straightforward.** A measured stack has no clean
 reference, and the obvious substitute — a mean over the same frames — is *not*
 independent of targets built from subsets of those frames. An SNR computed
-that way is not a held-out result and must not be reported as one. See
+that way is not a held-out result and must not be reported as one. A mean
+reference also rewards an output that barely changes from frame to frame: a
+model that returns nearly the same spectrum for every frame sits close to the
+mean and scores well by SNR against it, however little it tells about any one
+frame. Look at how the output varies across frames before reading such a score.
+See
 [the preregistration](preregistration/P1-selfsupervised-moving-average.md) for
 what the port does and does not establish.
 
