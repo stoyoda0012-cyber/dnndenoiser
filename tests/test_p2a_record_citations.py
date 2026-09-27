@@ -74,9 +74,19 @@ def section():
     return text[text.index("\n## Record\n"):]
 
 
+# The page also answers questions from other records. Each such answer sits between
+# `<!-- record:NAME -->` and `<!-- /record:NAME -->` and is checked by that record's own
+# tests; P2-A's page checks apply to everything outside those regions.
+OTHER_RECORD = re.compile(r"<!-- record:(?P<name>[\w-]+) -->.*?<!-- /record:(?P=name) -->", re.S)
+
+
+def p2a_part(text: str) -> str:
+    return OTHER_RECORD.sub("", text)
+
+
 @pytest.fixture(scope="module")
 def page():
-    return PAGE.read_text(encoding="utf-8")
+    return p2a_part(PAGE.read_text(encoding="utf-8"))
 
 
 def _quoted_value(token: str) -> tuple[float, float]:
@@ -293,7 +303,7 @@ MUTATIONS = [
 ]
 
 
-PAGE_TEXT = PAGE.read_text(encoding="utf-8") if PAGE.is_file() else ""
+PAGE_TEXT = p2a_part(PAGE.read_text(encoding="utf-8")) if PAGE.is_file() else ""
 
 
 @pytest.mark.parametrize("label,old,new", MUTATIONS, ids=[m[0] for m in MUTATIONS])

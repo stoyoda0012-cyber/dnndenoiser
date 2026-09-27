@@ -27,6 +27,8 @@ REGISTRY = BOUNDARY / "record_citations.py"
 RECORD = BOUNDARY / "results" / "snr_transfer.json"
 DOCUMENT = REPO_ROOT / "docs" / "preregistration" / "P2B-snr-transfer.md"
 PARSER = Path(__file__).resolve().parent / "test_p2a_record_citations.py"
+PAGE = REPO_ROOT / "docs" / "WHEN_TO_TRUST.md"
+REGION_OPEN, REGION_CLOSE = "<!-- record:P2-B -->", "<!-- /record:P2-B -->"
 
 pytestmark = pytest.mark.skipif(
     not (REGISTRY.is_file() and RECORD.is_file() and DOCUMENT.is_file()),
@@ -62,6 +64,19 @@ def section():
     return text[text.index("\n## Record\n"):]
 
 
+def page_region(text: str) -> str:
+    assert text.count(REGION_OPEN) == 1 and text.count(REGION_CLOSE) == 1, \
+        "the page must hold exactly one P2-B region, opened and closed once"
+    start, end = text.index(REGION_OPEN), text.index(REGION_CLOSE)
+    assert start < end, "the P2-B region closes before it opens"
+    return text[start + len(REGION_OPEN):end]
+
+
+@pytest.fixture(scope="module")
+def page():
+    return page_region(PAGE.read_text(encoding="utf-8"))
+
+
 def check_anchored(parser, text):
     bare = [(ln, tok) for ln, tok, _pct, kind, _key in parser._occurrences(text) if kind is None]
     assert not bare, "numbers quoted without a source anchor (line, token): " + repr(bare)
@@ -90,10 +105,11 @@ def check_reasons(parser, registry, text):
     assert not unknown, f"non-record numbers with no stated reason: {unknown}"
 
 
-def check_all_used(parser, registry, text):
-    used = {key for _ln, _tok, _pct, kind, key in parser._occurrences(text) if kind == "r"}
+def check_all_used(parser, registry, text, page_text=""):
+    used = {key for _ln, _tok, _pct, kind, key in parser._occurrences(text + "\n" + page_text)
+            if kind == "r"}
     unused = sorted(set(registry.CITATIONS) - used)
-    assert not unused, f"registry keys the Record section does not cite: {unused}"
+    assert not unused, f"registry keys neither the Record section nor the page cites: {unused}"
 
 
 def test_every_number_in_the_record_section_is_anchored(parser, section):
@@ -108,8 +124,8 @@ def test_every_non_record_number_states_its_reason(parser, registry, section):
     check_reasons(parser, registry, section)
 
 
-def test_no_citation_in_the_registry_goes_unused(parser, registry, section):
-    check_all_used(parser, registry, section)
+def test_no_citation_in_the_registry_goes_unused(parser, registry, section, page):
+    check_all_used(parser, registry, section, page)
 
 
 # Each case plants one error in a copy of the section and names the check that must
@@ -141,7 +157,7 @@ def _run(check, parser, registry, record, text):
         ANCHORED: lambda: check_anchored(parser, text),
         MATCHES: lambda: check_matches(parser, registry, record, text),
         REASONS: lambda: check_reasons(parser, registry, text),
-        USED: lambda: check_all_used(parser, registry, text),
+        USED: lambda: check_all_used(parser, registry, text, page_region(PAGE.read_text(encoding="utf-8"))),
     }[check]()
 
 
@@ -151,3 +167,80 @@ def test_a_planted_error_is_rejected(parser, registry, record, section, label, c
     assert old in section, f"mutation anchor for {label!r} no longer in the section"
     with pytest.raises(AssertionError):
         _run(check, parser, registry, record, section.replace(old, new, 1))
+
+
+# ---------------------------------------------------------------------------------------
+# The P2-B region of docs/WHEN_TO_TRUST.md. P2-A's page checks are reused unchanged (they
+# take the registry and the text as arguments); the design-value check is P2-B's own,
+# because P2-B's design values are integers that P2-A's rule would require written with
+# a decimal.
+# ---------------------------------------------------------------------------------------
+
+
+def check_page_design_values(parser, registry, record, text):
+    design = registry.page_design_values(record)
+    problems = []
+    for lineno, token, _pct, kind, key in parser._occurrences(parser._prose(text)):
+        if kind != "n":
+            continue
+        value, _half = parser._quoted_value(token)
+        if key != "reg":
+            problems.append(f"line {lineno}: {token} is n:{key}; only n:reg is allowed on the page")
+        elif not any(abs(abs(value) - d) < 1e-9 for d in design):
+            problems.append(f"line {lineno}: {token} is marked n:reg but is not a P2-B design value")
+    assert not problems, "\n".join(problems)
+
+
+PAGE_CHECKS = {
+    "anchored": lambda p, reg, rec, t: p.test_every_number_on_the_page_is_anchored(t),
+    "matches": lambda p, reg, rec, t: p.test_every_page_citation_matches_the_record(reg, rec, t),
+    "cleared": lambda p, reg, rec, t: p.test_the_page_cites_exactly_what_revision_11_cleared(reg, t),
+    "design": lambda p, reg, rec, t: check_page_design_values(p, reg, rec, t),
+    "digit": lambda p, reg, rec, t: p.test_no_digit_on_the_page_stands_outside_an_anchored_number(t),
+    "fifth": lambda p, reg, rec, t: p.test_every_record_number_on_the_page_is_within_a_fifth_of_its_value(
+        reg, rec, t),
+    "qualifiers": lambda p, reg, rec, t: p.test_the_page_keeps_its_qualifiers(reg, t),
+}
+
+
+@pytest.mark.parametrize("check", list(PAGE_CHECKS))
+def test_the_page_region_passes(parser, registry, record, page, check):
+    PAGE_CHECKS[check](parser, registry, record, page)
+
+
+C1S = "Synthetic C 1s spectra"
+PAGE_MUTATIONS = [
+    ("page: anchor removed", "anchored", "−0.6<!--r:ma.R2.min.m2--> dB", "−0.6 dB"),
+    ("page: a count mistyped", "matches", "16<!--r:ma.m1neg.4.100-->", "12<!--r:ma.m1neg.4.100-->"),
+    ("page: right number, wrong key", "matches", "19<!--r:ma.R3.min.k-->", "19<!--r:ma.R4.min.k-->"),
+    ("page: sign flipped", "digit", "−1.5<!--r:ma.m1.t4.i100-->", "–1.5<!--r:ma.m1.t4.i100-->"),
+    ("page: an uncleared record number, correct and anchored", "cleared", C1S,
+     C1S + " (the moving average's diagonal gain at λ = 4 was +9.9<!--r:ma.m1.t4.i4--> dB)"),
+    ("page: a cleared statement removed", "cleared",
+     ", in at least\n  18<!--r:ma.R4.min.k--> of 20<!--r:n.seeds--> runs", ""),
+    ("page: a record value relabelled as a design value", "design", C1S,
+     C1S + " (noise2clean gained 17.8<!--n:reg--> dB)"),
+    ("page: an unanchored count", "digit", C1S, C1S + " (tested 25 cells)"),
+    ("page: rounded until it says something else", "fifth",
+     "−0.6<!--r:ma.R2.min.m2-->", "−1<!--r:ma.R2.min.m2-->"),
+    ("page: a required qualifier deleted", "qualifiers",
+     " None of these is separated from the others, or from\nthe signal-to-noise ratio.", ""),
+]
+
+
+@pytest.mark.parametrize("label,check,old,new", PAGE_MUTATIONS, ids=[m[0] for m in PAGE_MUTATIONS])
+def test_a_planted_error_on_the_page_is_rejected(parser, registry, record, page, label, check, old, new):
+    PAGE_CHECKS[check](parser, registry, record, page)
+    assert old in page, f"mutation anchor for {label!r} no longer on the page"
+    with pytest.raises(AssertionError):
+        PAGE_CHECKS[check](parser, registry, record, page.replace(old, new, 1))
+
+
+@pytest.mark.parametrize("broken", [
+    lambda t: t.replace(REGION_CLOSE, "", 1),
+    lambda t: t.replace(REGION_OPEN, "", 1),
+    lambda t: t + "\n" + REGION_OPEN + "\n" + REGION_CLOSE + "\n",
+], ids=["unclosed", "unopened", "duplicated"])
+def test_a_malformed_region_is_rejected(broken):
+    with pytest.raises(AssertionError):
+        page_region(broken(PAGE.read_text(encoding="utf-8")))

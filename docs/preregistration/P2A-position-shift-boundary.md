@@ -1518,6 +1518,25 @@ documentation" means published: the page exists on an unpushed branch until item
       section's closing line and the position-shift README from "proposed" to
       "cleared".
 
+
+### Revision 12 — 2026-09-27, the page is shared with another record
+
+`docs/WHEN_TO_TRUST.md` is to carry a second answer, from the P2-B record
+(`docs/preregistration/P2B-snr-transfer.md`, Revision 3). That answer sits between
+`<!-- record:P2-B -->` and `<!-- /record:P2-B -->` and is checked by P2-B's own tests. Two
+changes follow here, neither to a cleared statement:
+
+- `tests/test_p2a_record_citations.py` applies this record's page checks to the page with
+  any such region removed. The checks themselves, the cleared keys, the required
+  qualifiers and item 78's planted cases are unchanged. A region left unclosed stays in
+  what these checks read, where its anchors are refused as keys this registry does not
+  know; P2-B's tests refuse an unclosed, unopened or duplicated region as well.
+- The page's opening says that each answer names its model, conditions and record, and
+  "Which model was measured" now says it is for the energy-shift question. Neither
+  sentence carries a number.
+
+Nothing measured, no prediction, no decision rule and no clearance changes.
+
 ## Record
 
 Run 2026-09-23 in the environment pinned by `uv.lock`, from a clean working tree at the

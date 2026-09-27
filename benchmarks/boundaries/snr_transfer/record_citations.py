@@ -163,6 +163,13 @@ CITATIONS = {
     "ma.R4.min.rest": ("R4, moving average, smallest count of seeds with the statistic > 0 over "
                        "the nine pairs other than 4 | 9", lambda r: min(r4_count(r, MA, a, b) for a, b in PAIRS
                                                                        if (a, b) != (4.0, 9.0))),
+    "ma.R3.min.k": ("R3, moving average, smallest count of seeds with M2 < 0 over the ten cells",
+                    lambda r: min(r3_count(r, MA, t, i) for t, i in BELOW)),
+    "ma.R4.min.k": ("R4, moving average, smallest count of seeds with the statistic > 0 over "
+                    "the ten pairs", lambda r: min(r4_count(r, MA, a, b) for a, b in PAIRS)),
+    "n.seeds": ("independently seeded runs (the replicates)", lambda r: len(r["seeds"])),
+    "n.test": ("test frames per inference level per seed", lambda r: r["design"]["n_test_per_level"]),
+    "n.points": ("energy points per spectrum", lambda r: r["design"]["generator_config"]["n_energy_points"]),
     "ma.R2.min.k": ("R2, moving average, smallest count of seeds with M2 > -1 dB over the ten cells",
                     lambda r: min(r2_count(r, MA, t, i) for t, i in ABOVE)),
     "ma.R2.min.m2": ("R2, moving average, most negative single-seed M2 over the ten cells above "
@@ -251,3 +258,46 @@ NON_RECORD = {
     "impl": "a tolerance fixed in the measurement script at implementation, before the run",
     "external": "a timestamp or fact from GitHub or git, not from this record",
 }
+
+
+# PROPOSED, not in effect: the record keys `docs/WHEN_TO_TRUST.md` may cite in its P2-B
+# region (between `<!-- record:P2-B -->` and `<!-- /record:P2-B -->`), as the
+# independent review of 51ab3b8 listed them: R1 to R4 in their registered form, the one
+# cell whose output was worse than its input, and the conditions a reader needs to place
+# them. The clearance takes effect only when the owner confirms it in a Revision of the
+# preregistration, after an independent review of the page.
+CLEARED_FOR_WHEN_TO_TRUST = frozenset({
+    "ma.R1.min.k",
+    "ma.R2.seedcells", "ma.R2.min.m2",
+    "ma.R3.min.k",
+    "ma.R4.min.k",
+    "ma.m1.t4.i100", "ma.m1.t4.i100.sd", "ma.m1neg.4.100",
+    "in.4", "in.100",
+    "n.seeds", "n.test", "n.points",
+})
+
+# Qualifiers that are part of the proposed statements. Deleting one leaves every number
+# right, so the number checks cannot see it; this list can.
+PAGE_REQUIRED_PHRASES = (
+    "cannot be attributed to the signal-to-noise ratio",
+    "None of these is separated from the others",
+    "the output was further from the clean spectrum than the noisy input was",
+    "exactly right by construction",
+    "does not measure whether the output varies from frame to frame",
+    "was not measured",
+)
+
+
+def page_design_values(record):
+    """Registered design values an `n:reg` number on the P2-B region may equal: the flux
+    levels and their ratio, frame counts, total exposure, the updates they imply, seeds,
+    W, epochs, batch size, the R2 margin and the family thresholds."""
+    design = record["design"]
+    recipe = design["moving_average_recipe"]
+    frames = [int(v) for v in design["frames_per_level"].values()]
+    lambdas = [float(x) for x in design["lambdas"]]
+    values = set(lambdas) | set(frames) | {
+        float(design["total_exposure"]), float(design["W"]), float(recipe["epochs"]),
+        float(recipe["batch_size"]), max(lambdas) / min(lambdas), 1.0, 17.0, 19.0}
+    values |= {float(-(-n // recipe["batch_size"]) * recipe["epochs"]) for n in frames}
+    return values

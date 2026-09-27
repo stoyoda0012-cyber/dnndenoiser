@@ -394,6 +394,37 @@ a prediction, a threshold, a decision rule, a self-check or the record.
    generator and noise2clean-recipe literals are the script's settings at `7603007`, since
    P2-A's record does not carry them to check against.
 
+
+### Revision 3 — 2026-09-27, a limited clearance for quotation, proposed, not in effect
+
+`docs/WHEN_TO_TRUST.md` answers a user's question — whether a self-supervised model
+trained at one exposure can be used at another — from this record, in a region between
+`<!-- record:P2-B -->` and `<!-- /record:P2-B -->`. This revision proposes the statements
+it may quote. **It is not in effect.** It takes effect when the owner confirms it after an
+independent review of that region, and the confirmation is recorded here with its date,
+the statements cleared and the commit reviewed. Until then the branch carrying the region
+is not pushed.
+
+1. **What is proposed.** The statements the independent review of `51ab3b8` listed as
+   quotable, each in its registered form: R1 (the diagonal positive in every seed at the
+   three registered levels), R2 (no seed-cell lost more than the registered margin; the
+   worst loss), R3 and R4 (the smallest seed count over their cells), and the one cell whose
+   output was worse than its input (its mean, SD and seed count). With them, the
+   conditions a reader needs: the replicate count, the test frames, the points per
+   spectrum and the input SNR at the two ends of the range. These are the record keys in
+   `CLEARED_FOR_WHEN_TO_TRUST` in `benchmarks/boundaries/snr_transfer/record_citations.py`.
+2. **What is not proposed.** That M2 was positive in most R2 cells; anything about
+   noise2clean, the two methods' diagonals or P2-A; any attribution of the asymmetry; and,
+   at the owner's decision, anything about the SIA paper.
+3. **How the page is held to it.** P2-A's page checks, applied to the region with this
+   record's registry: every number anchored; every record number equal to the record at
+   the precision quoted and within a fifth of its value; the record keys exactly the
+   proposed set; `n:` only as `n:reg` and equal to a design value of this record; no digit
+   outside an anchored number; the qualifiers in `PAGE_REQUIRED_PHRASES` present. Each is
+   shown to reject a planted error in `tests/test_p2b_record_citations.py`, and so is a
+   malformed region. What they cannot see — a qualifier reworded, a number put on another
+   subject, a direction flipped in prose — is the review's to catch.
+
 ## Record
 
 Run 2026-09-26 on the MPS backend of the development machine, in the environment pinned
