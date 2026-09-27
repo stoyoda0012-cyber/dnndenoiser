@@ -17,7 +17,8 @@ Rules enforced here, per line of the Record section:
 - every `n:` key has a stated reason, and no `r:` key in the registry goes unused.
 
 `docs/WHEN_TO_TRUST.md` quotes the same record to users and is held to the same rules,
-over the whole page, and to further rules for the clearance Revision 11 records:
+over the page outside other records' regions (Revision 12), and to further rules for the
+clearance Revision 11 records:
 - its record keys equal `CLEARED_FOR_WHEN_TO_TRUST`: no fewer, and none besides;
 - an `n:` number is `n:reg` and its magnitude is a design value read from the record, so
   an uncleared record value cannot be relabelled as a design value;
@@ -74,9 +75,42 @@ def section():
     return text[text.index("\n## Record\n"):]
 
 
+# The page also answers questions from other records. Each such answer sits between
+# `<!-- record:NAME -->` and `<!-- /record:NAME -->` and is checked by that record's own
+# tests; P2-A's page checks apply to everything outside those regions.
+OTHER_RECORD = re.compile(r"<!-- record:(?P<name>[\w-]+) -->.*?<!-- /record:(?P=name) -->", re.S)
+
+
+# Every region must belong to a record whose own tests check it; a region under any
+# other name would be invisible to every check (Revision 12).
+KNOWN_REGIONS = frozenset({"P2-B"})
+REGION_MARKER = re.compile(r"<!-- /?record:([\w-]+) -->")
+
+
+def p2a_part(text: str) -> str:
+    return OTHER_RECORD.sub("", text)
+
+
+def check_regions_are_known(text: str) -> None:
+    names = set(REGION_MARKER.findall(text))
+    assert names <= KNOWN_REGIONS, f"page regions no record's tests check: {sorted(names - KNOWN_REGIONS)}"
+
+
+def test_every_region_on_the_page_belongs_to_a_checked_record():
+    check_regions_are_known(PAGE.read_text(encoding="utf-8"))
+
+
+def test_an_unknown_region_is_rejected():
+    planted = (PAGE.read_text(encoding="utf-8")
+               + "\n<!-- record:P2-C -->\nIt gained +99.9 dB.\n<!-- /record:P2-C -->\n")
+    assert "+99.9" not in p2a_part(planted)  # what the region hides from P2-A's checks
+    with pytest.raises(AssertionError, match="P2-C"):
+        check_regions_are_known(planted)
+
+
 @pytest.fixture(scope="module")
 def page():
-    return PAGE.read_text(encoding="utf-8")
+    return p2a_part(PAGE.read_text(encoding="utf-8"))
 
 
 def _quoted_value(token: str) -> tuple[float, float]:
@@ -293,7 +327,7 @@ MUTATIONS = [
 ]
 
 
-PAGE_TEXT = PAGE.read_text(encoding="utf-8") if PAGE.is_file() else ""
+PAGE_TEXT = p2a_part(PAGE.read_text(encoding="utf-8")) if PAGE.is_file() else ""
 
 
 @pytest.mark.parametrize("label,old,new", MUTATIONS, ids=[m[0] for m in MUTATIONS])
