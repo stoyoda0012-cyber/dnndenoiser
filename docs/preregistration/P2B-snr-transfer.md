@@ -409,7 +409,9 @@ is not pushed.
    quotable, each in its registered form: R1 (the diagonal positive in every seed at the
    three registered levels), R2 (no seed-cell lost more than the registered margin; the
    worst loss), R3 and R4 (the smallest seed count over their cells), and the one cell whose
-   output was worse than its input (its mean, SD and seed count). With them, the
+   output was worse than its input (its mean, SD and seed count) — and, added at the
+   owner's decision after the page's review (item 4), that it was the only one of the 25
+   cells whose mean gain was negative. With them, the
    conditions a reader needs: the replicate count, the test frames, the points per
    spectrum and the input SNR at the two ends of the range. These are the record keys in
    `CLEARED_FOR_WHEN_TO_TRUST` in `benchmarks/boundaries/snr_transfer/record_citations.py`.
@@ -423,7 +425,31 @@ is not pushed.
    outside an anchored number; the qualifiers in `PAGE_REQUIRED_PHRASES` present. Each is
    shown to reject a planted error in `tests/test_p2b_record_citations.py`, and so is a
    malformed region. What they cannot see — a qualifier reworded, a number put on another
-   subject, a direction flipped in prose — is the review's to catch.
+   subject, a direction flipped in prose — is the review's to catch. Nor can they see an
+   uncleared record count that happens to equal a design value: unlike P2-A's page rule,
+   an `n:reg` number here need not carry a decimal, and the design values include 1, 17,
+   19, 20 and 25, which also occur as counts in the record. A reviewer must check that
+   every `n:reg` number on the region is a design value in its sentence.
+4. **After the independent review of the region at `9758a41`.** The review found no
+   number wrong and nothing beyond the proposed keys, and judged the region not fit for
+   clearance until seven items were repaired. All are, at the owner's decision, with the
+   minor ones:
+   - the losses are stated relative to a model trained at the count rate applied to, in
+     the bold sentences, in "What to do" and in an opening sentence, and the page now says
+     that the output still improved on the input in every cell but one (the added key
+     above), so a reader is not told the model made the spectra worse where it did not;
+   - "always cost" is replaced by the registered form; "cost little" — the prediction's
+     wording — by what was measured, with the worst case named as a single run and cell;
+   - the provenance limits are stated: one run, one backend, what can be recomputed from
+     the record and what only by re-running, what "published before" rests on;
+   - the CLI's moving-average defaults are stated as not measured;
+   - "Not established" adds a different spectrum or measurement, another way of spending
+     the exposure, and other noise models;
+   - "exposure" is "count rate"; R1 is stated for the three registered rates; the
+     worse-than-input sentence says "on average"; "What to do" 1 says where the method was
+     measured to help rather than implying the diagonal is best;
+   - P2-A's page checks now refuse a region under a name no record's tests check (P2-A
+     Revision 12), and the design-value limit above is disclosed.
 
 ## Record
 

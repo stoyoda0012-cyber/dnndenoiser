@@ -210,19 +210,23 @@ def test_the_page_region_passes(parser, registry, record, page, check):
 
 C1S = "Synthetic C 1s spectra"
 PAGE_MUTATIONS = [
-    ("page: anchor removed", "anchored", "−0.6<!--r:ma.R2.min.m2--> dB", "−0.6 dB"),
+    ("page: anchor removed", "anchored", "0.6<!--r:ma.R2.worst.loss--> dB", "0.6 dB"),
+    ("page: a loss written against the signed key", "matches",
+     "0.6<!--r:ma.R2.worst.loss-->", "0.6<!--r:ma.R2.min.m2-->"),
     ("page: a count mistyped", "matches", "16<!--r:ma.m1neg.4.100-->", "12<!--r:ma.m1neg.4.100-->"),
     ("page: right number, wrong key", "matches", "19<!--r:ma.R3.min.k-->", "19<!--r:ma.R4.min.k-->"),
     ("page: sign flipped", "digit", "−1.5<!--r:ma.m1.t4.i100-->", "–1.5<!--r:ma.m1.t4.i100-->"),
     ("page: an uncleared record number, correct and anchored", "cleared", C1S,
      C1S + " (the moving average's diagonal gain at λ = 4 was +9.9<!--r:ma.m1.t4.i4--> dB)"),
     ("page: a cleared statement removed", "cleared",
-     ", in at least\n  18<!--r:ma.R4.min.k--> of 20<!--r:n.seeds--> runs", ""),
+     ", in at least 18<!--r:ma.R4.min.k--> of\n  20<!--r:n.seeds--> runs", ""),
     ("page: a record value relabelled as a design value", "design", C1S,
      C1S + " (noise2clean gained 17.8<!--n:reg--> dB)"),
     ("page: an unanchored count", "digit", C1S, C1S + " (tested 25 cells)"),
     ("page: rounded until it says something else", "fifth",
-     "−0.6<!--r:ma.R2.min.m2-->", "−1<!--r:ma.R2.min.m2-->"),
+     "0.6<!--r:ma.R2.worst.loss-->", "1<!--r:ma.R2.worst.loss-->"),
+    ("page: the relative reading of a loss deleted", "qualifiers",
+     " than a model trained at that count rate, in any", " in any"),
     ("page: a required qualifier deleted", "qualifiers",
      " None of these is separated from the others, or from\nthe signal-to-noise ratio.", ""),
 ]

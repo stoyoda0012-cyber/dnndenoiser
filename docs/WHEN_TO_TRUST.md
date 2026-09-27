@@ -118,33 +118,39 @@ amount — the shape of a charging offset or a calibration error.
 from the P2-B record) or n:reg anchors (registered design values); see
 tests/test_p2b_record_citations.py. -->
 
-## I trained the self-supervised model on one exposure. Can I use it on another?
+## I trained the self-supervised model at one count rate. Can I use it at another?
 
 **What was measured.** The self-supervised moving-average method with
 W = 1<!--n:reg-->, trained on the frames of one synthetic spectrum and then applied to
-fresh frames of the same spectrum at another count rate. The count rate is the expected
-count at the spectrum's maximum, λ; five levels from λ = 4<!--n:reg--> to
-λ = 100<!--n:reg--> were measured, a 25<!--n:reg-->-fold range, with every level applied
-to every other in both directions.
+fresh frames of the same spectrum at another count rate — another per-frame exposure. The
+count rate is the expected count at the spectrum's maximum, λ; five levels from
+λ = 4<!--n:reg--> to λ = 100<!--n:reg--> were measured, a 25<!--n:reg-->-fold range, with
+every level applied to every other in both directions. "Lost" and "cost" below compare a
+model with one trained at the count rate it was applied to, not with the noisy input.
 
-- **At the count rate it was trained on, it helped.** At λ = 20<!--n:reg-->,
-  45<!--n:reg--> and 100<!--n:reg--> its SNR gain was positive in
-  20<!--r:ma.R1.min.k--> of 20<!--r:n.seeds--> runs each.
-- **Applied to noisier frames than it was trained on, it cost little.** Against a model
-  trained at the noisier count rate, it never lost more than 1<!--n:reg--> dB: not in any
-  of the 200<!--r:ma.R2.seedcells--> combinations of run and pair of levels. The worst was
-  −0.6<!--r:ma.R2.min.m2--> dB.
-- **Applied to cleaner frames than it was trained on, it cost.** Against a model trained
-  at the cleaner count rate, it lost in every pair of levels, in at least
-  19<!--r:ma.R3.min.k--> of 20<!--r:n.seeds--> runs.
-- **The cost going to cleaner frames was the larger one.** Paired within run, it
-  exceeded the cost going the other way in every pair of levels, in at least
-  18<!--r:ma.R4.min.k--> of 20<!--r:n.seeds--> runs.
-- **At the extreme it made the frames worse.** Trained at λ = 4<!--n:reg--> and applied at
-  λ = 100<!--n:reg-->, its SNR gain was −1.5<!--r:ma.m1.t4.i100--> ±
-  1.9<!--r:ma.m1.t4.i100.sd--> dB, negative in 16<!--r:ma.m1neg.4.100--> of
-  20<!--r:n.seeds--> runs: there the output was further from the clean spectrum than the
-  noisy input was.
+- **At the three count rates where this was registered, it helped at the rate it was
+  trained on.** At λ = 20<!--n:reg-->, 45<!--n:reg--> and 100<!--n:reg--> its SNR gain was
+  positive in 20<!--r:ma.R1.min.k--> of 20<!--r:n.seeds--> runs each.
+- **Applied to noisier frames than it was trained on, it never lost more than
+  1<!--n:reg--> dB** than a model trained at that count rate, in any of the
+  200<!--r:ma.R2.seedcells--> combinations of run and pair of levels. The single worst
+  combination lost 0.6<!--r:ma.R2.worst.loss--> dB.
+- **Applied to cleaner frames than it was trained on, it did worse than a model trained
+  at that count rate**, in every pair of levels, in at least
+  19<!--r:ma.R3.min.k--> of 20<!--r:n.seeds--> runs. It still improved on the noisy input
+  in all but one pair (below).
+- **Going to cleaner frames cost more than going to noisier ones.** For every pair of
+  levels, the loss against the matched model when going up exceeded the loss going
+  down, paired within run, in at least 18<!--r:ma.R4.min.k--> of
+  20<!--r:n.seeds--> runs.
+- **At the extreme, on average, it made the frames worse than the input.** Trained at
+  λ = 4<!--n:reg--> and applied at λ = 100<!--n:reg-->, its SNR gain was
+  −1.5<!--r:ma.m1.t4.i100--> ± 1.9<!--r:ma.m1.t4.i100.sd--> dB, negative in
+  16<!--r:ma.m1neg.4.100--> of 20<!--r:n.seeds--> runs: there the output was further from
+  the clean spectrum than the noisy input was. That was the only one of the
+  25<!--r:ma.cells--> combinations of training and applied rate whose mean gain was
+  negative (1<!--r:ma.m1neg.cells-->); in every other, the output still improved on the
+  input on average.
 
 **Why the direction cannot be attributed to the signal-to-noise ratio.** Every level had
 the same total exposure, as when one measurement time is split into more or fewer
@@ -156,14 +162,18 @@ with the count rate, so a model applied at another rate sees inputs outside, or 
 within, the range it was trained on. None of these is separated from the others, or from
 the signal-to-noise ratio. No mechanism is claimed.
 
+**Which model was measured.** A ResNet-FCNN trained by the library's moving-average
+recipe with W = 1<!--n:reg--> and 50<!--n:reg--> epochs. The CLI's
+`train --method moving-average` at its defaults, whose window and number of epochs
+differ, was not measured, and these results should not be assumed to hold for it.
+
 **Under these conditions only.**
 
 - *Data.* Synthetic C 1s spectra from this package's generator: three peaks,
   256<!--r:n.points--> points. Each run draws one clean spectrum; its training and test
   frames are independent noisy copies of it.
-- *Training.* The library's moving-average recipe, W = 1<!--n:reg-->,
-  50<!--n:reg--> epochs, batch 32<!--n:reg-->, the ResNet-FCNN architecture, trained per
-  run on that run's frames alone.
+- *Training.* Batch 32<!--n:reg-->, trained per run on that run's frames alone, with the
+  same total exposure at every count rate.
 - *Noise model.* Exact Poisson counts at every level, drawn by the same function for
   training and test, so the noise model is exactly right by construction — which
   measured data never is.
@@ -177,21 +187,32 @@ the signal-to-noise ratio. No mechanism is claimed.
   and initialisation; every ± is across runs, and the frames within a run are not
   treated as independent replicates. Training and test frames come from disjoint random
   streams.
-- *Backend and provenance.* Measured on the MPS backend. The preregistration was
-  published before the measurement ran.
+- *Backend and provenance.* Measured once, on the MPS backend; not compared across
+  devices or repeated. Every run's gain for every combination is in the record, so each
+  number here can be recomputed from it; the gains themselves can be checked only by
+  running the measurement again. The preregistration was published before the
+  measurement ran, which rests on GitHub's timestamps and on a record time written by the
+  run itself.
 
 **What to do.**
 
-1. Train on frames at the count rate you will denoise, when you can.
+1. Where the method was measured to help is at the count rate it was trained on; train
+   on frames at the count rate you will denoise, when you can.
 2. If you apply a model to frames with more counts than it was trained on, check the
-   result: in this measurement that direction always cost, and at the extreme the output
-   was worse than the input.
+   result: in this measurement that direction did worse than a model trained at that
+   count rate in nearly every run, and at the extreme the output was worse than the
+   input.
 3. Verify any position, area or width downstream. A denoised spectrum is a model
    estimate, not a measurement.
 
 **Not established here.**
 
 - Anything about measured spectra, depth profiles or an instrument.
+- Applying a model to frames of a different spectrum, or to another measurement: here
+  the frames were always of the spectrum it was trained on.
+- Other ways of spending the exposure — for example the same number of frames at every
+  count rate.
+- Other noise models, such as a read-noise floor.
 - Why one direction cost more: signal-to-noise, frame count, optimisation steps and
   input scaling were not separated.
 - Whether the output keeps frame-to-frame variation, or how the method fails at the

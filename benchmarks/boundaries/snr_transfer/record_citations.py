@@ -175,9 +175,15 @@ CITATIONS = {
     "ma.R2.min.m2": ("R2, moving average, most negative single-seed M2 over the ten cells above "
                      "the diagonal (200 seed-cells), dB",
                      lambda r: min(float(np.min(m2(r, MA, t, i))) for t, i in ABOVE)),
+    "ma.R2.worst.loss": ("R2, moving average, the largest single-seed loss against the matched "
+                         "model over the ten cells above the diagonal, dB, as a positive number "
+                         "(minus the most negative M2)",
+                         lambda r: -min(float(np.min(m2(r, MA, t, i))) for t, i in ABOVE)),
     "ma.R2.seedcells": ("seed-cells in R2's family: ten cells times the seeds",
                         lambda r: len(ABOVE) * len(r["seeds"])),
     # the one cell whose mean M1 is negative: worse than the input
+    "ma.cells": ("cells in the moving average's grid, training level by inference level",
+                 lambda r: len(LAMBDAS) ** 2),
     "ma.m1neg.cells": ("moving average, cells of the 25 whose mean M1 is negative, count",
                        lambda r: sum(float(np.mean(m1(r, MA, t, i))) < 0 for t in LAMBDAS for i in LAMBDAS)),
     "ma.m1.t4.i100.sd": ("M1, moving average, train 4, inference 100, dB, SD across seeds",
@@ -263,15 +269,17 @@ NON_RECORD = {
 # PROPOSED, not in effect: the record keys `docs/WHEN_TO_TRUST.md` may cite in its P2-B
 # region (between `<!-- record:P2-B -->` and `<!-- /record:P2-B -->`), as the
 # independent review of 51ab3b8 listed them: R1 to R4 in their registered form, the one
-# cell whose output was worse than its input, and the conditions a reader needs to place
-# them. The clearance takes effect only when the owner confirms it in a Revision of the
+# cell whose output was worse than its input and that it was the only one (added at the
+# owner's decision after the review of 9758a41), and the conditions a reader needs to
+# place them. The clearance takes effect only when the owner confirms it in a Revision of the
 # preregistration, after an independent review of the page.
 CLEARED_FOR_WHEN_TO_TRUST = frozenset({
     "ma.R1.min.k",
-    "ma.R2.seedcells", "ma.R2.min.m2",
+    "ma.R2.seedcells", "ma.R2.worst.loss",
     "ma.R3.min.k",
     "ma.R4.min.k",
     "ma.m1.t4.i100", "ma.m1.t4.i100.sd", "ma.m1neg.4.100",
+    "ma.m1neg.cells", "ma.cells",
     "in.4", "in.100",
     "n.seeds", "n.test", "n.points",
 })
@@ -279,6 +287,10 @@ CLEARED_FOR_WHEN_TO_TRUST = frozenset({
 # Qualifiers that are part of the proposed statements. Deleting one leaves every number
 # right, so the number checks cannot see it; this list can.
 PAGE_REQUIRED_PHRASES = (
+    "than a model trained at that count rate, in any of the",
+    "compare a model with one trained at the count rate it was applied to, not with the noisy input",
+    "the output still improved on the input",
+    "was not measured, and these results should not be assumed to hold for it",
     "cannot be attributed to the signal-to-noise ratio",
     "None of these is separated from the others",
     "the output was further from the clean spectrum than the noisy input was",

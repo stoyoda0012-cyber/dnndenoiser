@@ -1529,8 +1529,10 @@ changes follow here, neither to a cleared statement:
 - `tests/test_p2a_record_citations.py` applies this record's page checks to the page with
   any such region removed. The checks themselves, the cleared keys, the required
   qualifiers and item 78's planted cases are unchanged. A region left unclosed stays in
-  what these checks read, where its anchors are refused as keys this registry does not
-  know; P2-B's tests refuse an unclosed, unopened or duplicated region as well.
+  know; P2-B's tests refuse an unclosed, unopened or duplicated region as well. A region
+  under any name other than those whose tests check it is refused, so that no number can
+  be hidden from every check by naming a region; a planted `P2-C` region shows it. (The
+  first draft of this change lacked that; the independent review of the page found it.)
 - The page's opening says that each answer names its model, conditions and record, and
   "Which model was measured" now says it is for the energy-shift question. Neither
   sentence carries a number.
