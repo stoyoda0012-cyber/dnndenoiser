@@ -16,14 +16,18 @@ What each part establishes, stated so that it cannot be read as more:
   for the noise2clean descriptive families, against thresholds written here as the
   registered literals (19 for R1, 17 for a family of ten); the noise2clean diagonal set
   beside P2-A.
-- **Checked against literals written here** from the registration (and, for the
-  generator and noise2clean recipe, from P2-A's settings): the design block -- levels,
+- **Checked against literals written here**: the whole design block -- its set of keys,
+  so that an added key is refused as well as an altered one, and every value: levels,
   Poisson levels, total exposure, frame counts, seeds, test frames, pool size, W, epochs,
   architecture, model configuration, both recipes including the normalisation, the
-  generator configuration, the peak set and the noise model -- and the list of
-  differences stated beside P2-A.
+  generator configuration, the peak set, the noise model, the preregistration's path and
+  the confound statement -- and the list of differences stated beside P2-A. Most literals
+  are stated in the registration. The generator configuration and the noise2clean recipe
+  are registered only as "as in P2-A" and "P2-A's recipe"; P2-A's record does not carry
+  them, so their literals are the script's settings at the registration commit
+  (`7603007`). They refuse any later edit; they do not show that those settings are P2-A's.
 - **Checked against P2-A's committed record**, when it is present: the P2-A gain this
-  record copied.
+  record copied. When it is absent the check is skipped, and the report says so.
 - **Consistency check** (the measurement script's own `evaluate_predictions` and
   `descriptive_statistics`, deep-diffed against the record): the whole `predictions`
   and `noise2clean_descriptive` trees, including the fields the independent part does not
@@ -32,8 +36,9 @@ What each part establishes, stated so that it cannot be read as more:
   to its per-seed gains; it cannot catch an error inside those functions.
 - **Not verified here at all**: the per-seed gains themselves (they are the raw data),
   the self-check figures, the input SNRs, the training times and normalisation
-  constants, `generated_utc`, the wall clock, the environment and the provenance. They
-  are printed as stored, and the report says so where it prints them.
+  constants, `generated_utc`, the wall clock, `record_version`, `quick_mode`,
+  `resumed_seeds`, the device, the environment and the provenance. They are printed as
+  stored, and the report says so where it prints them.
 
 `tests/test_snr_transfer_record.py` tampers with a copy of the record one field at a
 time and requires this guard to refuse each edit.
@@ -74,6 +79,9 @@ REGISTERED_R1_K = 19
 REGISTERED_FAMILY_OF_TEN_K = 17
 REGISTERED_R2_MARGIN_DB = -1.0
 REGISTERED_DESIGN = {
+    "preregistration": "docs/preregistration/P2B-snr-transfer.md",
+    "confound": "a training level's S/N, its number of training frames and its number of "
+                "optimiser updates are not separable in this design",
     "poisson_levels": [5000.0 / (x / 4.0) ** 0.5 for x in REGISTERED_LAMBDAS],
     "total_exposure": 50000.0,
     "W": 1,
@@ -172,6 +180,11 @@ def _check_design(problems: list, record: dict) -> None:
                           ("noise2clean_pool", REGISTERED_POOL)):
         if design[key] != expected:
             problems.append(f"design.{key}: {design[key]!r}, registered {expected}")
+    expected_keys = set(REGISTERED_DESIGN) | {"lambdas", "frames_per_level", "n_seeds",
+                                              "n_test_per_level", "noise2clean_pool"}
+    if set(design) != expected_keys:
+        problems.append(f"design: keys added {sorted(set(design) - expected_keys)}, "
+                        f"missing {sorted(expected_keys - set(design))}")
     for key, expected in REGISTERED_DESIGN.items():
         _deep_diff(problems, f"design.{key} (registered)", expected, design.get(key))
     indices = sorted(s["seed_index"] for s in record["seeds"])
@@ -403,12 +416,14 @@ def render(record: dict, series: dict) -> str:
         "file, every aggregate, every sign count, binomial p, Holm-adjusted p and verdict against "
         "the registered thresholds, and the noise2clean diagonal set beside P2-A. It checks the "
         "design block and the differences stated beside P2-A against literals written in that "
-        "file, and the P2-A gain against P2-A's committed record. It also re-derives the "
+        "file, and the P2-A gain against P2-A's committed record when that record is present. "
+        "It also re-derives the "
         "`predictions` and `noise2clean_descriptive` trees with the measurement script's own "
         "functions and compares them field by field; that part catches an edited or stale "
         "record, not an error inside those functions. **Not verified here at all:** the per-seed "
         "gains themselves, the self-check figures, the input SNRs, the training times and "
-        "normalisation constants, the generation time, the wall clock, the environment and the "
+        "normalisation constants, the generation time, the wall clock, the record version, the "
+        "quick-mode flag, the list of resumed seeds, the device, the environment and the "
         "provenance, which are printed as stored.")
     add("")
     if record.get("quick_mode"):
@@ -526,6 +541,10 @@ def render(record: dict, series: dict) -> str:
         add("")
         for item in beside["differences_stated"]:
             add(f"- {item}")
+        if not P2A_RECORD.is_file():
+            add("")
+            add("**Not checked:** P2-A's record was not present when this report was rendered, "
+                "so the P2-A gain above is printed as stored.")
     else:
         add("P2-A's record was not available when this record was written.")
     add("")

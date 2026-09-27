@@ -385,6 +385,14 @@ a prediction, a threshold, a decision rule, a self-check or the record.
    field is stated; the SIA paragraph no longer leans on the noise2clean juxtaposition. The
    guard's relative tolerance of one part in 10⁹ is left as it is: immaterial, as the review
    said.
+9. **(Follow-up review of `51ab3b8`: minor)** The follow-up review confirmed items 1–8 and
+   raised three minor points, repaired here: the guard now refuses a key added to the design
+   block and checks the preregistration path and the confound statement, and the report's
+   "not verified" list names the record version, the quick-mode flag, the resumed seeds and
+   the device; when P2-A's record is absent the P2-A comparison is skipped and the report
+   says the value was not checked, which a test shows; and the renderer states that the
+   generator and noise2clean-recipe literals are the script's settings at `7603007`, since
+   P2-A's record does not carry them to check against.
 
 ## Record
 

@@ -141,6 +141,10 @@ TAMPERS = [
      r"design\.peak_set_id \(registered\)"),
     ("design normalisation", lambda r: r["design"]["moving_average_recipe"].__setitem__(
         "normalisation", "per-frame"), r"design\.moving_average_recipe \(registered\)\.normalisation"),
+    ("design key added", lambda r: r["design"].__setitem__("augmentation", "none"),
+     r"design: keys added \['augmentation'\]"),
+    ("design confound rewritten", lambda r: r["design"].__setitem__("confound", "none"),
+     r"design\.confound \(registered\)"),
     ("design generator", lambda r: r["design"]["generator_config"].__setitem__("position_jitter", 0.0),
      r"design\.generator_config \(registered\)\.position_jitter"),
 ]
@@ -256,3 +260,16 @@ def test_a_hand_edited_report_is_detected(renderer, record):
     edited = expected.replace("| **PASS** | 10 | 17 |", "| **FAIL** | 10 | 17 |", 1)
     assert edited != expected
     assert edited != REPORT.read_text(encoding="utf-8")
+
+
+def test_without_p2a_record_the_p2a_gain_is_unchecked_and_the_report_says_so(renderer, record,
+                                                                              monkeypatch, tmp_path):
+    """The guard's P2-A comparison is skipped when P2-A's record is absent: a wrong copied
+    value then passes, and the report must say the value was not checked."""
+    shipped = renderer.render(record, renderer.verify(copy.deepcopy(record)))
+    assert "**Not checked:**" not in shipped
+    monkeypatch.setattr(renderer, "P2A_RECORD", tmp_path / "absent.json")
+    tampered = copy.deepcopy(record)
+    tampered["p2a_beside_noise2clean"]["p2a_arm_A_level_1000_delta_0_gain_db"] = 5.0
+    text = renderer.render(tampered, renderer.verify(tampered))
+    assert "**Not checked:** P2-A's record was not present" in text
