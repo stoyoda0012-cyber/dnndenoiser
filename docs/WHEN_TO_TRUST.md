@@ -114,7 +114,7 @@ amount — the shape of a charging offset or a calibration error.
 — the report, the preregistration it was measured against, and how to re-run it.
 
 <!-- record:P2-B -->
-<!-- DRAFT, not cleared: proposed for owner review. Numbers carry r: anchors (recomputed
+<!-- Cleared for quotation here by P2-B Revision 3 (item 6). Numbers carry r: anchors (recomputed
 from the P2-B record) or n:reg anchors (registered design values); see
 tests/test_p2b_record_citations.py. -->
 

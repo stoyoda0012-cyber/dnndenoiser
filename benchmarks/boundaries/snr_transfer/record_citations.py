@@ -266,15 +266,15 @@ NON_RECORD = {
 }
 
 
-# PROPOSED, not in effect: the record keys `docs/WHEN_TO_TRUST.md` may cite in its P2-B
+# Cleared by P2-B Revision 3, confirmed 2026-09-27 (item 6): the record keys `docs/WHEN_TO_TRUST.md` may cite in its P2-B
 # region (between `<!-- record:P2-B -->` and `<!-- /record:P2-B -->`), as the
 # independent review of 51ab3b8 listed them: R1 to R4 in their registered form, the one
 # cell whose output was worse than its input and that it was the only one (`ma.cells`,
 # `ma.m1neg.cells`, added at the owner's decision after the review of 9758a41, when the
 # worst R2 loss also moved from the signed `ma.R2.min.m2` to `ma.R2.worst.loss`), and
 # the conditions a reader needs to
-# place them. The clearance takes effect only when the owner confirms it in a Revision of the
-# preregistration, after an independent review of the page.
+# place them. It took effect when the owner confirmed it, after independent reviews of the
+# region at 9758a41, 1636f70 and 7e6f636.
 CLEARED_FOR_WHEN_TO_TRUST = frozenset({
     "ma.R1.min.k",
     "ma.R2.seedcells", "ma.R2.worst.loss",

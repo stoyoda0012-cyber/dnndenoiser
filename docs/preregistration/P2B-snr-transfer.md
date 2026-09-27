@@ -4,8 +4,9 @@
 (of `6459e5b` and `2046086`) and a check of the repair `d548985`; published before the
 first full run (`AGENTS.md` §8.1).** ~~Implemented; no full run made yet.~~ *The first full
 run was made on 2026-09-26 at `7603007`; its record and what it shows are under Record, added
-in Revision 1 and revised in Revision 2 after an independent review. Nothing from it is cleared
-for outward-facing quotation.* The design and
+in Revision 1 and revised in Revision 2 after an independent review. A limited set of its
+statements is cleared for quotation on `docs/WHEN_TO_TRUST.md` only (Revision 3, confirmed
+2026-09-27, item 6); nothing else from it is cleared.* The design and
 the predictions were decided by the owner on 2026-09-25, before the apparatus was
 written; what was tried while writing it is listed under "Before registration". Nothing
 below may be revised to match a result; a change after registration is made visibly,
@@ -395,12 +396,13 @@ a prediction, a threshold, a decision rule, a self-check or the record.
    P2-A's record does not carry them to check against.
 
 
-### Revision 3 — 2026-09-27, a limited clearance for quotation, proposed, not in effect
+### Revision 3 — 2026-09-27, a limited clearance for quotation, proposed and confirmed
 
 `docs/WHEN_TO_TRUST.md` answers a user's question — whether a self-supervised model
 trained at one exposure can be used at another — from this record, in a region between
 `<!-- record:P2-B -->` and `<!-- /record:P2-B -->`. This revision proposes the statements
-it may quote. **It is not in effect.** It takes effect when the owner confirms it after an
+it may quote. **The owner confirmed the clearance on 2026-09-27 (item 6).** Until then it
+was not in effect. The rule it was written under: it takes effect when the owner confirms it after an
 independent review of that region, and the confirmation is recorded here with its date,
 the statements cleared and the commit reviewed. Until then the branch carrying the region
 is not pushed.
@@ -458,6 +460,20 @@ is not pushed.
    against"; "improved on the noisy input" says "on average"; the provenance line says
    the input SNR is read from the record rather than recomputed; "What to do" 1 no longer
    reads as "it helps only at the trained rate"; and the key changes are named in item 4.
+6. **Confirmation, 2026-09-27.** The owner confirmed the clearance.
+   - **Cleared:** the statements in the P2-B region of `docs/WHEN_TO_TRUST.md` as they stand
+     in `7e6f636`, quoting the 15 record keys in `CLEARED_FOR_WHEN_TO_TRUST`, for
+     outward-facing quotation on that page only. Nothing else in this document or the record
+     is cleared, on that page or elsewhere; in particular not the M2 > 0 counts, anything
+     about noise2clean, the two methods' diagonals or P2-A, any attribution of the
+     asymmetry, or anything about the SIA paper.
+   - **Reviewed:** an independent review of the region at `9758a41` (not fit until repaired),
+     its follow-up at `1636f70` (fit) and a second follow-up at `7e6f636` (fit, nothing
+     further required), all by one reviewer, with the fixed checklist of
+     `docs/VERIFICATION.md` §3.
+   - **This confirmation's commit** changes no statement on the page. It records the
+     decision here and switches the Status line, the page's draft note, the registry's
+     comment and the Record section's closing line from "proposed" to "cleared".
 
 ## Record
 
@@ -693,5 +709,6 @@ will not support" applies in full.
 
 Nothing from this record goes into the README, the package documentation or any release
 note until the claims to be quoted, and the place quoting them, have been independently
-reviewed and a person has decided what may be quoted (`docs/VERIFICATION.md` §4). No such
-decision has been made.
+reviewed and a person has decided what may be quoted (`docs/VERIFICATION.md` §4).
+Revision 3 records one such decision, for the P2-B region of `docs/WHEN_TO_TRUST.md`,
+confirmed on 2026-09-27 (item 6).
