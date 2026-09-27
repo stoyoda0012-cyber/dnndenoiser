@@ -132,13 +132,13 @@ model with one trained at the count rate it was applied to, not with the noisy i
   trained on.** At λ = 20<!--n:reg-->, 45<!--n:reg--> and 100<!--n:reg--> its SNR gain was
   positive in 20<!--r:ma.R1.min.k--> of 20<!--r:n.seeds--> runs each.
 - **Applied to noisier frames than it was trained on, it never lost more than
-  1<!--n:reg--> dB** than a model trained at that count rate, in any of the
+  1<!--n:reg--> dB** against a model trained at that count rate, in any of the
   200<!--r:ma.R2.seedcells--> combinations of run and pair of levels. The single worst
   combination lost 0.6<!--r:ma.R2.worst.loss--> dB.
 - **Applied to cleaner frames than it was trained on, it did worse than a model trained
   at that count rate**, in every pair of levels, in at least
-  19<!--r:ma.R3.min.k--> of 20<!--r:n.seeds--> runs. It still improved on the noisy input
-  in all but one pair (below).
+  19<!--r:ma.R3.min.k--> of 20<!--r:n.seeds--> runs. On average it still improved on the
+  noisy input in all but one pair (below).
 - **Going to cleaner frames cost more than going to noisier ones.** For every pair of
   levels, the loss against the matched model when going up exceeded the loss going
   down, paired within run, in at least 18<!--r:ma.R4.min.k--> of
@@ -189,15 +189,15 @@ differ, was not measured, and these results should not be assumed to hold for it
   streams.
 - *Backend and provenance.* Measured once, on the MPS backend; not compared across
   devices or repeated. Every run's gain for every combination is in the record, so each
-  number here can be recomputed from it; the gains themselves can be checked only by
+  number here can be recomputed from it or, like the input SNR, read from it; the gains themselves can be checked only by
   running the measurement again. The preregistration was published before the
   measurement ran, which rests on GitHub's timestamps and on a record time written by the
   run itself.
 
 **What to do.**
 
-1. Where the method was measured to help is at the count rate it was trained on; train
-   on frames at the count rate you will denoise, when you can.
+1. Train on frames at the count rate you will denoise, when you can: that is where this
+   measurement registered, as a test, that the method helps, and it held.
 2. If you apply a model to frames with more counts than it was trained on, check the
    result: in this measurement that direction did worse than a model trained at that
    count rate in nearly every run, and at the extreme the output was worse than the

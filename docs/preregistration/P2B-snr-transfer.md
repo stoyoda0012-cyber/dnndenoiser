@@ -449,7 +449,15 @@ is not pushed.
      worse-than-input sentence says "on average"; "What to do" 1 says where the method was
      measured to help rather than implying the diagonal is best;
    - P2-A's page checks now refuse a region under a name no record's tests check (P2-A
-     Revision 12), and the design-value limit above is disclosed.
+     Revision 12), and the design-value limit above is disclosed;
+   - the proposed keys changed accordingly: `ma.cells` and `ma.m1neg.cells` added, and the
+     worst R2 loss quoted as a positive loss on `ma.R2.worst.loss` instead of the signed
+     `ma.R2.min.m2`.
+5. **After the follow-up review of `1636f70`.** It judged the region fit to be cleared and
+   raised five minor points, repaired here: "more than 1 dB than" reads "more than 1 dB
+   against"; "improved on the noisy input" says "on average"; the provenance line says
+   the input SNR is read from the record rather than recomputed; "What to do" 1 no longer
+   reads as "it helps only at the trained rate"; and the key changes are named in item 4.
 
 ## Record
 

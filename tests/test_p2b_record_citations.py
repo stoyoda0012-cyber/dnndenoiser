@@ -226,7 +226,7 @@ PAGE_MUTATIONS = [
     ("page: rounded until it says something else", "fifth",
      "0.6<!--r:ma.R2.worst.loss-->", "1<!--r:ma.R2.worst.loss-->"),
     ("page: the relative reading of a loss deleted", "qualifiers",
-     " than a model trained at that count rate, in any", " in any"),
+     " against a model trained at that count rate, in any", " in any"),
     ("page: a required qualifier deleted", "qualifiers",
      " None of these is separated from the others, or from\nthe signal-to-noise ratio.", ""),
 ]

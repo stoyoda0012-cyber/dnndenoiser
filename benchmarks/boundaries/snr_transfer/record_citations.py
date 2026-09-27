@@ -269,8 +269,10 @@ NON_RECORD = {
 # PROPOSED, not in effect: the record keys `docs/WHEN_TO_TRUST.md` may cite in its P2-B
 # region (between `<!-- record:P2-B -->` and `<!-- /record:P2-B -->`), as the
 # independent review of 51ab3b8 listed them: R1 to R4 in their registered form, the one
-# cell whose output was worse than its input and that it was the only one (added at the
-# owner's decision after the review of 9758a41), and the conditions a reader needs to
+# cell whose output was worse than its input and that it was the only one (`ma.cells`,
+# `ma.m1neg.cells`, added at the owner's decision after the review of 9758a41, when the
+# worst R2 loss also moved from the signed `ma.R2.min.m2` to `ma.R2.worst.loss`), and
+# the conditions a reader needs to
 # place them. The clearance takes effect only when the owner confirms it in a Revision of the
 # preregistration, after an independent review of the page.
 CLEARED_FOR_WHEN_TO_TRUST = frozenset({
@@ -287,7 +289,7 @@ CLEARED_FOR_WHEN_TO_TRUST = frozenset({
 # Qualifiers that are part of the proposed statements. Deleting one leaves every number
 # right, so the number checks cannot see it; this list can.
 PAGE_REQUIRED_PHRASES = (
-    "than a model trained at that count rate, in any of the",
+    "against a model trained at that count rate, in any of the",
     "compare a model with one trained at the count rate it was applied to, not with the noisy input",
     "the output still improved on the input",
     "was not measured, and these results should not be assumed to hold for it",
