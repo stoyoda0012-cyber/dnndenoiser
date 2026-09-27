@@ -50,14 +50,31 @@ def _tag(x: float) -> str:
 ABOVE = [(t, i) for t in LAMBDAS for i in LAMBDAS if t > i]
 BELOW = [(t, i) for t in LAMBDAS for i in LAMBDAS if t < i]
 PAIRS = BELOW
+ONE_STEP = list(zip(LAMBDAS[:-1], LAMBDAS[1:]))
 
 
-def _count(record, family, key):
-    return record["predictions"][family]["cells"][key]["n_favouring"]
+# Every count below is derived from the per-seed gains, not read from the record's
+# `predictions` or `noise2clean_descriptive` trees; the rules are the registered ones.
+K_FAMILY_OF_TEN = 17
 
 
-def _n2c_met(record, family):
-    return sum(c["passed"] for c in record["noise2clean_descriptive"][family].values())
+def r2_count(record, method, t, i):
+    return int(np.sum(m2(record, method, t, i) > -1.0))
+
+
+def r3_count(record, method, t, i):
+    return int(np.sum(m2(record, method, t, i) < 0))
+
+
+def r4_count(record, method, a, b):
+    return int(np.sum(r4(record, method, a, b) > 0))
+
+
+def _met(record, method, family):
+    counts = {"R2": [r2_count(record, method, t, i) for t, i in ABOVE],
+              "R3": [r3_count(record, method, t, i) for t, i in BELOW],
+              "R4": [r4_count(record, method, a, b) for a, b in PAIRS]}[family]
+    return sum(c >= K_FAMILY_OF_TEN for c in counts)
 
 
 def _stamp_ratios(record):
@@ -117,6 +134,12 @@ CITATIONS = {
                                            f"lambda {_tag(i)}, dB, SD across seeds",
                                            (lambda t, i: lambda r: float(np.std(m2(r, MA, t, i), ddof=1)))(t, i))
        for t, i in ((4.0, 9.0), (9.0, 4.0))},
+    "ma.r4.onestep.lo": ("R4 statistic, moving average, smallest mean over the four pairs of "
+                         "adjacent levels, dB",
+                         lambda r: min(float(np.mean(r4(r, MA, a, b))) for a, b in ONE_STEP)),
+    "ma.r4.onestep.hi": ("R4 statistic, moving average, largest mean over the four pairs of "
+                         "adjacent levels, dB",
+                         lambda r: max(float(np.mean(r4(r, MA, a, b))) for a, b in ONE_STEP)),
     "ma.r4.lo": ("R4 statistic, moving average, smallest mean over the ten pairs, dB",
                  lambda r: min(float(np.mean(r4(r, MA, a, b))) for a, b in PAIRS)),
     "ma.r4.hi": ("R4 statistic, moving average, largest mean over the ten pairs, dB",
@@ -127,12 +150,51 @@ CITATIONS = {
                      lambda r: float(np.std(r4(r, MA, 4.0, 9.0), ddof=1))),
 
     # sign counts that are not 20 of 20, and summaries of them
+    "ma.R1.min.k": ("R1, moving average, smallest count of seeds with diagonal M1 > 0 over "
+                    "lambda = 20, 45, 100",
+                    lambda r: min(int(np.sum(m1(r, MA, x, x) > 0)) for x in (20.0, 45.0, 100.0))),
     "ma.R3.k.4.9": ("R3, moving average, cell 4 -> 9, seeds with M2 < 0, count",
-                    lambda r: _count(r, "R3", "4.0->9.0")),
+                    lambda r: r3_count(r, MA, 4.0, 9.0)),
+    "ma.R3.min.rest": ("R3, moving average, smallest count of seeds with M2 < 0 over the nine "
+                       "cells other than 4 -> 9", lambda r: min(r3_count(r, MA, t, i) for t, i in BELOW
+                                                               if (t, i) != (4.0, 9.0))),
     "ma.R4.k.4.9": ("R4, moving average, pair 4 | 9, seeds with the statistic > 0, count",
-                    lambda r: _count(r, "R4", "4.0|9.0")),
+                    lambda r: r4_count(r, MA, 4.0, 9.0)),
+    "ma.R4.min.rest": ("R4, moving average, smallest count of seeds with the statistic > 0 over "
+                       "the nine pairs other than 4 | 9", lambda r: min(r4_count(r, MA, a, b) for a, b in PAIRS
+                                                                       if (a, b) != (4.0, 9.0))),
     "ma.R2.min.k": ("R2, moving average, smallest count of seeds with M2 > -1 dB over the ten cells",
-                    lambda r: min(c["n_favouring"] for c in r["predictions"]["R2"]["cells"].values())),
+                    lambda r: min(r2_count(r, MA, t, i) for t, i in ABOVE)),
+    "ma.R2.min.m2": ("R2, moving average, most negative single-seed M2 over the ten cells above "
+                     "the diagonal (200 seed-cells), dB",
+                     lambda r: min(float(np.min(m2(r, MA, t, i))) for t, i in ABOVE)),
+    "ma.R2.seedcells": ("seed-cells in R2's family: ten cells times the seeds",
+                        lambda r: len(ABOVE) * len(r["seeds"])),
+    # the one cell whose mean M1 is negative: worse than the input
+    "ma.m1neg.cells": ("moving average, cells of the 25 whose mean M1 is negative, count",
+                       lambda r: sum(float(np.mean(m1(r, MA, t, i))) < 0 for t in LAMBDAS for i in LAMBDAS)),
+    "ma.m1.t4.i100.sd": ("M1, moving average, train 4, inference 100, dB, SD across seeds",
+                         lambda r: float(np.std(m1(r, MA, 4.0, 100.0), ddof=1))),
+    "ma.m1.t4.i100.min": ("M1, moving average, train 4, inference 100, dB, smallest over seeds",
+                          lambda r: float(np.min(m1(r, MA, 4.0, 100.0)))),
+    "ma.m1neg.4.100": ("moving average, train 4, inference 100, seeds with M1 < 0, count",
+                       lambda r: int(np.sum(m1(r, MA, 4.0, 100.0) < 0))),
+    "ma.m1neg.4.45": ("moving average, train 4, inference 45, seeds with M1 < 0, count",
+                      lambda r: int(np.sum(m1(r, MA, 4.0, 45.0) < 0))),
+    "ma.m1.t4.i100": ("M1, moving average, train 4, inference 100, dB, mean over seeds",
+                      lambda r: float(np.mean(m1(r, MA, 4.0, 100.0)))),
+    # the moving average's normalisation constants, as stored by the run (not verified by
+    # the renderer's guard)
+    **{f"norm.max.{_tag(x)}": (f"moving average, maximum of the lambda = {_tag(x)} training stack "
+                               "(the min-max normalisation's upper constant; the clean spectrum's "
+                               "maximum is 1), mean over seeds, as stored",
+                               (lambda x: lambda r: float(np.mean(
+                                   [s["training"][MA][str(x)]["normalisation"]["max"]
+                                    for s in r["seeds"]])))(x))
+       for x in (4.0, 100.0)},
+    "chk6.cells": ("self-check 6, cells checked per seed (the same in every seed)",
+                   lambda r: float(np.unique([s["self_checks"]["6_same_test_arrays"]["cells_checked"]
+                                              for s in r["seeds"]]).item())),
     "ma.m2pos.9.4": ("moving average, cell 9 -> 4, seeds with M2 > 0, count (not a registered rule)",
                      lambda r: int(np.sum(m2(r, MA, 9.0, 4.0) > 0))),
     "ma.m2pos.min.rest": ("moving average, smallest count of seeds with M2 > 0 over the nine cells "
@@ -146,11 +208,11 @@ CITATIONS = {
 
     # noise2clean, descriptive
     "n2c.R2.met": ("noise2clean, R2-type cells meeting the R2 rule at 17 of 20, count of ten",
-                   lambda r: _n2c_met(r, "R2_cells")),
+                   lambda r: _met(r, N2C, "R2")),
     "n2c.R3.met": ("noise2clean, R3-type cells meeting the R3 rule at 17 of 20, count of ten",
-                   lambda r: _n2c_met(r, "R3_cells")),
+                   lambda r: _met(r, N2C, "R3")),
     "n2c.R4.met": ("noise2clean, R4-type pairs meeting the R4 rule at 17 of 20, count of ten",
-                   lambda r: _n2c_met(r, "R4_pairs")),
+                   lambda r: _met(r, N2C, "R4")),
     "n2c.above.lo": ("noise2clean, most negative mean M2 over the ten cells above the diagonal "
                      "(training above inference), dB",
                      lambda r: min(float(np.mean(m2(r, N2C, t, i))) for t, i in ABOVE)),

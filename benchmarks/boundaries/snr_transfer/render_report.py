@@ -12,20 +12,28 @@ What each part establishes, stated so that it cannot be read as more:
 
 - **Independent recomputation** (arithmetic written here, not imported): every
   aggregate -- M1 mean, SD and per-seed list, M2 mean and SD, for both methods and all
-  25 cells; every sign count and its verdict for R1 to R4 and for the noise2clean
-  descriptive families, against thresholds written here as the registered literals
-  (19 for R1, 17 for a family of ten); the noise2clean diagonal set beside P2-A; the
-  registered design literals (levels, frame counts, seeds, test frames, pool size).
+  25 cells; every sign count, binomial p, Holm-adjusted p and verdict for R1 to R4 and
+  for the noise2clean descriptive families, against thresholds written here as the
+  registered literals (19 for R1, 17 for a family of ten); the noise2clean diagonal set
+  beside P2-A.
+- **Checked against literals written here** from the registration (and, for the
+  generator and noise2clean recipe, from P2-A's settings): the design block -- levels,
+  Poisson levels, total exposure, frame counts, seeds, test frames, pool size, W, epochs,
+  architecture, model configuration, both recipes including the normalisation, the
+  generator configuration, the peak set and the noise model -- and the list of
+  differences stated beside P2-A.
+- **Checked against P2-A's committed record**, when it is present: the P2-A gain this
+  record copied.
 - **Consistency check** (the measurement script's own `evaluate_predictions` and
   `descriptive_statistics`, deep-diffed against the record): the whole `predictions`
-  and `noise2clean_descriptive` trees, including every binomial p and Holm-adjusted p.
-  This catches a record edited, truncated or left stale relative to its per-seed gains;
-  it cannot catch an error inside those functions.
+  and `noise2clean_descriptive` trees, including the fields the independent part does not
+  rebuild (`evaluated`, `family_size`, `failed_levels`, the cells made descriptive,
+  `m1_beside_each_cell`). This catches a record edited, truncated or left stale relative
+  to its per-seed gains; it cannot catch an error inside those functions.
 - **Not verified here at all**: the per-seed gains themselves (they are the raw data),
   the self-check figures, the input SNRs, the training times and normalisation
-  constants, the environment and the provenance. They are printed as stored, and the
-  report says so where it prints them. P2-A's gain quoted beside noise2clean is read
-  from this record, not from P2-A's.
+  constants, `generated_utc`, the wall clock, the environment and the provenance. They
+  are printed as stored, and the report says so where it prints them.
 
 `tests/test_snr_transfer_record.py` tampers with a copy of the record one field at a
 time and requires this guard to refuse each edit.
@@ -65,6 +73,41 @@ REGISTERED_R1_LEVELS = (20.0, 45.0, 100.0)
 REGISTERED_R1_K = 19
 REGISTERED_FAMILY_OF_TEN_K = 17
 REGISTERED_R2_MARGIN_DB = -1.0
+REGISTERED_DESIGN = {
+    "poisson_levels": [5000.0 / (x / 4.0) ** 0.5 for x in REGISTERED_LAMBDAS],
+    "total_exposure": 50000.0,
+    "W": 1,
+    "epochs": 50,
+    "architecture": "ResNet-FCNN",
+    "model_config": {"num_features": 256, "num_hidden_units": 100, "encoder_output_dim": 64},
+    "peak_set_id": "C1s_adventitious",
+    "noise": "exact Poisson (use_gaussian_approx=False) at every level",
+    "moving_average_recipe": {
+        "optimizer": "Adam", "lr": 0.001, "weight_decay": 1e-09,
+        "lr_scheduler": "StepLR(step_size=25, gamma=0.5)", "loss": "HuberLoss(delta=1.0)",
+        "gradient_clip_norm": 4.0, "epochs": 50, "batch_size": 32,
+        "normalisation": "element-global min-max over the training stack, applied at inference "
+                         "with the training constants and inverted on the output"},
+    "noise2clean_recipe": {
+        "optimizer": "Adam", "lr": 0.001, "weight_decay": 1e-09,
+        "lr_scheduler": "StepLR(step_size=10, gamma=0.1)", "loss": "HuberLoss(delta=1.0)",
+        "gradient_clip_norm": 4.0, "epochs": 50, "batch_size": 16},
+    "generator_config": {
+        "n_energy_points": 256, "eta": 0.3, "use_pseudo_voigt": True, "background_type": "linear",
+        "background_level": 0.05, "background_slope": 0.001, "intensity_variation": 0.2,
+        "position_jitter": 0.3, "width_variation": 0.1, "normalize": True,
+        "energy_range": [277.8, 295.5]},
+}
+REGISTERED_P2A_DIFFERENCES = [
+    "noise: exact Poisson here, the Gaussian approximation in P2-A",
+    "training: one level here, three in P2-A",
+    "test set: 512 noisy frames of ONE clean spectrum per seed here, independently generated "
+    "spectra per seed in P2-A, so a seed mean averages over different things and the spread "
+    "across seeds means different things",
+    "this is not a re-measurement of P2-A under the same conditions",
+]
+P2A_RECORD = (Path(__file__).resolve().parents[1] / "position_shift" / "results"
+              / "position_shift_boundary.json")
 METHODS = ("moving_average", "noise2clean")
 METHOD_LABELS = {"moving_average": "moving average (primary)",
                  "noise2clean": "noise2clean (baseline, descriptive)"}
@@ -80,6 +123,18 @@ def cell(train: float, infer: float) -> str:
 
 def binomial_one_sided(k: int, n: int) -> float:
     return float(sum(comb(n, i) for i in range(k, n + 1)) / 2**n)
+
+
+def holm_adjusted(pvalues: list) -> list:
+    """Holm's step-down adjustment, written here: the i-th smallest p times (m - i), made
+    monotone and capped at 1. Not `boundary_common.holm`, which produced the record."""
+    m = len(pvalues)
+    ranked = sorted(range(m), key=lambda j: pvalues[j])
+    adjusted, running = [0.0] * m, 0.0
+    for i, j in enumerate(ranked):
+        running = max(running, min(1.0, (m - i) * pvalues[j]))
+        adjusted[j] = running
+    return adjusted
 
 
 # --------------------------------------------------------------------------------------
@@ -117,6 +172,8 @@ def _check_design(problems: list, record: dict) -> None:
                           ("noise2clean_pool", REGISTERED_POOL)):
         if design[key] != expected:
             problems.append(f"design.{key}: {design[key]!r}, registered {expected}")
+    for key, expected in REGISTERED_DESIGN.items():
+        _deep_diff(problems, f"design.{key} (registered)", expected, design.get(key))
     indices = sorted(s["seed_index"] for s in record["seeds"])
     if indices != list(range(REGISTERED_SEEDS)):
         problems.append(f"seeds: indices {indices!r} are not 0..{REGISTERED_SEEDS - 1}, once each")
@@ -174,6 +231,9 @@ def _check_signs(problems: list, record: dict, series: dict) -> None:
                            ("noise2clean", lambda f: stored_n2c[n2c_names[f]])):
         for family, cells in independent_sign_tests(series, method).items():
             stored_cells = lookup(family)
+            keys = list(cells)
+            holm = dict(zip(keys, holm_adjusted([binomial_one_sided(cells[k][0], REGISTERED_SEEDS)
+                                                 for k in keys])))
             for key, (count, k) in cells.items():
                 stored = stored_cells.get(key, {})
                 tag = f"{method}.{family}[{key}]"
@@ -188,6 +248,7 @@ def _check_signs(problems: list, record: dict, series: dict) -> None:
                                     f"record says {stored.get('passed')!r}")
                 _check(problems, f"{tag}.one_sided_binomial_p",
                        binomial_one_sided(count, REGISTERED_SEEDS), stored.get("one_sided_binomial_p"))
+                _check(problems, f"{tag}.holm_adjusted_p", holm[key], stored.get("holm_adjusted_p"))
             if method == "moving_average":
                 verdict = all(count >= k for count, k in cells.values())
                 if stored_ma[family].get("passed") is not verdict:
@@ -232,6 +293,13 @@ def verify(record: dict) -> dict:
     _check_aggregates(problems, record, series)
     _check_signs(problems, record, series)
     beside = record["p2a_beside_noise2clean"]
+    if beside.get("differences_stated") != REGISTERED_P2A_DIFFERENCES:
+        problems.append("p2a_beside_noise2clean.differences_stated: not the registered list")
+    if P2A_RECORD.is_file():
+        p2a = json.loads(P2A_RECORD.read_text(encoding="utf-8"))
+        _check(problems, "p2a_beside_noise2clean.p2a_arm_A_level_1000_delta_0_gain_db (P2-A's record)",
+               p2a["aggregates"]["A_narrow_2304"]["1000.0"]["+0.00"]["snr_gain_db_mean"],
+               beside.get("p2a_arm_A_level_1000_delta_0_gain_db"))
     _check(problems, "p2a_beside_noise2clean.noise2clean_lambda_100_diagonal_gain_db",
            np.mean(series["noise2clean"][cell(100.0, 100.0)]),
            beside.get("noise2clean_lambda_100_diagonal_gain_db"))
@@ -318,7 +386,7 @@ def render(record: dict, series: dict) -> str:
     add("     Do not edit by hand: anything written here is dropped the next time it is")
     add("     regenerated. -->")
     add("")
-    add(f"Record generated {record['generated_utc']} · record version {record['record_version']} · "
+    add(f"Record generated (as stored) {record['generated_utc']} · record version {record['record_version']} · "
         f"{record['total_wall_clock_seconds'] / 60:.1f} min wall clock · "
         f"device `{record['environment']['device_requested_resolved_to']}`")
     add("")
@@ -332,21 +400,23 @@ def render(record: dict, series: dict) -> str:
     add("")
     add("**What this report's guard verifies, and what it does not.** Before rendering, "
         "`render_report.py` recomputes from the per-seed gains, with arithmetic written in that "
-        "file, every aggregate, every sign count and its verdict against the registered "
-        "thresholds, and the noise2clean diagonal set beside P2-A; it checks the design block "
-        "against the registered literals; and it re-derives the `predictions` and "
-        "`noise2clean_descriptive` trees with the measurement script's own functions and "
-        "compares them field by field, including every p and Holm-adjusted p. That second part "
-        "catches an edited or stale record, not an error inside those functions. **Not verified "
-        "here at all:** the per-seed gains themselves, the self-check figures, the input SNRs, the "
-        "training times, the environment and the provenance, which are printed as stored.")
+        "file, every aggregate, every sign count, binomial p, Holm-adjusted p and verdict against "
+        "the registered thresholds, and the noise2clean diagonal set beside P2-A. It checks the "
+        "design block and the differences stated beside P2-A against literals written in that "
+        "file, and the P2-A gain against P2-A's committed record. It also re-derives the "
+        "`predictions` and `noise2clean_descriptive` trees with the measurement script's own "
+        "functions and compares them field by field; that part catches an edited or stale "
+        "record, not an error inside those functions. **Not verified here at all:** the per-seed "
+        "gains themselves, the self-check figures, the input SNRs, the training times and "
+        "normalisation constants, the generation time, the wall clock, the environment and the "
+        "provenance, which are printed as stored.")
     add("")
     if record.get("quick_mode"):
         add("> **QUICK MODE.** This record was produced by a smoke test. "
             "The numbers are not meaningful and must not be quoted.")
         add("")
 
-    add("## Design, as recorded")
+    add("## Design, as recorded and checked against the registered literals")
     add("")
     add(f"Synthetic `{design['peak_set_id']}` spectra, {design['generator_config']['n_energy_points']} points; "
         f"{design['noise']}. Architecture {design['architecture']} "

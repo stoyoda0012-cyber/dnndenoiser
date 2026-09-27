@@ -2,9 +2,10 @@
 
 **Status: registered 2026-09-26, on the owner's approval, after two independent audits
 (of `6459e5b` and `2046086`) and a check of the repair `d548985`; published before the
-first full run (`AGENTS.md` §8.1). Implemented; no full run made yet.** *The first full run was
-made on 2026-09-26 at `7603007`; its record and what it shows are under Record, added in
-Revision 1. Nothing from it is cleared for outward-facing quotation.* The design and
+first full run (`AGENTS.md` §8.1).** ~~Implemented; no full run made yet.~~ *The first full
+run was made on 2026-09-26 at `7603007`; its record and what it shows are under Record, added
+in Revision 1 and revised in Revision 2 after an independent review. Nothing from it is cleared
+for outward-facing quotation.* The design and
 the predictions were decided by the owner on 2026-09-25, before the apparatus was
 written; what was tried while writing it is listed under "Before registration". Nothing
 below may be revised to match a result; a change after registration is made visibly,
@@ -347,6 +348,44 @@ revision adds, after the result existed:
 No design choice, prediction, threshold, decision rule or self-check is changed, and the
 measurement script is not edited: its sha256 is in the record.
 
+### Revision 2 — 2026-09-27, after an independent review of Revision 1
+
+An independent review of `32d7e55` (a different model, a fresh context, the fixed checklist
+of `docs/VERIFICATION.md` §3) found no blocking defect and no quoted number wrong. It raised
+seven items to fix and seven minor ones. Each is repaired as follows; nothing below changes
+a prediction, a threshold, a decision rule, a self-check or the record.
+
+1. **(S1)** The one cell where the output was worse than the input (train 4, inference 100)
+   was stated only in `report.md`. It is now stated in the Record section, with its seed
+   count and its worst seed.
+2. **(S2)** "What this licenses" folded the unregistered M2 > 0 count into the licensed
+   statement and mixed cell means with seed counts. It now states the four registered rules
+   only, per seed, and labels the M2 > 0 count as descriptive and not licensed.
+3. **(S3)** The moving average's training-stack normalisation — a recorded difference between
+   the methods and between the two directions — was missing from the candidate readings and
+   from the licensing conditions. It is added to both, with the stored constants.
+4. **(S4)** Holm-adjusted *p* had no independent check. `render_report.py` now recomputes it
+   with its own implementation, and `tests/test_snr_transfer_record.py` tests both that
+   implementation and `boundary_common.holm` against a hand-computed family and shows that
+   Bonferroni and the unadjusted *p* are told apart from it.
+5. **(S5)** The guard accepted edits to the design block's strings and to the P2-A value, and
+   its tamper tests did not pin a reason. The guard now checks the whole design block and
+   the differences stated beside P2-A against literals, and the P2-A value against P2-A's
+   committed record; the "not verified" list names what remains (generation time, wall clock
+   among them). Every tamper test pins its reason, and a new test blinds the consistency
+   check to show the independent path refuses on its own.
+6. **(S6)** The citation test's description overstated what it derives from the gains. Every
+   gain, penalty and count is now derived from the per-seed gains; the section says which
+   figures are read as stored.
+7. **(S7)** The Status line kept "no full run made yet" beside a sentence saying the run was
+   made. The phrase is struck through, visibly.
+8. **(Minor)** "grows with the distance" is replaced by the ranges it rested on; "never lost
+   more than 1 dB" is stated over the 200 seed-cells; "float32 rounding" is removed as a cause
+   the record does not store; quoted counts carry anchors; the absence of a `claim_scope`
+   field is stated; the SIA paragraph no longer leans on the noise2clean juxtaposition. The
+   guard's relative tolerance of one part in 10⁹ is left as it is: immaterial, as the review
+   said.
+
 ## Record
 
 Run 2026-09-26 on the MPS backend of the development machine, in the environment pinned
@@ -365,11 +404,12 @@ say this (its Record, "Limits of provenance"); this record can.
 
 **All seven voiding self-checks passed.** Their stored figures, over every seed: the worst
 distance of any frame or pool value from a whole count was 5.7e-6<!--r:chk1.worst-->
-counts, float32 rounding, against a tolerance of 0.001<!--n:impl-->; λ estimated from the
+counts, against a tolerance of 0.001<!--n:impl-->; λ estimated from the
 noise variance lay between 0.988<!--r:chk2.lo--> and 1.015<!--r:chk2.hi--> of the declared λ,
 against a factor of 1.3<!--n:reg-->; every model had 658177<!--r:chk7.params--> parameters;
-no test frame was found among the training frames and no seed's sample in a pool; all 50
-cells' network inputs matched their rebuilt arrays. Each check is shown to reject a named
+no test frame was found among the training frames and no seed's sample in a pool; in every
+seed, all 50<!--r:chk6.cells--> cells' network inputs matched their rebuilt arrays. Each check is shown to reject a
+named
 wrong input in `tests/test_snr_transfer_gates.py`. These figures are stored by the run and
 printed by `report.md` as stored; its guard does not verify them.
 
@@ -377,8 +417,12 @@ printed by `report.md` as stored; its guard does not verify them.
 the source (`<!--r:…-->` or `<!--n:…-->`, invisible when rendered). An `r:` anchor names the
 metric, condition, unit and derivation in
 `benchmarks/boundaries/snr_transfer/record_citations.py`, and
-`tests/test_p2b_record_citations.py` recomputes it from the record's per-seed gains and
-requires the quoted text to match at the precision quoted. `report.md` is generated by
+`tests/test_p2b_record_citations.py` recomputes it from the record and requires the quoted
+text to match at the precision quoted. Every gain, penalty, sign count and verdict count is
+derived from the per-seed gains, not from the record's own `predictions` tree; self-check,
+normalisation and timing figures are read from where the run stored them, which nothing
+re-derives. A count quoted as a record value carries an anchor too; "20/20" in the table
+below is anchored on its first number. `report.md` is generated by
 `render_report.py`, which refuses a record it cannot reproduce from those gains;
 `tests/test_snr_transfer_record.py` tampers with it field by field. The record owns every
 number; if they disagree, this section is wrong.
@@ -392,14 +436,15 @@ moving average's across-seed SDs of M1 and M2 run from 0.4<!--r:ma.sd.min--> to
 
 | | Verdict | The number that decided it |
 |---|---|---|
-| **R1** positive control, λ = 20, 45, 100 | **PASS** | diagonal M1 **+12.6<!--r:ma.m1.t20.i20--> ± 0.5<!--r:ma.m1.t20.i20.sd-->, +14.9<!--r:ma.m1.t45.i45--> ± 0.5<!--r:ma.m1.t45.i45.sd-->, +14.9<!--r:ma.m1.t100.i100--> ± 0.4<!--r:ma.m1.t100.i100.sd--> dB**; 20/20 seeds each, 19 required |
+| **R1** positive control, λ = 20, 45, 100 | **PASS** | diagonal M1 **+12.6<!--r:ma.m1.t20.i20--> ± 0.5<!--r:ma.m1.t20.i20.sd-->, +14.9<!--r:ma.m1.t45.i45--> ± 0.5<!--r:ma.m1.t45.i45.sd-->, +14.9<!--r:ma.m1.t100.i100--> ± 0.4<!--r:ma.m1.t100.i100.sd--> dB**; positive in 20<!--r:ma.R1.min.k-->/20 seeds each, 19 required |
 | **R2** training above inference costs little | **PASS** | M2 > −1 dB in 20<!--r:ma.R2.min.k-->/20 seeds in every one of the ten cells; 17 required |
-| **R3** training below inference costs | **PASS** | weakest cell 4 → 9: M2 **−1.2<!--r:ma.m2.t4.i9--> ± 0.6<!--r:ma.m2.t4.i9.sd--> dB**, negative in 19<!--r:ma.R3.k.4.9-->/20; every other cell 20/20 |
-| **R4** the asymmetry | **PASS** | weakest pair 4 vs 9: **+1.4<!--r:ma.r4.4.9--> ± 0.9<!--r:ma.r4.4.9.sd--> dB**, in 18<!--r:ma.R4.k.4.9-->/20; every other pair 20/20 |
+| **R3** training below inference costs | **PASS** | weakest cell 4 → 9: M2 **−1.2<!--r:ma.m2.t4.i9--> ± 0.6<!--r:ma.m2.t4.i9.sd--> dB**, negative in 19<!--r:ma.R3.k.4.9-->/20; every other cell 20<!--r:ma.R3.min.rest-->/20 |
+| **R4** the asymmetry | **PASS** | weakest pair 4 vs 9: **+1.4<!--r:ma.r4.4.9--> ± 0.9<!--r:ma.r4.4.9.sd--> dB**, in 18<!--r:ma.R4.k.4.9-->/20; every other pair 20<!--r:ma.R4.min.rest-->/20 |
 
 R1 held at all three levels, so the failure rule removed nothing and R2 to R4 were
 evaluated on their full families of ten, at the registered threshold of 17 of 20. Every
-Holm-adjusted *p* is in `report.md`.
+Holm-adjusted *p* is in `report.md`. Unlike P2-A's, this record has no `claim_scope` field:
+its scope is the registration's "What this record will not support" and this section.
 
 The moving average's M2, train λ by inference λ (rows: training; columns: inference). Above
 the diagonal is training below inference (R3); below it, training above inference (R2).
@@ -413,8 +458,19 @@ the diagonal is training below inference (R3); below it, training above inferenc
 | **100** | +6.8<!--r:ma.m2.t100.i4--> | +6.2<!--r:ma.m2.t100.i9--> | +4.4<!--r:ma.m2.t100.i20--> | +1.4<!--r:ma.m2.t100.i45--> | — |
 
 The R4 statistic ranges from +1.4<!--r:ma.r4.lo--> to +23.1<!--r:ma.r4.hi--> dB over the ten
-pairs. Its size grows with the distance between the two levels, which is what the grid above
-shows; no prediction names that, and it is not argued from.
+pairs; over the four pairs of adjacent levels alone it ranges from +1.4<!--r:ma.r4.onestep.lo-->
+to +7.8<!--r:ma.r4.onestep.hi--> dB. No prediction names how it varies across pairs, and it is
+not argued from.
+
+**One cell made the frames worse than they came in.** M2 is relative to the diagonal. In
+absolute terms, the model trained at λ = 4 and applied at λ = 100 had M1
+−1.5<!--r:ma.m1.t4.i100--> ± 1.9<!--r:ma.m1.t4.i100.sd--> dB, negative in
+16<!--r:ma.m1neg.4.100-->/20 seeds and as low as −4.8<!--r:ma.m1.t4.i100.min--> dB: the output
+was further from the clean spectrum than the input. It is the only one of the moving
+average's 25 cells whose mean M1 is negative (1<!--r:ma.m1neg.cells--> cell); at 4 → 45 one
+seed of 20 was negative (1<!--r:ma.m1neg.4.45-->). This is `AGENTS.md` §5's warning — output can
+be worse than the input outside the training distribution — measured here in the direction
+R3 names.
 
 ### R2 held in a form stronger than it was registered, and that is the result to read carefully
 
@@ -464,12 +520,19 @@ in 3<!--r:n2c.R2.met--> of ten cells, R3's in 5<!--r:n2c.R3.met--> of ten and R4
 and update counts, and not in the method whose training flux moved alone.** That is a
 juxtaposition, and it cannot be read as an attribution: the two methods also differ in
 information (clean targets or none), in training data (a pool of other spectra, or frames
-of the one spectrum under test) and in recipe, as the registration said. It is consistent
-with the moving average's asymmetry depending on the frame and update counts rather than
-on S/N; it is also consistent with it depending on something the self-supervised targets
-do and clean targets do not. **This record does not decide between these, and no mechanism
-is claimed.** Separating them needs the moving average trained at one frame count across
-flux levels, which is a new preregistration; none is committed.
+of the one spectrum under test) and in recipe, as the registration said. They also differ in
+scaling: the moving average normalises by its training stack's minimum and maximum and applies
+those constants at inference, and noise2clean does not. The stored constants differ by flux —
+the λ = 4 stack's maximum averaged 3.78<!--r:norm.max.4--> and the λ = 100 stack's
+1.35<!--r:norm.max.100--> on a clean maximum of one — so a model applied at another flux sees
+inputs outside, or compressed within, the range it was trained on, differently in the two
+directions. The juxtaposition is consistent with the moving average's asymmetry depending on
+the frame and update counts; with it depending on that scaling; and with it depending on
+something the self-supervised targets do and clean targets do not — or on more than one of
+these. **This record does not decide between them, and no mechanism is claimed.**
+Separating them needs, at least, the moving average trained at one frame count across flux
+levels and with a normalisation that does not depend on the training stack — a new
+preregistration; none is committed.
 
 ### The diagonals, including the two no prediction names
 
@@ -510,20 +573,32 @@ difference between the two numbers is not interpreted.
 R2 and R3 together were registered as this document's analogue, on synthetic spectra, of
 the SIA paper's empirical directional rule, train S/N ≥ inference S/N. Both held. The
 registration's statement stands unchanged: **P2-B neither supports nor refutes that rule and
-is not a reproduction of the paper.** The noise2clean handle adds a reason to hold to it
-even as an analogue: in this design, the direction measured for the moving average is not
-shown to be a property of S/N at all.
+is not a reproduction of the paper.** Even as an analogue, what held is a statement
+about the moving average under equal exposure and its own normalisation, in which S/N is not
+separated from the frame and update counts or from the scaling; the noise2clean juxtaposition
+above is descriptive and does not settle which of them matters.
 
 ### What this licenses, and nothing stronger
 
 That **this** ResNet-FCNN, trained by the library's self-supervised moving average at
-W = 1 on the frames of one synthetic `C1s_adventitious` spectrum per seed, with exact Poisson
-noise and equal total exposure across λ = 4 to 100, on the MPS backend: when trained at a
-higher flux than the frames it denoised, never lost more than 1<!--n:reg--> dB against the
-model trained at that flux, and in nine of the ten cells gained in at least 19 of 20 seeds; when trained at a lower flux,
-lost in every cell; and lost more going up than going down in every pair of levels. None of
-this is separated from the frame and update counts that came with each flux. The
-registration's list "What this record will not support" applies in full.
+W = 1 on the frames of one synthetic `C1s_adventitious` spectrum per seed, normalised by
+its training stack's minimum and maximum, with exact Poisson noise and equal total exposure
+across λ = 4 to 100, on the MPS backend, met the four registered rules:
+
+- R1: its diagonal M1 was positive at λ = 20, 45 and 100 in every seed;
+- R2: trained at a higher flux than the frames it denoised, its M2 was above
+  −1<!--n:reg--> dB in all 10 cells and all 20 seeds — in none of the
+  200<!--r:ma.R2.seedcells--> seed-cells did it lose more than 1<!--n:reg--> dB; the worst was
+  −0.6<!--r:ma.R2.min.m2--> dB;
+- R3: trained at a lower flux, its M2 was negative in at least 17<!--n:reg--> of 20 seeds in
+  every cell (19<!--r:ma.R3.k.4.9--> in the weakest);
+- R4: the loss going up exceeded the loss going down, paired within seed, in at least
+  17<!--n:reg--> of 20 seeds in every pair (18<!--r:ma.R4.k.4.9--> in the weakest).
+
+That M2 was *positive* in nine of the R2 cells is descriptive (above) and is not part of what
+is licensed. None of this is separated from the frame and update counts, or from the
+normalisation constants, that came with each flux. The registration's list "What this record
+will not support" applies in full.
 
 ### Limits of provenance, stated rather than repaired
 

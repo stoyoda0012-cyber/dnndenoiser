@@ -4,13 +4,13 @@
      Do not edit by hand: anything written here is dropped the next time it is
      regenerated. -->
 
-Record generated 2026-09-26T15:01:10.156963+00:00 · record version 1 · 176.3 min wall clock · device `mps`
+Record generated (as stored) 2026-09-26T15:01:10.156963+00:00 · record version 1 · 176.3 min wall clock · device `mps`
 
 Registered design: `docs/preregistration/P2B-snr-transfer.md` (first registered `8779c76`, last revised before this run at `7603007`; code run from `7603007`, working tree clean). Resumed seeds: none. What the record means is stated in that document's Record section, not here.
 
-**What this report's guard verifies, and what it does not.** Before rendering, `render_report.py` recomputes from the per-seed gains, with arithmetic written in that file, every aggregate, every sign count and its verdict against the registered thresholds, and the noise2clean diagonal set beside P2-A; it checks the design block against the registered literals; and it re-derives the `predictions` and `noise2clean_descriptive` trees with the measurement script's own functions and compares them field by field, including every p and Holm-adjusted p. That second part catches an edited or stale record, not an error inside those functions. **Not verified here at all:** the per-seed gains themselves, the self-check figures, the input SNRs, the training times, the environment and the provenance, which are printed as stored.
+**What this report's guard verifies, and what it does not.** Before rendering, `render_report.py` recomputes from the per-seed gains, with arithmetic written in that file, every aggregate, every sign count, binomial p, Holm-adjusted p and verdict against the registered thresholds, and the noise2clean diagonal set beside P2-A. It checks the design block and the differences stated beside P2-A against literals written in that file, and the P2-A gain against P2-A's committed record. It also re-derives the `predictions` and `noise2clean_descriptive` trees with the measurement script's own functions and compares them field by field; that part catches an edited or stale record, not an error inside those functions. **Not verified here at all:** the per-seed gains themselves, the self-check figures, the input SNRs, the training times and normalisation constants, the generation time, the wall clock, the environment and the provenance, which are printed as stored.
 
-## Design, as recorded
+## Design, as recorded and checked against the registered literals
 
 Synthetic `C1s_adventitious` spectra, 256 points; exact Poisson (use_gaussian_approx=False) at every level. Architecture ResNet-FCNN (num_features=256, num_hidden_units=100, encoder_output_dim=64). 20 seeds; the seed is the replicate, and every ± below is the SD across seeds. 512 test frames per inference level per seed, the same arrays for both methods and every training level.
 
