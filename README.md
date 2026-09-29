@@ -154,6 +154,14 @@ not transfer to measured data.
 - **Spectrum-wise processing.** Angle-/time-resolved arrays are generated and
   handled, but denoising flattens all non-energy axes and processes each 1-D
   spectrum independently — this is not a joint 3-D/4-D model.
+- **Synthetic noise is independent from one energy channel to the next.** The
+  generator draws Poisson (or Gaussian-approximated) noise channel by channel. A
+  measured detector can spread one count over several neighbouring energy
+  channels — through its point spread or the analyzer software's rebinning — so
+  measured noise can be correlated along energy. A model trained on synthetic
+  spectra then meets a noise structure it was not trained on: another form of
+  distribution shift. This does not affect a model trained on measured frames
+  with `moving-average`, which learns the noise its frames carry.
 - **Synthetic backgrounds** in the public generator are none/linear/Shirley-like.
 - **Normalization**: spectra are normalized by default; intensity scale
   information is not preserved unless `--no-normalize` is used consistently.
