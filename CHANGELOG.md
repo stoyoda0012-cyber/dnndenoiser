@@ -51,6 +51,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the emission-angle channels of an angle-resolved measurement, for example — by
   offsetting each channel's `frame_index`, and why numbering them one after another
   would mix neighbours across channels. A test shows both.
+- **README Limitations: synthetic noise is independent between energy channels.**
+  Measured detectors can spread one count over neighbouring channels, so a model
+  trained on synthetic spectra can meet correlated noise it was not trained on.
 - **QUICK_START warns that a mean reference rewards an output that barely changes
   from frame to frame**, so an SNR against it can rank a model that returns nearly
   the same spectrum for every frame above one that does not.
