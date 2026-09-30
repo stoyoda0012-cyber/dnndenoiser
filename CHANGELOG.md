@@ -28,6 +28,14 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the checkpoint's length with the function `train` uses; every array it writes is
   then on the resampled grid. Found by running the self-supervised route on measured
   frames from the public repository alone.
+- **`train --seed` was ignored by every method but `moving-average`.** Its help
+  promised that the seed is passed to torch before the model is built; the
+  noise2clean and noise2noise paths built the model and shuffled batches from
+  torch's unseeded stream, and noise2noise synthesized its targets from generators
+  fixed at a default seed. `--seed` now seeds all three on every method. It still
+  does not make training reproducible on every device. Found by an external audit.
+- **`infer` dropped a frame stack's `frame_index`**, so the denoised frames could not
+  be matched back to the acquisition. It now writes it to the output.
 - **`evaluate` printed the MSE of measured-scale data as `0.000000`.** It now prints
   it in scientific notation. The saved JSON was already exact.
 
@@ -50,7 +58,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **QUICK_START says how to train one model on several channels of one stack** —
   the emission-angle channels of an angle-resolved measurement, for example — by
   offsetting each channel's `frame_index`, and why numbering them one after another
-  would mix neighbours across channels. A test shows both.
+  would mix neighbours across channels. A test shows both. The recipe holds only while
+  `--window` is smaller than every channel's number of frames; QUICK_START now says
+  so, and a test shows it failing beyond that.
 - **README Limitations: synthetic noise is independent between energy channels.**
   Measured detectors can spread one count over neighbouring channels, so a model
   trained on synthetic spectra can meet correlated noise it was not trained on.

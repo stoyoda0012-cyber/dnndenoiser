@@ -415,6 +415,12 @@ def cmd_train(args):
     device = _resolve_device(args.device)
     print(f"Device: {device}")
 
+    # The seed is applied before the model is built, as --seed's help promises:
+    # construction consumes torch's random stream, and so does the DataLoader's
+    # shuffling below. Without this, every path but moving-average ignored --seed.
+    if args.seed is not None:
+        torch.manual_seed(args.seed)
+
     # Build model directly
     print("\nBuilding model...")
     model = DenoisingNetwork(
@@ -431,7 +437,11 @@ def cmd_train(args):
 
     # Training method
     method_type = TrainingMethodType(args.method)
-    training_method = create_training_method(method_type)
+    # noise2noise synthesizes its targets from NumPy generators of its own; --seed
+    # seeds those too, so that one seed fixes the whole run. Without --seed they keep
+    # their fixed default.
+    method_kwargs = {} if args.seed is None else {'seed': args.seed}
+    training_method = create_training_method(method_type, **method_kwargs)
 
     # Check requirements
     if training_method.requires_clean_target and clean is None:
@@ -668,6 +678,9 @@ def cmd_infer(args):
         clean = f['clean'][:] if 'clean' in f else None
         angles = f['angles'][:] if 'angles' in f else None
         times = f['times'][:] if 'times' in f else None
+        # A frame's acquisition index is what identifies it in a stack; without it the
+        # output could not be matched back to the frames it came from.
+        frame_index = f['frame_index'][:] if 'frame_index' in f else None
 
     if noisy.shape[-1] != n_features:
         # Training resamples a stack that is not the network's length; the input has
@@ -750,6 +763,8 @@ def cmd_infer(args):
             f.create_dataset('angles', data=angles, dtype='float32')
         if times is not None:
             f.create_dataset('times', data=times, dtype='float32')
+        if frame_index is not None:
+            f.create_dataset('frame_index', data=frame_index)
 
     print(f"Saved: {output_path}")
     print("Done.")
@@ -971,9 +986,12 @@ Examples:
     train_parser.add_argument('--epochs', type=int, default=30)
     train_parser.add_argument('--batch-size', type=int, default=32)
     train_parser.add_argument('--seed', type=int, default=None,
-                             help='Seed passed to torch before the model is built. '
-                                  'Construction consumes the random stream, so the '
-                                  'same seed gives the same initial weights.')
+                             help='Seed passed to torch before the model is built, for '
+                                  'every method; it also seeds the batch order and, for '
+                                  'noise2noise, the synthesized targets. Construction '
+                                  'consumes the random stream, so the same seed gives the '
+                                  'same initial weights. It does not make training '
+                                  'reproducible on every device.')
     train_parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     train_parser.add_argument('--lr-drop-period', type=int, default=10)
     train_parser.add_argument('--lr-drop-factor', type=float, default=0.1)
