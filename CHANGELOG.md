@@ -18,6 +18,25 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   and matches the design's, within limits the preregistration lists. The prose around
   the numbers is checked by review, not by the test.
 
+### Changed
+
+- **Breaking: `evaluate` reports an SNR only against a declared synthetic truth.**
+  A reference now declares what it is (`generate` declares its `clean` arrays as the
+  synthetic truth; `infer` carries the declaration through), and every reported
+  quantity is named by it: an SNR against the synthetic truth, an *agreement* in dB
+  against a declared estimate from other data, and mean MSEs only against an estimate
+  built from the evaluated data or an undeclared reference. Files written before this
+  version are undeclared and get no SNR by default; declare them with
+  `--reference-origin synthetic_truth --generator … --units …`, or reproduce the old
+  output exactly with `--legacy-output`. The JSON output gains `evaluation_context`,
+  refuses NaN and Infinity, and adds mean-MSE and relative-change summaries named by
+  their weighting. `evaluate` also no longer ignores `--clean` when the input has its
+  own reference, and refuses a reference of another shape instead of broadcasting it.
+  `SyntheticGenerator.save_hdf5` now requires `reference_declaration` and
+  `intensity_units`. Design, four independent audits and the owner's adoption:
+  `docs/design/EVALUATION_REFERENCE_CONTRACT.md` (phase 1; the rest of the alignment
+  checks and content digests are phase 2).
+
 ### Fixed
 
 - **`infer` could not take the frame stack a moving-average model was trained on.**

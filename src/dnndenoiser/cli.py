@@ -126,9 +126,10 @@ def cmd_generate(args):
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # generate drew these arrays itself, so its clean arrays are the synthetic truth.
     h5_path = SyntheticGenerator.save_hdf5(
         output_path, clean, noisy, energy, metadata,
-        angles=gen.angles, times=gen.times
+        angles=gen.angles, times=gen.times, **gen.truth_arguments(clean.ndim)
     )
     print(f"\nSaved: {h5_path}")
 
@@ -661,28 +662,56 @@ def cmd_infer(args):
     model.eval()
 
     # Load data
+    from types import SimpleNamespace
+    from dnndenoiser import reference as ref
     print("\nLoading data...")
     with h5py.File(args.data, 'r') as f:
         if 'noisy' in f:
-            noisy = f['noisy'][:]
+            input_name = 'noisy'
         elif 'frames' in f:
             # A frame stack (the moving-average schema): denoise its frames, so the
             # file a model was trained on can be passed to it as it is.
-            noisy = f['frames'][:]
+            input_name = 'frames'
             print("  Frame stack: denoising its 'frames'.")
+        else:
+            input_name = None
+        if input_name is not None:
+            noisy = f[input_name][:]
+            # Units and acquisition identity travel with the data they describe.
+            carried = {k: f[input_name].attrs[k] for k in (ref.UNITS_ATTR, ref.ACQUISITION_ATTR)
+                       if k in f[input_name].attrs}
         else:
             print(f"Error: {args.data} has neither a 'noisy' dataset nor a frame stack's "
                   "'frames'", file=sys.stderr)
             sys.exit(1)
         energy = f['energy'][:]
         clean = f['clean'][:] if 'clean' in f else None
+        clean_attrs = None
+        if clean is not None:
+            # The reference's declaration is carried through unchanged; a malformed one
+            # is refused here rather than passed on.
+            clean_attrs = {k: f['clean'].attrs[k] for k in
+                           (ref.VERSION_ATTR, ref.ORIGIN_ATTR, ref.LINEAGE_ATTR)
+                           if k in f['clean'].attrs}
+            try:
+                ref.read_declaration(SimpleNamespace(attrs=clean_attrs))
+                ref.read_lineage(SimpleNamespace(attrs=clean_attrs))
+            except ref.MalformedReference as exc:
+                print(f"Error: malformed reference declaration on 'clean': {exc}",
+                      file=sys.stderr)
+                sys.exit(1)
         angles = f['angles'][:] if 'angles' in f else None
         times = f['times'][:] if 'times' in f else None
         # A frame's acquisition index is what identifies it in a stack; without it the
         # output could not be matched back to the frames it came from.
         frame_index = f['frame_index'][:] if 'frame_index' in f else None
 
+    lineage_record = None
     if noisy.shape[-1] != n_features:
+        from dnndenoiser import __version__
+        lineage_record = {"operation": "linear resample", "from_points": int(noisy.shape[-1]),
+                          "to_points": int(n_features), "tool": f"dnndenoiser {__version__}",
+                          "step": "infer"}
         # Training resamples a stack that is not the network's length; the input has
         # to pass through the same resampling, or the first layer refuses it with a
         # shape error that does not say why. Everything written below -- noisy,
@@ -756,9 +785,15 @@ def cmd_infer(args):
     with h5py.File(output_path, 'w') as f:
         f.create_dataset('denoised', data=denoised, dtype='float32')
         f.create_dataset('noisy', data=noisy.reshape(original_shape), dtype='float32')
+        # The inverse normalisation returns the input's units, so the output carries them.
+        for name in ('noisy', 'denoised'):
+            for key, value in carried.items():
+                f[name].attrs[key] = value
         f.create_dataset('energy', data=energy, dtype='float32')
         if clean is not None:
             f.create_dataset('clean', data=clean, dtype='float32')
+            ref.copy_declaration(SimpleNamespace(attrs=clean_attrs), f['clean'],
+                                 append=lineage_record)
         if angles is not None:
             f.create_dataset('angles', data=angles, dtype='float32')
         if times is not None:
@@ -798,86 +833,158 @@ def compute_mse(signal, reference):
     return np.mean((signal - reference) ** 2, axis=-1)
 
 
+def _cli_declaration(args):
+    """The reference declaration given on the command line, or None."""
+    import json
+
+    if args.reference_declaration:
+        with open(args.reference_declaration, encoding='utf-8') as f:
+            declaration = json.load(f)
+        if args.reference_origin and declaration.get('origin') != args.reference_origin:
+            raise ValueError("--reference-origin and --reference-declaration disagree")
+        return declaration
+    if args.reference_origin is None:
+        if args.generator or args.units:
+            raise ValueError("--generator and --units describe a --reference-origin; give one")
+        return None
+    if args.reference_origin == 'synthetic_truth':
+        declaration = {'origin': 'synthetic_truth'}
+        if args.generator:
+            declaration['generator'] = args.generator
+        if args.units:
+            declaration['units'] = args.units
+        return declaration
+    raise ValueError("an 'estimate' origin has too many required fields for flags; "
+                     "give them in a JSON file with --reference-declaration")
+
+
 def cmd_evaluate(args):
-    """Evaluate denoising results."""
-    import numpy as np
+    """Evaluate denoising results against a declared reference.
+
+    See docs/design/EVALUATION_REFERENCE_CONTRACT.md (adopted 2026-10-01, phase 1).
+    """
+    import json
     import h5py
+    from dnndenoiser import __version__
+    from dnndenoiser import evaluation as ev
+    from dnndenoiser import reference as ref
+
+    def fail(message):
+        print(f"Error: {message}", file=sys.stderr)
+        sys.exit(1)
 
     print("=== Evaluation ===")
     print(f"Data: {args.data}")
 
-    # Load data
     with h5py.File(args.data, 'r') as f:
-        denoised = f['denoised'][:] if 'denoised' in f else None
+        if 'denoised' not in f:
+            fail("no 'denoised' dataset found in the input file")
+        denoised = f['denoised'][:]
         noisy = f['noisy'][:]
-        clean = f['clean'][:] if 'clean' in f else None
-
-    # If clean not in main file, try separate file
-    if clean is None and args.clean:
-        with h5py.File(args.clean, 'r') as f:
+        acquisition_id = f['noisy'].attrs.get(ref.ACQUISITION_ATTR)
+        frame_index = f['frame_index'][:] if 'frame_index' in f else None
+        in_file = 'clean' in f
+        # The reference is selected explicitly; an external one is never ignored.
+        if in_file and args.clean and args.reference is None:
+            fail("the input file has a 'clean' reference and --clean names another; "
+                 "choose one with --reference file or --reference external")
+        selected = args.reference or ('file' if in_file else 'external' if args.clean else None)
+        if selected is None:
+            fail("a reference is required: include 'clean' in the input file or give --clean")
+        if selected == 'file':
+            if not in_file:
+                fail("--reference file, but the input file has no 'clean' dataset")
+            try:
+                stored, stored_effective = ref.read_declaration(f['clean'])
+            except ref.MalformedReference as exc:
+                fail(f"malformed reference declaration: {exc}")
             clean = f['clean'][:]
+    if selected == 'external':
+        if not args.clean:
+            fail("--reference external needs --clean")
+        with h5py.File(args.clean, 'r') as g:
+            if 'clean' not in g:
+                fail(f"{args.clean} has no 'clean' dataset")
+            try:
+                stored, stored_effective = ref.read_declaration(g['clean'])
+            except ref.MalformedReference as exc:
+                fail(f"malformed reference declaration: {exc}")
+            clean = g['clean'][:]
 
-    if clean is None:
-        print("Error: Clean reference data required for evaluation")
-        print("  Provide --clean or include 'clean' dataset in input file")
-        sys.exit(1)
+    try:
+        cli_declaration = _cli_declaration(args)
+    except (ValueError, OSError) as exc:
+        fail(str(exc))
+    if args.legacy_output:
+        if cli_declaration is not None:
+            fail("--legacy-output is for undeclared references; it cannot be combined with a "
+                 "declaration")
+        if stored_effective['origin'] != 'undeclared':
+            fail(f"--legacy-output is for undeclared references; this reference is declared "
+                 f"'{stored_effective['origin']}'")
+    try:
+        effective, source = ref.resolve(stored, stored_effective, cli_declaration)
+    except (ref.MalformedReference, ref.ReferenceConflict) as exc:
+        fail(str(exc))
 
-    if denoised is None:
-        print("Error: No 'denoised' dataset found in input file")
-        sys.exit(1)
+    # Phase 1 of the alignment contract: equal shapes, no broadcasting.
+    if not (noisy.shape == denoised.shape == clean.shape):
+        fail(f"shapes differ: noisy {noisy.shape}, denoised {denoised.shape}, reference "
+             f"{clean.shape}; a reference is compared row by row and is never broadcast")
 
-    # Flatten for metrics
-    if noisy.ndim > 2:
-        noisy = noisy.reshape(-1, noisy.shape[-1])
-        denoised = denoised.reshape(-1, denoised.shape[-1])
-        clean = clean.reshape(-1, clean.shape[-1])
+    acquisition_id = acquisition_id.decode() if isinstance(acquisition_id, bytes) else acquisition_id
+    established = ref.established_overlap(effective, acquisition_id, frame_index)
+    try:
+        relationship = ref.resolve_relationship(effective, args.overlap,
+                                                args.used_in_model_development,
+                                                args.signal_match, established)
+    except ref.ReferenceConflict as exc:
+        fail(str(exc))
+    case = ev.case_of(effective, relationship)
 
-    print(f"Samples: {len(noisy)}")
+    context = {
+        'evaluate_output_version': ev.LEGACY_VERSION if args.legacy_output else ev.OUTPUT_VERSION,
+        'dnndenoiser_version': __version__,
+        'reference': {'selected': selected, 'stored_declaration': stored,
+                      'effective_declaration': effective, 'declaration_source': source},
+        'relationship': relationship,
+        'held_out_status': 'unknown',
+        'aggregation_unit': ev.AGGREGATION_UNIT,
+        'alignment': {'verified': ['shape'],
+                      'not_checked_in_this_version': ['energy', 'units', 'rows', 'angles', 'times']},
+        'model': ev.model_identity() or 'unknown',
+        'caveats': ev.caveats(case, effective),
+    }
 
-    # Input metrics (noisy vs clean)
-    snr_input = compute_snr(noisy, clean)
-    mse_input = compute_mse(noisy, clean)
+    if args.legacy_output:
+        try:
+            metrics = ev.evaluate_legacy(noisy, denoised, clean)
+        except ev.NonFiniteLegacyValue as exc:
+            fail(str(exc))
+        context['legacy_baseline'] = ev.LEGACY_BASELINE
+        context['limitations'] = ("reference origin not declared; values are the pre-change "
+                                  "arithmetic and are truth-referenced only if the reference "
+                                  "is the truth")
+        print("\nLegacy output (pre-change arithmetic; the reference is undeclared)")
+        for key, value in metrics.items():
+            print(f"  {key}: {value}")
+    else:
+        try:
+            metrics = ev.evaluate_arrays(noisy, denoised, clean, case)
+        except ValueError as exc:
+            fail(str(exc))
+        print()
+        for line in ev.report_lines(case, metrics):
+            print(line)
+    for note in context['caveats']:
+        print(f"\nNote: {note}")
 
-    # Output metrics (denoised vs clean)
-    snr_output = compute_snr(denoised, clean)
-    mse_output = compute_mse(denoised, clean)
-
-    # Gains
-    snr_gain = snr_output - snr_input
-    mse_reduction = (mse_input - mse_output) / mse_input * 100
-
-    print(f"\n{'Metric':<20} {'Input':<15} {'Output':<15} {'Improvement':<15}")
-    print("-" * 65)
-    print(f"{'SNR (dB)':<20} {np.mean(snr_input):<15.2f} {np.mean(snr_output):<15.2f} {np.mean(snr_gain):+.2f} dB")
-    # Scientific notation: a measured stack's MSE can sit far below 1e-6, where six
-    # fixed decimals printed 0.000000 for input and output alike.
-    print(f"{'MSE':<20} {np.mean(mse_input):<15.3e} {np.mean(mse_output):<15.3e} {np.mean(mse_reduction):.1f}% reduction")
-
-    # Per-sample statistics
-    print(f"\n{'Statistic':<20} {'SNR Gain (dB)':<15} {'MSE Reduction (%)':<15}")
-    print("-" * 50)
-    print(f"{'Mean':<20} {np.mean(snr_gain):<15.2f} {np.mean(mse_reduction):<15.1f}")
-    print(f"{'Std':<20} {np.std(snr_gain):<15.2f} {np.std(mse_reduction):<15.1f}")
-    print(f"{'Min':<20} {np.min(snr_gain):<15.2f} {np.min(mse_reduction):<15.1f}")
-    print(f"{'Max':<20} {np.max(snr_gain):<15.2f} {np.max(mse_reduction):<15.1f}")
-
-    # Save metrics if output specified
     if args.output:
-        import json
-        metrics = {
-            'snr_input_mean': float(np.mean(snr_input)),
-            'snr_output_mean': float(np.mean(snr_output)),
-            'snr_gain_mean': float(np.mean(snr_gain)),
-            'snr_gain_std': float(np.std(snr_gain)),
-            'mse_input_mean': float(np.mean(mse_input)),
-            'mse_output_mean': float(np.mean(mse_output)),
-            'mse_reduction_mean': float(np.mean(mse_reduction)),
-            'n_samples': len(noisy),
-        }
-
+        payload = dict(metrics)
+        payload['evaluation_context'] = context
         output_path = Path(args.output)
         with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(metrics, f, indent=2)
+            json.dump(payload, f, indent=2, allow_nan=False)
         print(f"\nMetrics saved: {output_path}")
 
     print("\nDone.")
@@ -1028,9 +1135,29 @@ Examples:
     infer_parser.set_defaults(func=cmd_infer)
 
     # === evaluate ===
-    eval_parser = subparsers.add_parser('evaluate', help='Evaluate denoising results')
+    eval_parser = subparsers.add_parser(
+        'evaluate', help='Compare denoised output with a declared reference')
     eval_parser.add_argument('-d', '--data', required=True, help='Input HDF5 with denoised data')
-    eval_parser.add_argument('--clean', help='Separate clean reference HDF5 (optional)')
+    eval_parser.add_argument('--clean', help='External HDF5 holding a reference in its `clean` dataset')
+    eval_parser.add_argument('--reference', choices=['file', 'external'],
+                             help='Which reference to use when the input file has one and '
+                                  '--clean names another')
+    eval_parser.add_argument('--reference-origin', choices=['synthetic_truth', 'estimate'],
+                             help='Declare an undeclared reference\'s origin (never overrides a '
+                                  'stored declaration that differs)')
+    eval_parser.add_argument('--generator', help='For synthetic_truth: the generator that drew it')
+    eval_parser.add_argument('--units', help='The reference\'s intensity units')
+    eval_parser.add_argument('--reference-declaration',
+                             help='JSON file with the full origin object (required for estimate)')
+    eval_parser.add_argument('--overlap', choices=['overlap', 'no_overlap_declared', 'unknown'],
+                             help='Declared overlap of the reference with the evaluated data')
+    eval_parser.add_argument('--used-in-model-development',
+                             choices=['yes', 'no_declared', 'unknown'],
+                             help='Whether the reference was used to train or select the model')
+    eval_parser.add_argument('--signal-match',
+                             help='Statement that the reference\'s conditions match the data\'s')
+    eval_parser.add_argument('--legacy-output', action='store_true',
+                             help='Pre-change keys and arithmetic, for undeclared references only')
     eval_parser.add_argument('-o', '--output', help='Output JSON with metrics')
     eval_parser.set_defaults(func=cmd_evaluate)
 

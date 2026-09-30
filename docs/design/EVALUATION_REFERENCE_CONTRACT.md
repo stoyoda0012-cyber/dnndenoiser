@@ -1,6 +1,7 @@
 # Design: what `evaluate` compares against, and what it may call the result
 
-**Status: adopted 2026-10-01 (revision 4, after four independent audits); not yet implemented.** Step 1 of
+**Status: adopted 2026-10-01 (revision 4, after four independent audits); phase 1 implemented
+(see the CHANGELOG); phase 2 not yet.** Step 1 of
 the improvement plan that follows a reproducibility assessment of a published study. It
 changes the meaning of an evaluation output, so under `AGENTS.md` §8 it was independently
 audited before any code was written. The owner's adoption is recorded at the end.

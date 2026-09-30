@@ -1,0 +1,10 @@
+{
+  "snr_input_mean": 18.551990509033203,
+  "snr_output_mean": 25.25737190246582,
+  "snr_gain_mean": 6.705382347106934,
+  "snr_gain_std": 2.3346874713897705,
+  "mse_input_mean": 0.0023722886107861996,
+  "mse_output_mean": 0.0005221269093453884,
+  "mse_reduction_mean": 75.65716552734375,
+  "n_samples": 8
+}
