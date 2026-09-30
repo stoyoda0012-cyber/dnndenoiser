@@ -150,9 +150,13 @@ is on the resampled grid.
 channels — the emission-angle channels of an angle-resolved measurement, for
 example — put them in one stack and give channel *k* the indices
 *k* × *stride* + *t*, with *t* the acquisition order within the channel and the
-stride larger than any channel's number of frames. Every frame's `--window`
+stride larger than any channel's number of frames. As long as `--window` is
+smaller than the number of frames in every channel, each frame's `--window`
 nearest others are then in its own channel, and the min–max normalisation is
-taken over all channels together. Numbering the channels one after another
+taken over all channels together. **With a larger window the recipe fails
+silently:** `train` limits the window by the frames in the whole stack, not in
+one channel, so the nearest others of a frame run out of its own channel and
+reach into the next. Numbering the channels one after another
 instead would make the last frame of one channel a neighbour of the first frame
 of the next.
 

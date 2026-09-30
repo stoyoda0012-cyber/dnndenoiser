@@ -128,3 +128,35 @@ def test_contiguous_indices_across_channels_would_mix_them():
     targets = moving_average_targets(frames, index, 1)
     channel_of_target = np.round(targets.mean(axis=1))
     assert not np.array_equal(channel_of_target, np.repeat(np.arange(n_channels), n_per))
+
+
+def test_infer_keeps_the_frames_acquisition_index(monkeypatch, tmp_path):
+    """A frame's index identifies it; the output has to carry it, or the denoised
+    frames cannot be matched back to the acquisition (found by an external audit)."""
+    rng = np.random.default_rng(1)
+    energy = np.linspace(0, 1, 256)
+    frames = rng.poisson(np.full((10, 256), 30.0)).astype(np.float32)
+    index = np.array([5, 0, 9, 2, 7, 1, 8, 3, 6, 4]) * 1_000   # shuffled, non-contiguous
+    stack = tmp_path / "stack.h5"
+    write_frame_stack(stack, frames, energy, index)
+    model = tmp_path / "m.pt"
+    run(monkeypatch, "train", "-d", str(stack), "-o", str(model), "--method", "moving-average",
+        "--window", "1", "--epochs", "1", "--seed", "0", "--device", "cpu")
+    out = tmp_path / "out.h5"
+    run(monkeypatch, "infer", "-d", str(stack), "-m", str(model), "-o", str(out), "--device", "cpu")
+    with h5py.File(out) as f:
+        assert "frame_index" in f, "infer dropped the frames' acquisition index"
+        np.testing.assert_array_equal(f["frame_index"][:], index)
+
+
+def test_a_window_as_large_as_a_channel_reaches_into_the_next():
+    """QUICK_START's limit on the channel recipe: once the window is not smaller than a
+    channel's number of frames, a frame's nearest others include another channel's,
+    whatever the stride. The recipe holds only below that."""
+    n_per, n_channels, stride = 5, 2, 1_000_000
+    frames = np.concatenate([np.full((n_per, 4), k, dtype=np.float32) for k in range(n_channels)])
+    index = np.concatenate([k * stride + np.arange(n_per) for k in range(n_channels)])
+    inside = moving_average_targets(frames, index, n_per - 1)
+    np.testing.assert_allclose(inside.mean(axis=1), np.repeat(np.arange(n_channels), n_per))
+    beyond = moving_average_targets(frames, index, n_per)
+    assert not np.allclose(beyond.mean(axis=1), np.repeat(np.arange(n_channels), n_per))
