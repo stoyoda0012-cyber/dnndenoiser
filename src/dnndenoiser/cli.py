@@ -722,7 +722,7 @@ def cmd_infer(args):
         noisy = resample(noisy, n_features)
         if clean is not None:
             clean = resample(clean, n_features)
-        energy = np.linspace(float(energy[0]), float(energy[-1]), n_features)
+        energy = np.linspace(float(energy[0]), float(energy[-1]), n_features).astype(energy.dtype)
 
     original_shape = noisy.shape
     print(f"  Input shape: {original_shape}")
@@ -789,15 +789,16 @@ def cmd_infer(args):
         for name in ('noisy', 'denoised'):
             for key, value in carried.items():
                 f[name].attrs[key] = value
-        f.create_dataset('energy', data=energy, dtype='float32')
+        # Coordinates keep their values and dtype; only a resampled energy axis changes.
+        f.create_dataset('energy', data=energy)
         if clean is not None:
             f.create_dataset('clean', data=clean, dtype='float32')
             ref.copy_declaration(SimpleNamespace(attrs=clean_attrs), f['clean'],
                                  append=lineage_record)
         if angles is not None:
-            f.create_dataset('angles', data=angles, dtype='float32')
+            f.create_dataset('angles', data=angles)
         if times is not None:
-            f.create_dataset('times', data=times, dtype='float32')
+            f.create_dataset('times', data=times)
         if frame_index is not None:
             f.create_dataset('frame_index', data=frame_index)
 
@@ -835,11 +836,15 @@ def compute_mse(signal, reference):
 
 def _cli_declaration(args):
     """The reference declaration given on the command line, or None."""
-    import json
+    from dnndenoiser import reference as ref
 
     if args.reference_declaration:
+        if args.generator or args.units:
+            raise ValueError("give the declaration either as flags (--reference-origin, "
+                             "--generator, --units) or as a file (--reference-declaration), "
+                             "not both")
         with open(args.reference_declaration, encoding='utf-8') as f:
-            declaration = json.load(f)
+            declaration = ref.loads_strict(f.read())
         if args.reference_origin and declaration.get('origin') != args.reference_origin:
             raise ValueError("--reference-origin and --reference-declaration disagree")
         return declaration
@@ -856,6 +861,16 @@ def _cli_declaration(args):
         return declaration
     raise ValueError("an 'estimate' origin has too many required fields for flags; "
                      "give them in a JSON file with --reference-declaration")
+
+
+def _same_file(a, b) -> bool:
+    """Whether two paths name the same file, through aliases, symbolic and hard links."""
+    import os
+
+    a, b = Path(a), Path(b)
+    if a.exists() and b.exists():
+        return os.path.samefile(a, b)
+    return a.resolve() == b.resolve()
 
 
 def cmd_evaluate(args):
@@ -875,6 +890,13 @@ def cmd_evaluate(args):
 
     print("=== Evaluation ===")
     print(f"Data: {args.data}")
+
+    # evaluate never writes to its inputs, under any name for them.
+    if args.output:
+        for role, path in (("the input file", args.data), ("--clean", args.clean),
+                           ("--reference-declaration", args.reference_declaration)):
+            if path and _same_file(args.output, path):
+                fail(f"-o {args.output} is {role}; evaluate never writes to its inputs")
 
     with h5py.File(args.data, 'r') as f:
         if 'denoised' not in f:
@@ -913,7 +935,7 @@ def cmd_evaluate(args):
 
     try:
         cli_declaration = _cli_declaration(args)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError) as exc:     # MalformedReference is a ValueError
         fail(str(exc))
     if args.legacy_output:
         if cli_declaration is not None:
@@ -922,8 +944,11 @@ def cmd_evaluate(args):
         if stored_effective['origin'] != 'undeclared':
             fail(f"--legacy-output is for undeclared references; this reference is declared "
                  f"'{stored_effective['origin']}'")
+    selected_label = (f"the reference in {args.data}:clean" if selected == 'file'
+                      else f"the reference in {args.clean}:clean")
     try:
-        effective, source = ref.resolve(stored, stored_effective, cli_declaration)
+        effective, source = ref.resolve(stored, stored_effective, cli_declaration,
+                                        selected_label)
     except (ref.MalformedReference, ref.ReferenceConflict) as exc:
         fail(str(exc))
 
@@ -982,9 +1007,14 @@ def cmd_evaluate(args):
     if args.output:
         payload = dict(metrics)
         payload['evaluation_context'] = context
+        # Serialised in full before the file is opened, so a value that strict JSON cannot
+        # hold leaves no partial file behind.
+        try:
+            text = json.dumps(payload, indent=2, allow_nan=False)
+        except ValueError as exc:
+            fail(f"the output cannot be written as strict JSON: {exc}")
         output_path = Path(args.output)
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(payload, f, indent=2, allow_nan=False)
+        output_path.write_text(text, encoding='utf-8')
         print(f"\nMetrics saved: {output_path}")
 
     print("\nDone.")

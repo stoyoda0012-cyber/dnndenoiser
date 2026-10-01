@@ -33,10 +33,12 @@ ESTIMATE_CAVEAT = ("This measures agreement with a reference estimate. The refer
                    "is not an established error against the underlying signal.")
 SAME_FRAMES_CAVEAT = ("A model returning this mean for every frame has zero discrepancy from it "
                       "by construction. That agreement does not establish accuracy.")
-EXPECTATION_CONDITION = ("The difference of mean discrepancies estimates the difference of "
-                         "errors against the underlying signal only if the reference's error "
-                         "has zero mean and is independent of both the input and the output, "
-                         "given the matched signal.")
+EXPECTATION_CONDITION = ("The difference of mean discrepancies equals the difference of errors "
+                         "against the underlying signal in expectation exactly when the cross "
+                         "term E<input - output, reference error> is zero. A sufficient "
+                         "condition is that, given the matched signal, the reference's error "
+                         "has zero mean and is independent of both the input and the output; "
+                         "independence alone is not enough.")
 
 
 class NonFiniteLegacyValue(ValueError):
@@ -99,20 +101,26 @@ def evaluate_arrays(noisy: np.ndarray, denoised: np.ndarray, reference: np.ndarr
         out["mse_difference"] = None
         statuses["mse_difference"] = "an operand is undefined"
 
-    total_in = float(np.sum(mse_in))
-    if total_in > 0 and math.isfinite(total_in):
-        out["relative_mse_change_aggregate_pct"] = _finite_or_null(
-            100.0 * (1.0 - float(np.sum(mse_out)) / total_in), "overflow", statuses,
-            "relative_mse_change_aggregate_pct")
+    with np.errstate(over="ignore", invalid="ignore"):
+        total_in = float(np.sum(mse_in))
+        total_out = float(np.sum(mse_out))
+    key = "relative_mse_change_aggregate_pct"
+    if not (math.isfinite(total_in) and math.isfinite(total_out)):
+        out[key] = None
+        statuses[key] = "overflow in the summed MSE"
+    elif total_in == 0:
+        out[key] = None
+        statuses[key] = "the summed input MSE is zero"
     else:
-        out["relative_mse_change_aggregate_pct"] = None
-        statuses["relative_mse_change_aggregate_pct"] = "the summed input MSE is zero"
+        out[key] = _finite_or_null(100.0 * (1.0 - total_out / total_in), "overflow",
+                                   statuses, key)
     positive = mse_in > 0
     out["per_spectrum_excluded_zero_input_mse"] = int(np.sum(~positive))
     if np.any(positive):
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            value = 100.0 * float(np.mean(1.0 - mse_out[positive] / mse_in[positive]))
         out["mean_relative_mse_change_per_spectrum_pct"] = _finite_or_null(
-            100.0 * float(np.mean(1.0 - mse_out[positive] / mse_in[positive])), "overflow",
-            statuses, "mean_relative_mse_change_per_spectrum_pct")
+            value, "overflow", statuses, "mean_relative_mse_change_per_spectrum_pct")
     else:
         out["mean_relative_mse_change_per_spectrum_pct"] = None
         statuses["mean_relative_mse_change_per_spectrum_pct"] = "every spectrum has zero input MSE"
@@ -120,7 +128,8 @@ def evaluate_arrays(noisy: np.ndarray, denoised: np.ndarray, reference: np.ndarr
     if case in ("truth", "estimate"):
         prefix = {"truth": "snr", "estimate": "agreement_db"}[case]
         change = {"truth": "gain", "estimate": "change"}[case]
-        p_ref = np.mean(r ** 2, axis=-1)
+        with np.errstate(over="ignore", invalid="ignore"):
+            p_ref = np.mean(r ** 2, axis=-1)
         eligible = p_ref > 0
         out["zero_reference_power_count"] = int(np.sum(~eligible))
         p_in = mse_in[eligible]
@@ -191,8 +200,19 @@ def caveats(case: str, effective: dict) -> list:
 
 def report_lines(case: str, result: dict) -> list:
     """Printed report. The first line is the heading; names follow the case."""
+    n = result["n_spectra"]
     lines = [f"=== {HEADINGS[case]} ===",
-             f"Spectra: {result['n_spectra']} (flattened rows; not independent specimens)", ""]
+             f"Spectra: {n} (flattened rows; not independent specimens)"]
+    excluded = result["per_spectrum_excluded_zero_input_mse"]
+    lines.append(f"Per-spectrum relative change over {n - excluded} of {n} spectra "
+                 f"({excluded} excluded: zero input MSE)")
+    if "zero_reference_power_count" in result:
+        zero = result["zero_reference_power_count"]
+        lines.append(f"dB statistics over {n - zero} of {n} spectra ({zero} excluded: zero "
+                     "reference power)")
+        lines.append(f"Residual-power floor applied: input {result['floor_active_input_count']}, "
+                     f"output {result['floor_active_output_count']} spectra")
+    lines.append("")
 
     def fmt(v, spec):
         return "undefined" if v is None else format(v, spec)
@@ -216,6 +236,8 @@ def report_lines(case: str, result: dict) -> list:
         lines.append(f"{'change in agreement (dB)':<34} "
                      f"{fmt(result['agreement_db_change_mean'], '+.2f')} ± "
                      f"{fmt(result['agreement_db_change_std'], '.2f')}")
+    for key, reason in result.get("status", {}).items():
+        lines.append(f"undefined: {key} -- {reason}")
     return lines
 
 

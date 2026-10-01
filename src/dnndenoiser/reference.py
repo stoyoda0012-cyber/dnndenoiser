@@ -21,7 +21,10 @@ visible in every output that depends on it.
 from __future__ import annotations
 
 import json
+import math
 from typing import Any, Optional
+
+import numpy as np
 
 SCHEMA_VERSION = 1
 VERSION_ATTR = "reference_schema_version"
@@ -37,6 +40,12 @@ UNITS = ("counts", "counts_per_s", "normalised_to_spectrum_max", "normalised_to_
 OVERLAP = ("overlap", "no_overlap_declared", "unknown")
 MODEL_USE = ("yes", "no_declared", "unknown")
 
+CONDITION_KEYS = ("energy_calibration", "channel_or_angle", "exposure_normalisation",
+                  "specimen_state")
+TRUTH_KEYS = {"origin", "generator", "units"}
+ESTIMATE_KEYS = {"origin", "construction", "description", "source", "conditions", "units", "noise"}
+LINEAGE_KEYS = {"operation", "from_points", "to_points", "tool", "step"}
+
 UNDECLARED = {"origin": "undeclared"}
 
 
@@ -46,6 +55,37 @@ class MalformedReference(ValueError):
 
 class ReferenceConflict(ValueError):
     """Declarations that cannot both hold, or an option that does not apply."""
+
+
+def _reject_duplicates(pairs):
+    keys = [k for k, _ in pairs]
+    duplicated = sorted({k for k in keys if keys.count(k) > 1})
+    if duplicated:
+        raise MalformedReference(f"duplicate key(s) {duplicated} in a declaration")
+    return dict(pairs)
+
+
+def _reject_constant(name):
+    raise MalformedReference(f"non-finite number {name} in a declaration")
+
+
+def loads_strict(text: str) -> Any:
+    """JSON with no duplicate keys (at any depth) and no NaN or Infinity."""
+    try:
+        return json.loads(text, object_pairs_hook=_reject_duplicates,
+                          parse_constant=_reject_constant)
+    except MalformedReference:
+        raise
+    except (TypeError, ValueError) as exc:
+        raise MalformedReference(f"not valid JSON: {exc}") from None
+
+
+def _strict_int(value: Any, name: str) -> int:
+    """An integer stored as an integer: not a float, a string, or a boolean."""
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        raise MalformedReference(f"'{name}' must be an integer, got {value!r} "
+                                 f"({type(value).__name__})")
+    return int(value)
 
 
 def _text(value: Any, name: str) -> str:
@@ -96,6 +136,9 @@ def validate_origin(obj: Any) -> dict:
         missing = {"generator", "units"} - set(obj)
         if missing:
             raise MalformedReference(f"synthetic_truth needs {sorted(missing)}")
+        extra = set(obj) - TRUTH_KEYS
+        if extra:
+            raise MalformedReference(f"synthetic_truth has unknown field(s) {sorted(extra)}")
         _text(obj["generator"], "generator")
         validate_units(obj["units"])
         return obj
@@ -103,19 +146,29 @@ def validate_origin(obj: Any) -> dict:
     missing = {"construction", "source", "conditions", "units", "noise"} - set(obj)
     if missing:
         raise MalformedReference(f"estimate needs {sorted(missing)}")
+    extra = set(obj) - ESTIMATE_KEYS
+    if extra:
+        raise MalformedReference(
+            f"estimate has unknown field(s) {sorted(extra)}; relationships to the evaluated "
+            "data or the model are declared at evaluation, never stored with the reference")
     if obj["construction"] not in CONSTRUCTIONS:
         raise MalformedReference(
             f"'construction' must be one of {', '.join(CONSTRUCTIONS)}, got {obj['construction']!r}")
     if obj["construction"] == "other":
         _text(obj.get("description"), "description")
+    elif "description" in obj:
+        _text(obj["description"], "description")
     source = obj["source"]
-    if not isinstance(source, dict):
-        raise MalformedReference("'source' must be an object with 'acquisition_id' and 'frames'")
+    if not isinstance(source, dict) or set(source) != {"acquisition_id", "frames"}:
+        raise MalformedReference("'source' must be an object with exactly 'acquisition_id' "
+                                 "and 'frames'")
     _text(source.get("acquisition_id"), "source.acquisition_id")
     _frames(source.get("frames"))
     conditions = obj["conditions"]
-    if not isinstance(conditions, dict) or not conditions:
-        raise MalformedReference("'conditions' must be a non-empty object (values may be 'unknown')")
+    if not isinstance(conditions, dict) or set(conditions) != set(CONDITION_KEYS):
+        raise MalformedReference(
+            f"'conditions' must have exactly {', '.join(CONDITION_KEYS)} (values may be "
+            f"'unknown'), got {sorted(conditions) if isinstance(conditions, dict) else conditions!r}")
     for key, value in conditions.items():
         _text(value, f"conditions.{key}")
     validate_units(obj["units"])
@@ -123,6 +176,12 @@ def validate_origin(obj: Any) -> dict:
     if isinstance(noise, dict):
         if not noise:
             raise MalformedReference("'noise' must not be empty; use 'unknown'")
+        for key, value in noise.items():
+            if isinstance(value, bool) or not (
+                    (isinstance(value, str) and value.strip())
+                    or (isinstance(value, (int, float)) and math.isfinite(value))):
+                raise MalformedReference(f"'noise.{key}' must be a non-empty string or a "
+                                         f"finite number, got {value!r}")
     else:
         _text(noise, "noise")
     return obj
@@ -147,21 +206,19 @@ def read_declaration(dataset) -> tuple[Optional[dict], dict]:
         present = VERSION_ATTR if has_version else ORIGIN_ATTR
         raise MalformedReference(f"'{present}' is present without its pair; the reference "
                                  "declaration needs both attributes")
-    version = attrs[VERSION_ATTR]
-    try:
-        version = int(version)
-    except (TypeError, ValueError):
-        raise MalformedReference(f"'{VERSION_ATTR}' must be an integer, got {version!r}") from None
+    version = _strict_int(attrs[VERSION_ATTR], VERSION_ATTR)
     if version != SCHEMA_VERSION:
         raise MalformedReference(f"unsupported {VERSION_ATTR} {version}; this version reads "
                                  f"{SCHEMA_VERSION}")
     raw = attrs[ORIGIN_ATTR]
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
+    if not isinstance(raw, str):
+        raise MalformedReference(f"'{ORIGIN_ATTR}' must be a JSON string, got {type(raw).__name__}")
     try:
-        obj = json.loads(raw)
-    except (TypeError, ValueError) as exc:
-        raise MalformedReference(f"'{ORIGIN_ATTR}' is not valid JSON: {exc}") from None
+        obj = loads_strict(raw)
+    except MalformedReference as exc:
+        raise MalformedReference(f"'{ORIGIN_ATTR}': {exc}") from None
     validate_origin(obj)
     return obj, obj
 
@@ -178,13 +235,29 @@ def read_lineage(dataset) -> list:
         return []
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
+    if not isinstance(raw, str):
+        raise MalformedReference(f"'{LINEAGE_ATTR}' must be a JSON string")
     try:
-        lineage = json.loads(raw)
-    except (TypeError, ValueError) as exc:
-        raise MalformedReference(f"'{LINEAGE_ATTR}' is not valid JSON: {exc}") from None
-    if not isinstance(lineage, list) or not all(isinstance(r, dict) for r in lineage):
-        raise MalformedReference(f"'{LINEAGE_ATTR}' must be a JSON array of objects")
+        lineage = loads_strict(raw)
+    except MalformedReference as exc:
+        raise MalformedReference(f"'{LINEAGE_ATTR}': {exc}") from None
+    if not isinstance(lineage, list):
+        raise MalformedReference(f"'{LINEAGE_ATTR}' must be a JSON array of records")
+    for record in lineage:
+        validate_lineage_record(record)
     return lineage
+
+
+def validate_lineage_record(record: Any) -> dict:
+    if not isinstance(record, dict) or set(record) != LINEAGE_KEYS:
+        raise MalformedReference(f"a lineage record must have exactly {sorted(LINEAGE_KEYS)}, "
+                                 f"got {record!r}")
+    for key in ("operation", "tool", "step"):
+        _text(record[key], f"lineage.{key}")
+    for key in ("from_points", "to_points"):
+        if _strict_int(record[key], f"lineage.{key}") < 1:
+            raise MalformedReference(f"'lineage.{key}' must be positive")
+    return record
 
 
 def copy_declaration(source, target, append: Optional[dict] = None) -> None:
@@ -193,6 +266,8 @@ def copy_declaration(source, target, append: Optional[dict] = None) -> None:
     copied: they are not stored."""
     stored, _ = read_declaration(source)
     lineage = read_lineage(source)
+    if append is not None:
+        validate_lineage_record(append)
     if stored is not None:
         target.attrs[VERSION_ATTR] = source.attrs[VERSION_ATTR]
         target.attrs[ORIGIN_ATTR] = source.attrs[ORIGIN_ATTR]
@@ -202,7 +277,8 @@ def copy_declaration(source, target, append: Optional[dict] = None) -> None:
         target.attrs[LINEAGE_ATTR] = json.dumps(lineage, sort_keys=True)
 
 
-def resolve(stored: Optional[dict], stored_effective: dict, cli: Optional[dict]) -> tuple[dict, str]:
+def resolve(stored: Optional[dict], stored_effective: dict, cli: Optional[dict],
+            selected: str = "the selected reference") -> tuple[dict, str]:
     """The effective declaration and its source (``file``, ``cli`` or ``none``).
 
     A command-line declaration may fill in an absent or explicitly ``undeclared`` origin;
@@ -215,18 +291,9 @@ def resolve(stored: Optional[dict], stored_effective: dict, cli: Optional[dict])
         return cli, "cli"
     if canonical(cli) != canonical(stored_effective):
         raise ReferenceConflict(
-            "the command-line declaration differs from the one stored with the reference: "
+            f"the command-line declaration differs from the one stored with {selected}: "
             f"stored {canonical(stored_effective)}, given {canonical(cli)}")
     return stored_effective, "file"
-
-
-def _source_frames(frames) -> Optional[set]:
-    if frames == "all":
-        return None
-    if isinstance(frames, dict):
-        first, last = frames["range"]
-        return set(range(first, last + 1))
-    return set(frames)
 
 
 def established_overlap(effective: dict, evaluated_acquisition_id: Optional[str],
@@ -242,12 +309,16 @@ def established_overlap(effective: dict, evaluated_acquisition_id: Optional[str]
     frames = source["frames"]
     if frames == "unrecorded":
         return False
-    wanted = _source_frames(frames)
-    if wanted is None:
+    if frames == "all":
         return True
     if evaluated_frame_index is None:
         return False
-    return bool(wanted & {int(i) for i in evaluated_frame_index})
+    evaluated = np.asarray(evaluated_frame_index).astype(np.int64).ravel()
+    if isinstance(frames, dict):
+        # Compared at the ends, never expanded: a valid range can be very large.
+        first, last = frames["range"]
+        return bool(np.any((evaluated >= first) & (evaluated <= last)))
+    return bool(np.isin(evaluated, np.asarray(frames, dtype=np.int64)).any())
 
 
 def resolve_relationship(effective: dict, overlap: Optional[str], used: Optional[str],

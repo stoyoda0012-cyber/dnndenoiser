@@ -281,7 +281,10 @@ pre-change arithmetic (the input's own dtype, the pre-change formulas of `cmd_ev
 commit `cb5e000`) and writes the pre-change keys — including `snr_*` and `mse_reduction_mean`
 — with their pre-change values.
 
-**Exactness is bounded by strict JSON.** If any historical value is not finite (reachable
+**Exactness is bounded by the platform.** The historical arithmetic runs in float32, whose
+summation differs in the last bits between NumPy versions and platforms: the values are
+exact on the platform and NumPy version that produced them, and equal to float32 rounding
+elsewhere. **It is also bounded by strict JSON.** If any historical value is not finite (reachable
 from finite inputs: a spectrum with zero input MSE and positive output MSE makes the
 historical `mse_reduction_mean` −∞), legacy output is refused, naming the non-finite metric.
 It never substitutes a value.
@@ -457,6 +460,12 @@ unchanged.
   exception in the propagation test. By the owner's decision of 2026-10-01 the design audits
   stop here: what remains is decided in implementation and fixed by tests, and the frozen
   implementation and its tests get an independent review before release.
+- **Implementation note (2026-10-02), after the independent review of the phase-1
+  implementation (`315c78f`).** Two clarifications the review made necessary, neither a
+  change of meaning: legacy exactness is bounded by the platform and NumPy version (§6.5;
+  the CI on another NumPy differed in the last float32 bits); and `estimate.conditions` has
+  exactly four keys — `energy_calibration`, `channel_or_angle`, `exposure_normalisation`,
+  `specimen_state` — each a value or `"unknown"`, with unknown fields in an origin refused.
 - **Implementation phases.** Phase 1: the reference declaration and its propagation
   (`generate`, `save_hdf5`, `infer`), naming by origin (no SNR for an undeclared reference),
   legacy output, and no silent ignoring of `--clean`. Phase 2: the rest of the alignment

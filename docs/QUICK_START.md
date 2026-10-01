@@ -99,8 +99,8 @@ that declaration through, and `evaluate` reads it. The design, and why, is
 | Reference | What is reported |
 |---|---|
 | synthetic truth | mean MSEs, SNR in dB and SNR gain — an error against the truth |
-| an estimate from other data (declared) | mean MSEs and an *agreement* in dB — not an SNR |
-| an estimate built from the evaluated data (e.g. the mean of the same frames) | mean MSEs only |
+| an estimate whose overlap with the evaluated data is not established or declared (including `unknown`) | mean MSEs and an *agreement* in dB — not an SNR |
+| an estimate whose overlap with the evaluated data is established or declared (e.g. the mean of the same frames) | mean MSEs only |
 | undeclared | mean MSEs only |
 
 A reference that is not the synthetic truth is an estimate of the signal: agreement with
@@ -117,8 +117,9 @@ dnndenoiser evaluate -d denoised.h5 --reference-origin synthetic_truth \
     --generator "dnndenoiser 0.1.x generate" --units normalised_to_spectrum_max -o m.json
 ```
 
-or reproduce the old output exactly with `--legacy-output` (undeclared references only; it
-refuses if an old value would be infinite). A reference estimated from measured data is
+or reproduce the old output with `--legacy-output` (undeclared references only; exact on
+the platform and NumPy version that produced it, to float32 rounding elsewhere; it refuses
+if an old value would be infinite). The JSON keys changed; the CHANGELOG lists them. A reference estimated from measured data is
 declared in a JSON file passed with `--reference-declaration`; its required fields are in
 the design document. `--overlap`, `--used-in-model-development` and `--signal-match` state
 its relationship to the data being evaluated. `evaluate` never writes to its input files,

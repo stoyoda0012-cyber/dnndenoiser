@@ -28,9 +28,21 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   built from the evaluated data or an undeclared reference. Files written before this
   version are undeclared and get no SNR by default; declare them with
   `--reference-origin synthetic_truth --generator … --units …`, or reproduce the old
-  output exactly with `--legacy-output`. The JSON output gains `evaluation_context`,
-  refuses NaN and Infinity, and adds mean-MSE and relative-change summaries named by
-  their weighting. `evaluate` also no longer ignores `--clean` when the input has its
+  output with `--legacy-output` (exactly on the platform and NumPy version that produced
+  it; elsewhere to float32 rounding, which differs in the last bits between NumPy
+  versions). The JSON output gains `evaluation_context`, refuses NaN and Infinity, and
+  renames and adds keys:
+
+  | Before | Now | Note |
+  |---|---|---|
+  | `mse_input_mean` | `mse_in_mean` | float64 |
+  | `mse_output_mean` | `mse_out_mean` | float64 |
+  | `mse_reduction_mean` | `mean_relative_mse_change_per_spectrum_pct` | excludes spectra with zero input MSE, counted in `per_spectrum_excluded_zero_input_mse` |
+  | — | `mse_difference`, `relative_mse_change_aggregate_pct` | new |
+  | `n_samples` | `n_spectra` | |
+  | `snr_*` | `snr_*` against a synthetic truth only; `agreement_db_*` against an estimate whose overlap with the evaluated data is not `overlap` (that includes `unknown`); none otherwise | |
+
+  `--legacy-output` writes the old keys. `evaluate` also no longer ignores `--clean` when the input has its
   own reference, and refuses a reference of another shape instead of broadcasting it.
   `SyntheticGenerator.save_hdf5` now requires `reference_declaration` and
   `intensity_units`. Design, four independent audits and the owner's adoption:

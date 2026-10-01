@@ -148,7 +148,9 @@ not transfer to measured data.
   structure; treat outputs as preprocessing, not measurement, and verify
   physically meaningful quantities (areas, positions, widths) downstream.
 - **Evaluation is only as good as its reference.** `dnndenoiser evaluate`
-  reports an SNR only against a reference declared as the synthetic truth.
+  reports an SNR only against a reference declared as the synthetic truth (the
+  one exception is `--legacy-output`, which reproduces the old output for an
+  undeclared reference and says so).
   Against an estimate — including the mean of the evaluated frames — it reports
   discrepancies and says they are not errors against the signal; there is no
   reference-free SNR for measured spectra.

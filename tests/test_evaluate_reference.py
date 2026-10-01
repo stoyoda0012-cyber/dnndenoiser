@@ -50,7 +50,9 @@ TRUTH = {"origin": "synthetic_truth", "generator": "test fixture", "units": "cou
 def estimate(acquisition="acq-A", frames="all", construction="frame_mean", **extra):
     decl = {"origin": "estimate", "construction": construction,
             "source": {"acquisition_id": acquisition, "frames": frames},
-            "conditions": {"energy_calibration": "unknown"}, "units": "counts",
+            "conditions": {"energy_calibration": "unknown", "channel_or_angle": "unknown",
+                           "exposure_normalisation": "unknown", "specimen_state": "unknown"},
+            "units": "counts",
             "noise": "unknown"}
     decl.update(extra)
     return decl
@@ -182,6 +184,14 @@ def model_64(tmp_path_factory):
     return model
 
 
+EARLIER = [{"operation": "linear resample", "from_points": 128, "to_points": 80,
+            "tool": "dnndenoiser 0.1.2", "step": "infer"}]
+
+
+def read_input_lineage(handle):
+    return json.loads(handle["clean"].attrs.get("reference_lineage", "[]"))
+
+
 def check_propagated(src: Path, out: Path, resampled_to=None):
     """The whole bundle, units, acquisition id and coordinates survive infer."""
     with h5py.File(src) as s, h5py.File(out) as o:
@@ -195,16 +205,21 @@ def check_propagated(src: Path, out: Path, resampled_to=None):
         assert set(o["clean"].attrs) <= allowed, "infer stored something beyond the bundle"
         lineage = json.loads(o["clean"].attrs.get("reference_lineage", "[]"))
         if resampled_to is None:
-            assert lineage == []
-            # infer has always stored energy as float32; unchanged at that precision
-            np.testing.assert_array_equal(o["energy"][:], s["energy"][:].astype(np.float32))
+            assert lineage == read_input_lineage(s)
+            np.testing.assert_array_equal(o["energy"][:], s["energy"][:])
+            assert o["energy"].dtype == s["energy"].dtype
         else:
-            assert len(lineage) == 1
-            assert {k: lineage[0][k] for k in ("operation", "from_points", "to_points", "step")} == \
+            assert lineage[:-1] == read_input_lineage(s), "infer dropped or altered earlier lineage"
+            assert {k: lineage[-1][k] for k in ("operation", "from_points", "to_points", "step")} == \
                 {"operation": "linear resample", "from_points": s["energy"].shape[0],
                  "to_points": resampled_to, "step": "infer"}
             e = s["energy"][:]
-            np.testing.assert_allclose(o["energy"][:], np.linspace(e[0], e[-1], resampled_to), rtol=1e-6)
+            np.testing.assert_allclose(o["energy"][:], np.linspace(e[0], e[-1], resampled_to), rtol=1e-12)
+            assert o["energy"].dtype == s["energy"].dtype
+        for axis in ("angles", "times"):
+            if axis in s:
+                np.testing.assert_array_equal(o[axis][:], s[axis][:])
+                assert o[axis].dtype == s[axis].dtype
         for name in ("noisy", "denoised"):
             for key in ("intensity_units", "acquisition_id"):
                 assert key in o[name].attrs, f"{key} lost on {name}"
@@ -219,17 +234,23 @@ def test_infer_carries_the_declaration_and_its_context(monkeypatch, tmp_path, mo
     n, _d, c = arrays(n=5, e=points)
     src = write(tmp_path / "in.h5", n, None, c, declaration=decl, acquisition_id="acq-A",
                 frame_index=np.arange(5) * 10)
+    with h5py.File(src, "a") as f:     # a non-empty lineage and float64 coordinates to keep
+        f["clean"].attrs["reference_lineage"] = json.dumps(EARLIER)
+        f.create_dataset("times", data=np.array([0.5, 1.5, 2.5], dtype=np.float64))
     out = tmp_path / "out.h5"
     run(monkeypatch, "infer", "-d", str(src), "-m", str(model_64), "-o", str(out), "--device", "cpu")
     check_propagated(src, out, None if points == 64 else 64)
 
 
 @pytest.mark.parametrize("plant", ["drop-version", "alter-field", "upgrade-origin",
-                                   "drop-units", "drop-acquisition", "store-relationship"])
+                                   "drop-units", "drop-acquisition", "store-relationship",
+                                   "drop-lineage", "cast-coordinates"])
 def test_the_propagation_check_rejects_a_wrong_copier(monkeypatch, tmp_path, model_64, plant):
     n, _d, c = arrays(n=5, e=64)
     src = write(tmp_path / "in.h5", n, None, c, declaration=estimate(), acquisition_id="acq-A",
                 frame_index=np.arange(5))
+    with h5py.File(src, "a") as f:
+        f["clean"].attrs["reference_lineage"] = json.dumps(EARLIER)
     out = tmp_path / "out.h5"
     run(monkeypatch, "infer", "-d", str(src), "-m", str(model_64), "-o", str(out), "--device", "cpu")
     check_propagated(src, out)
@@ -244,6 +265,12 @@ def test_the_propagation_check_rejects_a_wrong_copier(monkeypatch, tmp_path, mod
             del o["denoised"].attrs["intensity_units"]
         elif plant == "drop-acquisition":
             del o["noisy"].attrs["acquisition_id"]
+        elif plant == "drop-lineage":
+            del o["clean"].attrs["reference_lineage"]
+        elif plant == "cast-coordinates":
+            energy = o["energy"][:].astype(np.float32)
+            del o["energy"]
+            o.create_dataset("energy", data=energy)
         else:
             o["clean"].attrs["overlap_with_evaluated"] = "no_overlap_declared"
     with pytest.raises(AssertionError):
@@ -305,6 +332,7 @@ def expected(noisy, denoised, clean):
 def test_truth_arithmetic_matches_an_independent_computation(monkeypatch, tmp_path):
     n, d, c = arrays(n=8, e=16, seed=5)
     d[0] = c[0]                      # output exactly on the truth: output floor active
+    d[3] = c[3]                      # ... twice, so input and output counts differ
     n[1] = c[1]                      # input exactly on the truth: input floor active
     c[2] = 0.0                       # zero reference power: excluded and counted
     n[2], d[2] = 0.1, 0.2
@@ -318,7 +346,7 @@ def test_truth_arithmetic_matches_an_independent_computation(monkeypatch, tmp_pa
     assert m["snr_gain_mean"] == pytest.approx((so - si).mean(), rel=1e-12)
     assert m["snr_gain_std"] == pytest.approx(np.std(so - si, ddof=0), rel=1e-12)
     assert m["zero_reference_power_count"] == 1
-    assert m["floor_active_input_count"] == 1 and m["floor_active_output_count"] == 1
+    assert m["floor_active_input_count"] == 1 and m["floor_active_output_count"] == 2
 
 
 def test_floor_counts_are_zero_when_nothing_is_under_the_floor(monkeypatch, tmp_path):
@@ -373,6 +401,8 @@ def test_agreement_db_values_match_an_independent_computation(monkeypatch, tmp_p
     assert m["agreement_db_input_mean"] == pytest.approx(si.mean(), rel=1e-12)
     assert m["agreement_db_output_mean"] == pytest.approx(so.mean(), rel=1e-12)
     assert m["agreement_db_change_mean"] == pytest.approx((so - si).mean(), rel=1e-12)
+    assert np.std(so - si) > 0.1     # a constant-zero spread would not pass the next line
+    assert m["agreement_db_change_std"] == pytest.approx(np.std(so - si, ddof=0), rel=1e-12)
     assert not any(k.startswith("snr") for k in m)
 
 
@@ -410,10 +440,20 @@ def test_a_truth_declaration_without_its_generator_is_refused(monkeypatch, capsy
     assert "synthetic_truth needs ['generator']" in err
 
 
-def test_legacy_output_reproduces_the_golden_file_exactly(monkeypatch, tmp_path, legacy_file):
+def matches_golden(m):
+    """The golden file's keys exactly, and its values to float32 rounding: the historical
+    arithmetic runs in float32, whose summation differs in the last bits across NumPy
+    versions and platforms (the golden file is from macOS arm64, NumPy 2.3.3)."""
+    assert set(m) == set(GOLDEN)
+    assert m["n_samples"] == GOLDEN["n_samples"]
+    for key, value in GOLDEN.items():
+        assert m[key] == pytest.approx(value, rel=1e-6, abs=1e-9), key
+
+
+def test_legacy_output_reproduces_the_golden_file(monkeypatch, tmp_path, legacy_file):
     m = evaluate(monkeypatch, tmp_path, legacy_file, "--legacy-output")
     ctx = m.pop("evaluation_context")
-    assert m == GOLDEN
+    matches_golden(m)
     assert ctx["evaluate_output_version"] == "1-legacy"
     assert ctx["legacy_baseline"] == "cmd_evaluate at cb5e000" and "not declared" in ctx["limitations"]
 
@@ -446,7 +486,7 @@ def test_legacy_output_accepts_an_explicit_undeclared_bundle(monkeypatch, tmp_pa
                  energy=np.asarray(g["energy"], dtype=np.float32))
     m = evaluate(monkeypatch, tmp_path, path, "--legacy-output")
     m.pop("evaluation_context")
-    assert m == GOLDEN
+    matches_golden(m)
 
 
 # ---------------------------------------------------------------------------------- 7
@@ -499,7 +539,10 @@ def test_an_explicit_undeclared_bundle_can_be_completed_from_the_command_line(mo
     (lambda e: e.__setitem__("units", "  "), "'units' must be a non-empty string"),
     (lambda e: e["source"].__setitem__("acquisition_id", ""), "'source.acquisition_id' must be"),
     (lambda e: e.__setitem__("construction", "other"), "'description' must be a non-empty string"),
-    (lambda e: e.__setitem__("conditions", {}), "'conditions' must be a non-empty object"),
+    (lambda e: e.__setitem__("conditions", {}), "'conditions' must have exactly"),
+    (lambda e: e["conditions"].__setitem__("colour", "red"), "'conditions' must have exactly"),
+    (lambda e: e.__setitem__("overlap_with_evaluated", "no_overlap_declared"), "unknown field(s)"),
+    (lambda e: e.__setitem__("noise", {"frames_averaged": float("nan")}), "non-finite number NaN"),
     (lambda e: e["source"].__setitem__("frames", []), "'source.frames' must be"),
 ])
 def test_an_incomplete_estimate_is_refused(monkeypatch, capsys, tmp_path, mutate, reason):
@@ -578,3 +621,113 @@ def test_non_finite_inputs_are_refused(monkeypatch, capsys, tmp_path):
     d[2, 3] = np.nan
     path = write(tmp_path / "nan.h5", n, d, c, declaration=TRUTH)
     assert "'denoised' contains non-finite values" in refuse(monkeypatch, capsys, "evaluate", "-d", str(path))
+
+
+# ------------------------------------------------- review of 315c78f, fixed findings
+
+
+@pytest.mark.parametrize("alias", ["same", "dot-path", "symlink", "hardlink"])
+def test_evaluate_never_writes_to_its_input(monkeypatch, capsys, tmp_path, alias):
+    n, d, c = arrays()
+    path = write(tmp_path / "in.h5", n, d, c, declaration=TRUTH)
+    before = path.read_bytes()
+    target = {"same": path, "dot-path": tmp_path / "." / "in.h5",
+              "symlink": tmp_path / "link.h5", "hardlink": tmp_path / "hard.h5"}[alias]
+    if alias == "symlink":
+        target.symlink_to(path)
+    elif alias == "hardlink":
+        import os
+        os.link(path, target)
+    err = refuse(monkeypatch, capsys, "evaluate", "-d", str(path), "-o", str(target))
+    assert "evaluate never writes to its inputs" in err
+    assert path.read_bytes() == before
+
+
+def test_evaluate_never_writes_to_the_external_reference(monkeypatch, capsys, tmp_path):
+    n, d, c = arrays()
+    path = write(tmp_path / "in.h5", n, d, None)
+    other = write(tmp_path / "ref.h5", n, None, c, declaration=TRUTH)
+    err = refuse(monkeypatch, capsys, "evaluate", "-d", str(path), "--clean", str(other),
+                 "-o", str(other))
+    assert "is --clean" in err
+
+
+@pytest.mark.parametrize("version", [1.9, "1", True, np.float64(1.0)])
+def test_the_schema_version_must_be_an_integer(monkeypatch, capsys, tmp_path, version):
+    n, d, c = arrays()
+    path = write(tmp_path / "x.h5", n, d, c, raw_attrs={"reference_schema_version": version,
+                                                       "reference_origin": json.dumps(TRUTH)})
+    assert "must be an integer" in refuse(monkeypatch, capsys, "evaluate", "-d", str(path))
+
+
+def test_a_duplicated_key_in_a_declaration_is_refused(monkeypatch, capsys, tmp_path):
+    n, d, c = arrays()
+    text = '{"origin":"estimate","origin":"synthetic_truth","generator":"g","units":"counts"}'
+    path = write(tmp_path / "x.h5", n, d, c, raw_attrs={"reference_schema_version": 1,
+                                                       "reference_origin": text})
+    assert "duplicate key(s) ['origin']" in refuse(monkeypatch, capsys, "evaluate", "-d", str(path))
+
+
+def test_flags_and_a_declaration_file_together_are_refused(monkeypatch, capsys, tmp_path):
+    n, d, c = arrays()
+    path = write(tmp_path / "u.h5", n, d, c)
+    decl = tmp_path / "decl.json"
+    decl.write_text(json.dumps(TRUTH), encoding="utf-8")
+    assert "not both" in refuse(monkeypatch, capsys, "evaluate", "-d", str(path),
+                                "--reference-declaration", str(decl), "--units", "counts")
+    m = evaluate(monkeypatch, tmp_path, path, "--reference-declaration", str(decl))
+    assert m["evaluation_context"]["reference"]["declaration_source"] == "cli"
+
+
+@pytest.mark.parametrize("lineage, reason", [
+    ([{"operation": "x"}], "a lineage record must have exactly"),
+    ([dict(EARLIER[0], from_points=1.5)], "'lineage.from_points' must be an integer"),
+    ({"operation": "x"}, "must be a JSON array"),
+])
+def test_a_malformed_lineage_is_refused(monkeypatch, capsys, tmp_path, model_64, lineage, reason):
+    n, _d, c = arrays(n=3, e=64)
+    src = write(tmp_path / "in.h5", n, None, c, declaration=TRUTH)
+    with h5py.File(src, "a") as f:
+        f["clean"].attrs["reference_lineage"] = json.dumps(lineage)
+    err = refuse(monkeypatch, capsys, "infer", "-d", str(src), "-m", str(model_64),
+                 "-o", str(tmp_path / "o.h5"), "--device", "cpu")
+    assert reason in err
+
+
+def test_a_conflict_names_the_selected_reference(monkeypatch, capsys, tmp_path):
+    n, d, c = arrays()
+    path = write(tmp_path / "t.h5", n, d, c, declaration=TRUTH)
+    err = refuse(monkeypatch, capsys, "evaluate", "-d", str(path), "--reference-origin",
+                 "synthetic_truth", "--generator", "another", "--units", "counts")
+    assert f"the reference in {path}:clean" in err
+
+
+def test_a_large_frame_range_is_compared_at_its_ends():
+    decl = estimate(frames={"range": [0, 10**15]})
+    assert ref.established_overlap(decl, "acq-A", np.array([10**14]))
+    assert not ref.established_overlap(decl, "acq-A", np.array([-1]))
+
+
+def test_overflow_is_reported_as_overflow_not_as_zero():
+    r = np.zeros((2, 3))
+    x = np.full((2, 3), 1e200)
+    m = ev.evaluate_arrays(x, x, r, "undeclared")
+    assert m["status"]["relative_mse_change_aggregate_pct"] == "overflow in the summed MSE"
+
+
+def test_the_printed_report_states_exclusions_floors_and_undefined_values(monkeypatch, capsys, tmp_path):
+    n, d, c = arrays(n=5)
+    d[0] = c[0]
+    c[1], n[1], d[1] = 0.0, 0.1, 0.2
+    n[2] = c[2]
+    path = write(tmp_path / "t.h5", n, d, c, declaration=TRUTH)
+    capsys.readouterr()
+    run(monkeypatch, "evaluate", "-d", str(path))
+    printed = capsys.readouterr().out
+    assert "Per-spectrum relative change over 4 of 5 spectra (1 excluded: zero input MSE)" in printed
+    assert "dB statistics over 4 of 5 spectra (1 excluded: zero reference power)" in printed
+    assert "Residual-power floor applied: input 1, output 1 spectra" in printed
+    capsys.readouterr()
+    run(monkeypatch, "evaluate", "-d", str(write(tmp_path / "z.h5", n, d, np.zeros_like(n),
+                                                  declaration=TRUTH)))
+    assert "undefined: snr_gain_mean -- no spectrum has non-zero reference power" in capsys.readouterr().out
