@@ -170,7 +170,11 @@ def validate_origin(obj: Any) -> dict:
             f"'conditions' must have exactly {', '.join(CONDITION_KEYS)} (values may be "
             f"'unknown'), got {sorted(conditions) if isinstance(conditions, dict) else conditions!r}")
     for key, value in conditions.items():
-        _text(value, f"conditions.{key}")
+        if isinstance(value, bool) or not (
+                (isinstance(value, str) and value.strip())
+                or (isinstance(value, (int, float)) and math.isfinite(value))):
+            raise MalformedReference(f"'conditions.{key}' must be a non-empty string or a "
+                                     f"finite number, got {value!r}")
     validate_units(obj["units"])
     noise = obj["noise"]
     if isinstance(noise, dict):
@@ -313,12 +317,13 @@ def established_overlap(effective: dict, evaluated_acquisition_id: Optional[str]
         return True
     if evaluated_frame_index is None:
         return False
-    evaluated = np.asarray(evaluated_frame_index).astype(np.int64).ravel()
+    # Python integers: exact for any stored integer type, signed or unsigned.
+    evaluated = [int(i) for i in np.asarray(evaluated_frame_index).ravel().tolist()]
     if isinstance(frames, dict):
         # Compared at the ends, never expanded: a valid range can be very large.
         first, last = frames["range"]
-        return bool(np.any((evaluated >= first) & (evaluated <= last)))
-    return bool(np.isin(evaluated, np.asarray(frames, dtype=np.int64)).any())
+        return any(first <= i <= last for i in evaluated)
+    return not set(frames).isdisjoint(evaluated)
 
 
 def resolve_relationship(effective: dict, overlap: Optional[str], used: Optional[str],

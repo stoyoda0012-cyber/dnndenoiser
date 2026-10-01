@@ -722,7 +722,9 @@ def cmd_infer(args):
         noisy = resample(noisy, n_features)
         if clean is not None:
             clean = resample(clean, n_features)
-        energy = np.linspace(float(energy[0]), float(energy[-1]), n_features).astype(energy.dtype)
+        # A resampled axis keeps a floating dtype; an integer axis would truncate the grid.
+        grid_dtype = energy.dtype if np.issubdtype(energy.dtype, np.floating) else np.float64
+        energy = np.linspace(float(energy[0]), float(energy[-1]), n_features).astype(grid_dtype)
 
     original_shape = noisy.shape
     print(f"  Input shape: {original_shape}")
@@ -845,7 +847,10 @@ def _cli_declaration(args):
                              "not both")
         with open(args.reference_declaration, encoding='utf-8') as f:
             declaration = ref.loads_strict(f.read())
-        if args.reference_origin and declaration.get('origin') != args.reference_origin:
+        # Validated at once: a null, a list or any other root is refused, never read as
+        # "no declaration".
+        ref.validate_origin(declaration)
+        if args.reference_origin and declaration['origin'] != args.reference_origin:
             raise ValueError("--reference-origin and --reference-declaration disagree")
         return declaration
     if args.reference_origin is None:
@@ -918,6 +923,7 @@ def cmd_evaluate(args):
                 fail("--reference file, but the input file has no 'clean' dataset")
             try:
                 stored, stored_effective = ref.read_declaration(f['clean'])
+                lineage = ref.read_lineage(f['clean'])
             except ref.MalformedReference as exc:
                 fail(f"malformed reference declaration: {exc}")
             clean = f['clean'][:]
@@ -929,6 +935,7 @@ def cmd_evaluate(args):
                 fail(f"{args.clean} has no 'clean' dataset")
             try:
                 stored, stored_effective = ref.read_declaration(g['clean'])
+                lineage = ref.read_lineage(g['clean'])
             except ref.MalformedReference as exc:
                 fail(f"malformed reference declaration: {exc}")
             clean = g['clean'][:]
@@ -971,7 +978,8 @@ def cmd_evaluate(args):
         'evaluate_output_version': ev.LEGACY_VERSION if args.legacy_output else ev.OUTPUT_VERSION,
         'dnndenoiser_version': __version__,
         'reference': {'selected': selected, 'stored_declaration': stored,
-                      'effective_declaration': effective, 'declaration_source': source},
+                      'effective_declaration': effective, 'declaration_source': source,
+                      'lineage': lineage},
         'relationship': relationship,
         'held_out_status': 'unknown',
         'aggregation_unit': ev.AGGREGATION_UNIT,
@@ -1001,6 +1009,11 @@ def cmd_evaluate(args):
         print()
         for line in ev.report_lines(case, metrics):
             print(line)
+        print(f"Relationship: overlap {relationship['overlap_with_evaluated']} "
+              f"({relationship['overlap_basis']}), used in model development "
+              f"{relationship['used_in_model_development']}; held-out status unknown")
+        print("Alignment checked: shape only (energy, units, rows, angles and times are not "
+              "checked in this version)")
     for note in context['caveats']:
         print(f"\nNote: {note}")
 

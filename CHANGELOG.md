@@ -24,13 +24,15 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   A reference now declares what it is (`generate` declares its `clean` arrays as the
   synthetic truth; `infer` carries the declaration through), and every reported
   quantity is named by it: an SNR against the synthetic truth, an *agreement* in dB
-  against a declared estimate from other data, and mean MSEs only against an estimate
-  built from the evaluated data or an undeclared reference. Files written before this
+  against a declared estimate from other data, and mean MSEs and relative changes —
+  no dB quantity — against an estimate built from the evaluated data or an undeclared
+  reference. Files written before this
   version are undeclared and get no SNR by default; declare them with
   `--reference-origin synthetic_truth --generator … --units …`, or reproduce the old
-  output with `--legacy-output` (exactly on the platform and NumPy version that produced
-  it; elsewhere to float32 rounding, which differs in the last bits between NumPy
-  versions). The JSON output gains `evaluation_context`, refuses NaN and Infinity, and
+  output with `--legacy-output`. It runs the old arithmetic in the input's own dtype
+  (float32 for files written by `generate`), so its values are exact on the same platform
+  and NumPy version and can differ in the last bits elsewhere, where float32 summation
+  differs between NumPy versions. The JSON output gains `evaluation_context`, refuses NaN and Infinity, and
   renames and adds keys:
 
   | Before | Now | Note |

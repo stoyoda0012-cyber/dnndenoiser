@@ -105,7 +105,8 @@ def evaluate_arrays(noisy: np.ndarray, denoised: np.ndarray, reference: np.ndarr
         total_in = float(np.sum(mse_in))
         total_out = float(np.sum(mse_out))
     key = "relative_mse_change_aggregate_pct"
-    if not (math.isfinite(total_in) and math.isfinite(total_out)):
+    if not (math.isfinite(total_in) and math.isfinite(total_out)
+            and np.all(np.isfinite(mse_in)) and np.all(np.isfinite(mse_out))):
         out[key] = None
         statuses[key] = "overflow in the summed MSE"
     elif total_in == 0:
@@ -116,11 +117,16 @@ def evaluate_arrays(noisy: np.ndarray, denoised: np.ndarray, reference: np.ndarr
                                    statuses, key)
     positive = mse_in > 0
     out["per_spectrum_excluded_zero_input_mse"] = int(np.sum(~positive))
-    if np.any(positive):
+    key = "mean_relative_mse_change_per_spectrum_pct"
+    if not (np.all(np.isfinite(mse_in)) and np.all(np.isfinite(mse_out))):
+        # An infinite intermediate can turn into a wrong finite percentage (inf in a
+        # denominator gives 100 %); refuse the value rather than report it.
+        out[key] = None
+        statuses[key] = "overflow in a per-spectrum MSE"
+    elif np.any(positive):
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
             value = 100.0 * float(np.mean(1.0 - mse_out[positive] / mse_in[positive]))
-        out["mean_relative_mse_change_per_spectrum_pct"] = _finite_or_null(
-            value, "overflow", statuses, "mean_relative_mse_change_per_spectrum_pct")
+        out[key] = _finite_or_null(value, "overflow", statuses, key)
     else:
         out["mean_relative_mse_change_per_spectrum_pct"] = None
         statuses["mean_relative_mse_change_per_spectrum_pct"] = "every spectrum has zero input MSE"

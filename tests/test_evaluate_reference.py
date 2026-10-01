@@ -443,7 +443,9 @@ def test_a_truth_declaration_without_its_generator_is_refused(monkeypatch, capsy
 def matches_golden(m):
     """The golden file's keys exactly, and its values to float32 rounding: the historical
     arithmetic runs in float32, whose summation differs in the last bits across NumPy
-    versions and platforms (the golden file is from macOS arm64, NumPy 2.3.3)."""
+    versions and platforms (the golden file is from macOS arm64, NumPy 2.3.3). Tolerance:
+    rel 1e-6, abs 1e-9. Exactness in the same runtime is tested separately, against an
+    independent transcription of the arithmetic (``frozen_cb5e000``)."""
     assert set(m) == set(GOLDEN)
     assert m["n_samples"] == GOLDEN["n_samples"]
     for key, value in GOLDEN.items():
@@ -731,3 +733,123 @@ def test_the_printed_report_states_exclusions_floors_and_undefined_values(monkey
     run(monkeypatch, "evaluate", "-d", str(write(tmp_path / "z.h5", n, d, np.zeros_like(n),
                                                   declaration=TRUTH)))
     assert "undefined: snr_gain_mean -- no spectrum has non-zero reference power" in capsys.readouterr().out
+
+
+# --------------------------------------- follow-up review of 506bd6a, fixed findings
+
+
+def test_a_resampled_integer_energy_axis_is_not_truncated(monkeypatch, tmp_path, model_64):
+    n, _d, c = arrays(n=3, e=80)
+    src = write(tmp_path / "in.h5", n, None, c, declaration=TRUTH,
+                energy=np.arange(80, dtype=np.int64))
+    out = tmp_path / "out.h5"
+    run(monkeypatch, "infer", "-d", str(src), "-m", str(model_64), "-o", str(out), "--device", "cpu")
+    with h5py.File(out) as o:
+        energy = o["energy"][:]
+    assert np.issubdtype(energy.dtype, np.floating)
+    np.testing.assert_array_equal(energy, np.linspace(0.0, 79.0, 64))
+    assert len(np.unique(energy)) == 64
+
+
+@pytest.mark.parametrize("frames", [{"range": [0, 2**64 - 1]}, [2**63 + 1]], ids=["range", "list"])
+def test_unsigned_frame_identifiers_keep_an_established_overlap(monkeypatch, capsys, tmp_path, frames):
+    index = np.array([2**63 + 1, 2**63 + 2], dtype=np.uint64)
+    assert ref.established_overlap(estimate(frames=frames), "acq-A", index)
+    n, d, c = arrays(n=2)
+    path = write(tmp_path / "u.h5", n, d, c, declaration=estimate(frames=frames),
+                 acquisition_id="acq-A", frame_index=index)
+    assert "contradicts an established overlap" in refuse(
+        monkeypatch, capsys, "evaluate", "-d", str(path), "--overlap", "no_overlap_declared")
+
+
+def frozen_cb5e000(noisy, denoised, clean):
+    """cmd_evaluate's arithmetic at cb5e000, transcribed here so that it is independent of
+    the code under test: the arrays' own dtype, the same formulas, the same keys."""
+    if noisy.ndim > 2:
+        noisy = noisy.reshape(-1, noisy.shape[-1])
+        denoised = denoised.reshape(-1, denoised.shape[-1])
+        clean = clean.reshape(-1, clean.shape[-1])
+
+    def snr(signal, reference):
+        noise = signal - reference
+        return 10 * np.log10(np.mean(reference ** 2, axis=-1)
+                             / np.maximum(np.mean(noise ** 2, axis=-1), 1e-10))
+
+    def mse(signal, reference):
+        return np.mean((signal - reference) ** 2, axis=-1)
+
+    si, mi, so, mo = snr(noisy, clean), mse(noisy, clean), snr(denoised, clean), mse(denoised, clean)
+    gain = so - si
+    reduction = (mi - mo) / mi * 100
+    return {'snr_input_mean': float(np.mean(si)), 'snr_output_mean': float(np.mean(so)),
+            'snr_gain_mean': float(np.mean(gain)), 'snr_gain_std': float(np.std(gain)),
+            'mse_input_mean': float(np.mean(mi)), 'mse_output_mean': float(np.mean(mo)),
+            'mse_reduction_mean': float(np.mean(reduction)), 'n_samples': len(noisy)}
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_legacy_output_equals_the_frozen_arithmetic_exactly_in_this_runtime(monkeypatch, tmp_path, dtype):
+    """Exact, in the same runtime and the input's own dtype: a legacy path that computed in
+    float64 would differ from the frozen arithmetic on float32 inputs."""
+    g = json.loads((DATA / "legacy_evaluate_fixture.json").read_text(encoding="utf-8"))
+    arrs = {k: np.asarray(g[k], dtype=dtype) for k in ("noisy", "denoised", "clean")}
+    path = tmp_path / "l.h5"
+    with h5py.File(path, "w") as f:
+        for k, v in arrs.items():
+            f.create_dataset(k, data=v)
+        f.create_dataset("energy", data=np.asarray(g["energy"], dtype=dtype))
+    m = evaluate(monkeypatch, tmp_path, path, "--legacy-output")
+    m.pop("evaluation_context")
+    assert m == frozen_cb5e000(arrs["noisy"], arrs["denoised"], arrs["clean"])
+
+
+def test_a_float64_legacy_path_would_differ_from_the_frozen_float32_arithmetic():
+    """The converse: on the float32 fixture, computing in float64 is a detectable change."""
+    g = json.loads((DATA / "legacy_evaluate_fixture.json").read_text(encoding="utf-8"))
+    a32 = [np.asarray(g[k], dtype=np.float32) for k in ("noisy", "denoised", "clean")]
+    assert frozen_cb5e000(*a32) != frozen_cb5e000(*[a.astype(np.float64) for a in a32])
+
+
+@pytest.mark.parametrize("root", ["null", "[]", '"synthetic_truth"'])
+def test_a_declaration_file_that_is_not_an_object_is_refused(monkeypatch, capsys, tmp_path, root):
+    n, d, c = arrays()
+    path = write(tmp_path / "u.h5", n, d, c)
+    decl = tmp_path / "decl.json"
+    decl.write_text(root, encoding="utf-8")
+    for extra in ((), ("--legacy-output",), ("--reference-origin", "synthetic_truth")):
+        err = refuse(monkeypatch, capsys, "evaluate", "-d", str(path),
+                     "--reference-declaration", str(decl), *extra)
+        assert "reference_origin must be a JSON object" in err
+
+
+def test_evaluate_checks_the_lineage_of_the_selected_reference(monkeypatch, capsys, tmp_path):
+    n, d, c = arrays()
+    path = write(tmp_path / "t.h5", n, d, c, declaration=TRUTH)
+    with h5py.File(path, "a") as f:
+        f["clean"].attrs["reference_lineage"] = json.dumps([{"unrelated": True}])
+    assert "a lineage record must have exactly" in refuse(monkeypatch, capsys, "evaluate", "-d", str(path))
+
+
+def test_an_infinite_per_spectrum_mse_gives_null_not_a_wrong_percentage():
+    m = ev.evaluate_arrays(np.array([[2e154]]), np.array([[1e154]]), np.array([[0.0]]), "undeclared")
+    assert m["mean_relative_mse_change_per_spectrum_pct"] is None
+    assert m["status"]["mean_relative_mse_change_per_spectrum_pct"] == "overflow in a per-spectrum MSE"
+
+
+def test_zero_reference_power_rows_are_not_counted_under_the_floor():
+    """A zero row has zero residual power too; it is excluded, not counted as floored."""
+    r = np.ones((3, 4))
+    x, y = r + 0.1, r + 0.05
+    r[0], x[0], y[0] = 0.0, 0.0, 0.0
+    m = ev.evaluate_arrays(x, y, r, "truth")
+    assert m["zero_reference_power_count"] == 1
+    assert m["floor_active_input_count"] == 0 and m["floor_active_output_count"] == 0
+
+
+def test_numeric_condition_values_are_accepted():
+    decl = estimate()
+    decl["conditions"]["exposure_normalisation"] = 4.883
+    assert ref.validate_origin(decl) is decl
+    decl["conditions"]["exposure_normalisation"] = float("inf")
+    with pytest.raises(ref.MalformedReference, match="finite number"):
+        ref.validate_origin(decl)
