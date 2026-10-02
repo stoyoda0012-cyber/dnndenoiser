@@ -711,3 +711,102 @@ def flags_from_argv(known_options) -> list:
     """Option names given on the command line (no values)."""
     from dnndenoiser.cli import _flags_passed
     return sorted(_flags_passed(sys.argv[1:], known_options))
+
+
+# ------------------------------------------------------------------------ phase B
+
+
+def _in_runs(value: int, runs: list, starts: Optional[list] = None) -> bool:
+    import bisect
+    starts = [r[0] for r in runs] if starts is None else starts
+    i = bisect.bisect_right(starts, value) - 1
+    return i >= 0 and runs[i][0] <= value <= runs[i][1]
+
+
+def count_in_runs(frame_index, runs) -> int:
+    """How many first-axis rows' ``frame_index`` lie in the training runs."""
+    if frame_index is None or runs is None:
+        return 0
+    starts = [r[0] for r in runs]
+    return sum(_in_runs(int(v), runs, starts)
+               for v in np.asarray(frame_index).ravel().tolist())
+
+
+def _range_meets_runs(first: int, last: int, runs) -> bool:
+    return any(not (r[1] < first or r[0] > last) for r in runs)
+
+
+def held_out(manifest: dict, *, noisy, input_array_digest: Optional[dict],
+             acquisition_id: Optional[str], frame_index) -> dict:
+    """§5.1: ``held_out_status`` of the evaluated rows, with its basis and count. The first
+    rule that applies decides."""
+    td = manifest["training_data"]
+    trained = td["array_digests"].get("noisy") or td["array_digests"].get("frames")
+    n = int(np.asarray(noisy).shape[0])
+    out = {"held_out_status": "unknown", "held_out_basis": "default",
+           "rows_in_training": None, "same_acquisition_rows_unidentified": False}
+    if trained is not None and trained["sha256"] in {
+            matching_digest(noisy)["sha256"],
+            (input_array_digest or {}).get("sha256")}:
+        return {**out, "held_out_status": "not_held_out", "held_out_basis": "established",
+                "rows_in_training": n}
+    t_acq = td["acquisition_id"]
+    if acquisition_id is None or t_acq is None:
+        return out
+    if acquisition_id != t_acq:
+        return {**out, "held_out_status": "disjoint_by_identifiers",
+                "held_out_basis": "established"}
+    runs = td["frame_index_runs"]
+    if frame_index is None or runs is None:
+        return {**out, "same_acquisition_rows_unidentified": True}
+    k = count_in_runs(frame_index, runs)
+    if k:
+        return {**out, "held_out_status": "not_held_out", "held_out_basis": "established",
+                "rows_in_training": k}
+    return {**out, "held_out_status": "disjoint_by_identifiers", "held_out_basis": "established"}
+
+
+def reference_in_training(manifest: dict, *, reference, signal_identity: Optional[str],
+                          frame_index) -> tuple[bool, Optional[int]]:
+    """§5.2: whether the reference took part in training a model whose targets were built
+    from ``clean``, and in how many first-axis rows."""
+    if manifest["targets"]["kind"] not in ("clean", "synthesised_realisation"):
+        return False, None
+    td = manifest["training_data"]
+    trained = td["array_digests"].get("clean")
+    if trained is not None and matching_digest(reference)["sha256"] == trained["sha256"]:
+        return True, int(np.asarray(reference).shape[0])
+    if (signal_identity is not None and td["signal_identity"] is not None
+            and signal_identity == td["signal_identity"]):
+        k = count_in_runs(frame_index, td["frame_index_runs"])
+        if k:
+            return True, k
+    return False, None
+
+
+def shares_source(manifest: dict, effective: dict) -> str:
+    """§5.2: ``yes`` when an estimate was computed from the training acquisition's rows."""
+    if effective.get("origin") != "estimate":
+        return "unknown"
+    td = manifest["training_data"]
+    source = effective["source"]
+    if td["acquisition_id"] is None or source["acquisition_id"] != td["acquisition_id"]:
+        return "unknown"
+    frames, runs = source["frames"], td["frame_index_runs"]
+    if frames == "all":
+        return "yes"
+    if frames == "unrecorded" or runs is None:
+        return "unknown"
+    if isinstance(frames, dict):
+        first, last = frames["range"]
+        return "yes" if _range_meets_runs(first, last, runs) else "unknown"
+    return "yes" if any(_in_runs(int(v), runs) for v in frames) else "unknown"
+
+
+def generator_versions_differ(manifest: dict, evaluated_declaration: dict) -> bool:
+    """Whether the training and evaluated synthetic truths name different generators."""
+    trained = manifest["training_data"]["reference_declaration"] or {}
+    if trained.get("origin") != "synthetic_truth" or evaluated_declaration.get(
+            "origin") != "synthetic_truth":
+        return False
+    return trained.get("generator") != evaluated_declaration.get("generator")

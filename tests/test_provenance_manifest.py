@@ -572,7 +572,8 @@ def test_evaluate_reports_the_model_identity(monkeypatch, tmp_path, trained, out
         "software": {"dnndenoiser": ck["provenance"]["software"]["dnndenoiser"]},
         "code": ck["provenance"]["code"],
     }
-    assert m["evaluation_context"]["held_out_status"] == "unknown"     # phase A
+    # The output is the model's own training file: phase B establishes it (rule 1).
+    assert m["evaluation_context"]["held_out_status"] == "not_held_out"
 
 
 FROZEN_MANIFEST_DIGEST = "97f06f396a709c3a29824e1cc794eeb98e2d1a262d7d455439d286d42803f0fe"   # sha256 of the UTF-8 bytes of {"x":"é"}

@@ -411,7 +411,9 @@ def test_identifiers_need_a_namespace_on_both_sides(monkeypatch, capsys, tmp_pat
         data, other = pair(tmp_path, n, d, c[::-1], declaration=estimate(acquisition="acq-A"),
                            data={"frame_index": np.arange(6)}, reference={"frame_index": np.arange(6)})
     err = refuse_external(monkeypatch, capsys, data, other)
-    assert "equal frame indices from different acquisitions establish nothing" in err
+    assert {"truth-no-ids": "the reference names no source acquisition (a synthetic-truth "
+                            "declaration has none)",
+            "estimate-evaluated-without-id": "the evaluated data carry no acquisition_id"}[case] in err
 
 
 def test_noisy_and_denoised_must_have_the_same_shape(monkeypatch, capsys, tmp_path):

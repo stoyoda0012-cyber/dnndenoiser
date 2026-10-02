@@ -272,6 +272,22 @@ refuses an output whose carried records do not belong together. The design is
   tracked top-level `src/dnndenoiser/` is recorded as such a checkout.
 - A manifest records what was run. It does not make training reproducible.
 
+**Was the evaluated data training data?** `evaluate` establishes it from the manifest and
+reports it as `held_out_status` (also a top-level key), with `rows_in_training`:
+
+| `held_out_status` | Means |
+|---|---|
+| `not_held_out` | at least one evaluated row (first axis) was a training row: the same array, or the same `acquisition_id` with intersecting `frame_index`. The dB keys become `training_fit_*` and the heading *Fit to the training data*; `--legacy-output` is refused |
+| `disjoint_by_identifiers` | the identifiers show other rows. Not proof of independence: a copy under another identifier is not detected |
+| `unknown` | nothing could be established (no manifest, no identifiers, or one acquisition without `frame_index`, reported as `same_acquisition_rows_unidentified`) |
+
+`generate` writes `frame_index`, an `acquisition_id` on `noisy` and a `signal_identity` on
+`clean`, so this works for synthetic data without anything to declare: a test file made
+with the same seed and settings and a smaller `-n` is the training file's first rows
+(`not_held_out`); one with the same seed and another noise level holds the same signals
+with new noise (`disjoint_by_identifiers`, and the reference is reported as the model's
+training target). Use another `--seed` for a held-out synthetic test set.
+
 ## Python API (minimal example)
 
 ```python

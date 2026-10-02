@@ -25,8 +25,23 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   valid or refused, never read as absent; checkpoints written before this version have
   none and work as before. The manifest records what was run; it does not make training
   reproducible. Design and three independent audits:
-  `docs/design/PROVENANCE_MANIFEST.md` (phase A; establishing whether the evaluated data
-  were training data is phase B).
+  `docs/design/PROVENANCE_MANIFEST.md`.
+- **`evaluate` says when the evaluated data were training data, and names the result
+  accordingly.** From the model's manifest it establishes `held_out_status`: `not_held_out`
+  when the evaluated noisy array is the training input (by content, also after `infer`
+  resampled it) or when its rows share the training acquisition and frames, with
+  `rows_in_training` counting them; `disjoint_by_identifiers` when the identifiers show
+  other rows (not proof of independence); `unknown` otherwise. It also establishes
+  `used_in_model_development: yes` when the reference was the model's training target
+  (by content, or by a synthetic signal identity with intersecting rows), and reports
+  `shares_source_with_training_data` for an estimate computed from the training frames.
+  A declaration contradicting an established relationship is refused. `held_out_status`
+  and `rows_in_training` are top-level keys of every normal output.
+- **`generate` records which draws a file holds**: `frame_index` (`0 … n-1`), an
+  `acquisition_id` on `noisy` and a `signal_identity` on `clean`, each a hash of the
+  settings that change those arrays. The same seed and settings with a smaller `-n` are
+  recognised as a subset; the same seed with another noise level is recognised as the
+  same signals with new noise.
 - **[`docs/WHEN_TO_TRUST.md`](docs/WHEN_TO_TRUST.md)** — what has been measured about
   where a trained model stops being trustworthy, one question at a time. The first
   answer is how far a shift in energy can be trusted, from the P2-A record: the
@@ -37,6 +52,14 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Breaking: an evaluation of a model on its own training rows is renamed.** When
+  `held_out_status` is `not_held_out`, the dB keys carry the prefix `training_fit_`
+  (`training_fit_snr_gain_mean`, …, `training_fit_agreement_db_change_std`), the printed
+  heading says *Fit to the training data*, a caveat states how many rows (first axis)
+  were training rows, and `--legacy-output` is refused. A script that reads `snr_*` from an
+  evaluation of training data no longer finds it, which is the point. An external
+  synthetic-truth reference that cannot be matched by identifiers is now refused with
+  the true reason (a truth declaration names no acquisition).
 - **Breaking: `evaluate` reports an SNR only against a declared synthetic truth.**
   A reference now declares what it is (`generate` declares its `clean` arrays as the
   synthetic truth; `infer` carries the declaration through), and every reported
