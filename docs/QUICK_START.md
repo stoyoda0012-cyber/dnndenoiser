@@ -87,19 +87,51 @@ Multidimensional (angle/time) arrays are flattened and trained spectrum-wise.
 
 ```bash
 dnndenoiser infer -d noisy.h5 -m model.pt -o denoised.h5 --batch-size 256
-dnndenoiser evaluate -d denoised.h5              # clean reference inside the file
-dnndenoiser evaluate -d denoised.h5 --clean clean.h5 -o metrics.json
+dnndenoiser evaluate -d denoised.h5 -o metrics.json          # reference inside the file
+dnndenoiser evaluate -d denoised.h5 --clean ref.h5 --reference external -o metrics.json
 ```
 
-`evaluate` computes truth-referenced SNR/MSE, so it requires a clean reference
-dataset; it cannot score measured data that has no reference.
+**What `evaluate` reports depends on what the reference is**, and the reference says so
+itself: `generate` declares its `clean` arrays as the *synthetic truth*, `infer` carries
+that declaration through, and `evaluate` reads it. The design, and why, is
+[docs/design/EVALUATION_REFERENCE_CONTRACT.md](design/EVALUATION_REFERENCE_CONTRACT.md).
+
+| Reference | What is reported |
+|---|---|
+| synthetic truth | mean MSEs, SNR in dB and SNR gain — an error against the truth |
+| an estimate whose overlap with the evaluated data is not established or declared (including `unknown`) | mean MSEs and an *agreement* in dB — not an SNR |
+| an estimate whose overlap with the evaluated data is established or declared (e.g. the mean of the same frames) | mean MSEs and relative changes; no dB quantity |
+| undeclared | mean MSEs and relative changes; no dB quantity |
+
+A reference that is not the synthetic truth is an estimate of the signal: agreement with
+it is not an error against the signal, and a model that returns the mean of the frames
+for every frame agrees with that mean perfectly. The JSON output carries an
+`evaluation_context` with the reference's declaration, where it came from, its declared
+relationship to the data and the model, and the checks made.
+
+**Files written before this version** have no declaration, so `evaluate` reports no SNR
+for them. For a synthetic file, declare it:
+
+```bash
+dnndenoiser evaluate -d denoised.h5 --reference-origin synthetic_truth \
+    --generator "dnndenoiser 0.1.x generate" --units normalised_to_spectrum_max -o m.json
+```
+
+or reproduce the old output with `--legacy-output` (undeclared references only; it runs
+the old arithmetic in the input's own dtype, so it is exact on the same platform and NumPy
+version and can differ in the last bits elsewhere; it refuses if an old value would be
+infinite). The JSON keys changed; the CHANGELOG lists them. A reference estimated from measured data is
+declared in a JSON file passed with `--reference-declaration`; its required fields are in
+the design document. `--overlap`, `--used-in-model-development` and `--signal-match` state
+its relationship to the data being evaluated. `evaluate` never writes to its input files,
+never ignores `--clean` silently, and never broadcasts a reference of another shape.
 
 ## HDF5 schema
 
 | Dataset | Shape | Notes |
 |---------|-------|-------|
-| `noisy` | (n, …, energy) | input spectra; extra axes (angle/time) allowed |
-| `clean` | (n, …, energy) | reference; required for noise2clean/noise2noise and evaluate |
+| `noisy` | (n, …, energy) | input spectra; extra axes (angle/time) allowed. Attribute `intensity_units` |
+| `clean` | (n, …, energy) | reference; required for noise2clean/noise2noise and evaluate. Attributes `reference_schema_version` and `reference_origin` declare what it is |
 | `energy` | (energy,) | energy axis |
 | `denoised` | (n, …, energy) | written by `infer` |
 | `angles` / `times` | optional | written by `generate` for 3D/4D data |

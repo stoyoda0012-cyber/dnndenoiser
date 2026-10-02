@@ -127,7 +127,8 @@ class TestHDF5Export:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / 'test.h5'
-            SyntheticGenerator.save_hdf5(path, clean, noisy, energy, meta)
+            SyntheticGenerator.save_hdf5(path, clean, noisy, energy, meta,
+                                         **gen.truth_arguments(clean.ndim))
 
             import h5py
             with h5py.File(path, 'r') as f:

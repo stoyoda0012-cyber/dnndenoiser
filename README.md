@@ -147,10 +147,13 @@ not transfer to measured data.
   network can oversmooth, suppress weak features, or hallucinate plausible
   structure; treat outputs as preprocessing, not measurement, and verify
   physically meaningful quantities (areas, positions, widths) downstream.
-- **Evaluation needs a clean reference.** `dnndenoiser evaluate` computes
-  truth-referenced SNR/MSE and therefore works on synthetic or
-  high-statistics-referenced data only; there is no reference-free SNR for
-  measured spectra.
+- **Evaluation is only as good as its reference.** `dnndenoiser evaluate`
+  reports an SNR only against a reference declared as the synthetic truth (the
+  one exception is `--legacy-output`, which reproduces the old output for an
+  undeclared reference and says so).
+  Against an estimate — including the mean of the evaluated frames — it reports
+  discrepancies and says they are not errors against the signal; there is no
+  reference-free SNR for measured spectra.
 - **Spectrum-wise processing.** Angle-/time-resolved arrays are generated and
   handled, but denoising flattens all non-energy axes and processes each 1-D
   spectrum independently — this is not a joint 3-D/4-D model.

@@ -786,7 +786,8 @@ class SyntheticGenerator:
             config=GeneratorConfig(eta=0.3)
         )
         clean, noisy, energy, metadata = gen.generate_batch(100, seed=42)
-        gen.save_hdf5("output.h5", clean, noisy, energy, metadata)
+        gen.save_hdf5("output.h5", clean, noisy, energy, metadata,
+                      **gen.truth_arguments(clean.ndim))
     """
 
     def __init__(
@@ -1197,6 +1198,28 @@ class SyntheticGenerator:
 
         return clean, noisy, energy, self.times.copy(), self.angles.copy(), metadata
 
+    def intensity_units(self, ndim: int) -> str:
+        """The units of the arrays this generator returns, for a batch of ``ndim``
+        dimensions: normalised per spectrum (2-D), by one global maximum (angle- or
+        time-resolved), or left as generated (``normalize=False``)."""
+        if not self.config.normalize:
+            return "generator_intensity"
+        return "normalised_to_spectrum_max" if ndim == 2 else "normalised_to_global_max"
+
+    def truth_arguments(self, ndim: int) -> dict:
+        """``save_hdf5`` keyword arguments declaring this generator's clean arrays as the
+        synthetic truth — for arrays this generator actually produced."""
+        from dnndenoiser import __version__
+        units = self.intensity_units(ndim)
+        return {
+            "reference_declaration": {
+                "origin": "synthetic_truth",
+                "generator": f"dnndenoiser {__version__} SyntheticGenerator",
+                "units": units,
+            },
+            "intensity_units": units,
+        }
+
     @staticmethod
     def save_hdf5(
         filepath: Union[str, Path],
@@ -1208,6 +1231,9 @@ class SyntheticGenerator:
         times: np.ndarray = None,
         chunk_size: int = 128,
         compression: str = 'gzip',
+        *,
+        reference_declaration: dict,
+        intensity_units: str,
     ) -> Path:
         """
         Save generated data to HDF5 file.
@@ -1250,10 +1276,23 @@ class SyntheticGenerator:
             times: Time axis (optional, for 3D/4D data)
             chunk_size: Chunk size for row-based access
             compression: Compression algorithm ('gzip', 'lzf', or None)
+            reference_declaration: What ``clean`` is (required). Arrays passed in are not
+                promoted to synthetic truth by this method's name: declare them. For arrays
+                this generator produced, pass ``**gen.truth_arguments(clean.ndim)``. See
+                ``docs/design/EVALUATION_REFERENCE_CONTRACT.md``.
+            intensity_units: Units of ``noisy`` (required); must equal the declaration's
+                ``units`` when it states them.
 
         Returns:
             Path to saved file
         """
+        from dnndenoiser import reference as ref
+        ref.validate_origin(reference_declaration)
+        ref.validate_units(intensity_units, "intensity_units")
+        declared_units = reference_declaration.get("units")
+        if declared_units is not None and declared_units != intensity_units:
+            raise ValueError(f"the reference is declared in '{declared_units}' but "
+                             f"intensity_units is '{intensity_units}'")
         filepath = Path(filepath)
 
         # Determine dimensionality and extract shape
@@ -1294,6 +1333,8 @@ class SyntheticGenerator:
                 'noisy', data=noisy, dtype='float32',
                 chunks=chunks, compression=compression
             )
+            ref.write_declaration(f['clean'], reference_declaration)
+            f['noisy'].attrs[ref.UNITS_ATTR] = intensity_units
             f.create_dataset('energy', data=energy, dtype='float32')
 
             # Store time axis for 3D/4D data
@@ -1419,7 +1460,8 @@ def generate_dataset(
         gen = SyntheticGenerator(peak_set_id, noise_config, config)
         clean, noisy, energy, metadata = gen.generate_batch(n_samples, seed=seed + i)
 
-        SyntheticGenerator.save_hdf5(h5_path, clean, noisy, energy, metadata)
+        SyntheticGenerator.save_hdf5(h5_path, clean, noisy, energy, metadata,
+                                     **gen.truth_arguments(clean.ndim))
         SyntheticGenerator.save_manifest(manifest_path, metadata, manifest_format)
 
         results[noise_str] = {
@@ -1467,7 +1509,8 @@ if __name__ == '__main__':
     h5_path = output_dir / f"{args.peak_set}_{noise_config}.h5"
     manifest_path = output_dir / f"{args.peak_set}_{noise_config}_manifest"
 
-    SyntheticGenerator.save_hdf5(h5_path, clean, noisy, energy, metadata)
+    SyntheticGenerator.save_hdf5(h5_path, clean, noisy, energy, metadata,
+                                 **gen.truth_arguments(clean.ndim))
     SyntheticGenerator.save_manifest(manifest_path, metadata)
 
     print(f"Generated {args.n_samples} samples")
