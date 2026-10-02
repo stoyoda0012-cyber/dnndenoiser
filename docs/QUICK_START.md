@@ -236,8 +236,8 @@ are recorded — in the stack, in `infer` output and in the model's manifest
 channel axis changes no target, so training cannot detect it; only the angle *values* are
 compared, by `evaluate`, against a reference that carries them. `order_basis` says
 whether the order came from the instrument (`recorded`) or was derived by you
-(`inferred`); `train` warns when it is not `recorded`, because every target is only as
-right as the order. Leave it out rather than write `recorded` by default.
+(`inferred`); `train --method moving-average` warns when it is not `recorded`, because
+every target is only as right as the order (other methods do not use the order). Leave it out rather than write `recorded` by default.
 
 **Several channels in one 2-D stack (deprecated).** Before the channel axis, the recipe
 was one 2-D stack with channel *k* at the indices
@@ -292,9 +292,9 @@ normalisation: `infer` refuses a checkpoint edited without updating it, and `eva
 refuses an output whose carried records do not belong together. The design is
 [docs/design/PROVENANCE_MANIFEST.md](design/PROVENANCE_MANIFEST.md).
 
-- **Identifiers travel with the model.** The training file's `acquisition_id` and its
-  reference declaration (including free-text conditions) are copied verbatim into the
-  manifest, so sharing a checkpoint or any of its outputs shares them. Keep names of
+- **Identifiers travel with the model.** The training file's `acquisition_id`, its
+  reference declaration (including free-text conditions) and an `other:<description>`
+  angle kind are copied verbatim into the manifest, so sharing a checkpoint or any of its outputs shares them. Keep names of
   people, places and specimens out of them, and give each acquisition its own
   `acquisition_id`: one reused for two acquisitions makes them look like the same data.
 - **Tools that edit files must keep the metadata true.** A tool that takes a subset of

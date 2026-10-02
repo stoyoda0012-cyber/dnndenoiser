@@ -51,7 +51,7 @@ manifest's `statuses` object maps the field's dotted path to the reason.
 
 | Field | Content |
 |---|---|
-| `schema` | `"dnd-provenance-1"` |
+| `schema` | `"dnd-provenance-1"` (version 2, which adds two `training_data` fields, is defined in `docs/design/FRAME_STACK_CHANNELS.md` §5) |
 | `created_utc` | ISO 8601, seconds, `Z` |
 | `software` | `dnndenoiser`, `python`, `numpy`, `torch`, `h5py` versions; `torch_cuda` (`torch.version.cuda` or `null`); `platform` (`platform.system()`, `platform.machine()`); `device` (the resolved backend) |
 | `code` | §2.1 |

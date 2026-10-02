@@ -832,28 +832,25 @@ def cmd_infer(args):
         # output could not be matched back to the frames it came from.
         frame_index = f['frame_index'][:] if 'frame_index' in f else None
         # Declarations carried with their datasets (docs/design/FRAME_STACK_CHANNELS.md §4).
+        # Only a 3-D frame stack is checked and has its declarations carried; every other
+        # input -- noisy files, 2-D stacks -- is read exactly as before.
         from dnndenoiser.data import frame_stack as fs
-        try:
-            if input_name == 'frames' and noisy.ndim == 3:
+        angle_attrs, order_basis = {}, None
+        if input_name == 'frames' and noisy.ndim == 3:
+            try:
                 # The channel axis only; conditions that matter for training alone (one
-                # frame, no frame_index) are left to train.
-                fs.check_channel_axis(noisy.shape, angles,
-                                      f['angles'].attrs.get(fs.ANGLE_KIND) if angles is not None else None,
-                                      f['angles'].attrs.get(fs.ANGLE_UNITS) if angles is not None else None,
-                                      times is not None)
-            angle_attrs = {}
-            if angles is not None:
-                for key, check in ((fs.ANGLE_KIND, fs.validate_angle_kind),
-                                   (fs.ANGLE_UNITS, fs.validate_angle_units)):
-                    value = check(f['angles'].attrs.get(key))
-                    if value is not None:
-                        angle_attrs[key] = value
-            order_basis = (fs.validate_order_basis(f['frame_index'].attrs.get(fs.ORDER_BASIS))
-                           if frame_index is not None and fs.ORDER_BASIS in f['frame_index'].attrs
-                           else None)
-        except ValueError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            sys.exit(1)
+                # frame, no frame_index, repeated indices) are left to train.
+                kind = f['angles'].attrs.get(fs.ANGLE_KIND) if angles is not None else None
+                units = f['angles'].attrs.get(fs.ANGLE_UNITS) if angles is not None else None
+                fs.check_channel_axis(noisy.shape, angles, kind, units, times is not None)
+                angle_attrs = {fs.ANGLE_KIND: fs.validate_angle_kind(kind),
+                               fs.ANGLE_UNITS: fs.validate_angle_units(units)}
+                if frame_index is not None and fs.ORDER_BASIS in f['frame_index'].attrs:
+                    order_basis = fs.validate_order_basis(
+                        f['frame_index'].attrs.get(fs.ORDER_BASIS))
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                sys.exit(1)
 
     lineage_record = None
     if noisy.shape[-1] != n_features:

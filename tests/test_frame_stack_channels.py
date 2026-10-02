@@ -38,12 +38,14 @@ def stack3(path, n=6, a=3, e=256, seed=0, frame_index=None, order_basis=None, **
     return path
 
 
-def raw3(path, n=6, a=3, e=16, **attrs):
+def raw3(path, n=6, a=3, e=16, frame_index="default", **attrs):
     """A 3-D stack written by hand, for planting faults the writer would refuse."""
     with h5py.File(path, "w") as f:
         f.create_dataset("frames", data=frames3(n, a, e))
         f.create_dataset("energy", data=np.linspace(0, 1, e))
-        f.create_dataset("frame_index", data=np.arange(n))
+        if frame_index is not None:
+            f.create_dataset("frame_index", data=np.arange(n) if isinstance(frame_index, str)
+                             else frame_index)
         if attrs.get("angles", "default") is not None:
             f.create_dataset("angles", data=attrs.get("angles", ANG[:a]))
             for key in ("angle_kind", "angle_units"):
@@ -66,7 +68,8 @@ def raw3(path, n=6, a=3, e=16, **attrs):
 @pytest.mark.parametrize("attrs, reason", [
     ({"angles": None}, "a 3-D 'frames' (6, 3, 16) needs an 'angles' dataset"),
     ({"angles": np.array([1.0, 2.0])}, "'angles' has 2 values but 'frames' has 3 channels"),
-    ({"angles": np.array([True, False, True])}, "'angles' must be a one-dimensional integer or float array"),
+    ({"a": 2, "angles": np.array([True, False])}, "'angles' must be a one-dimensional integer or float array"),
+    ({"a": 0, "angles": np.array([])}, "has no channels"),
     ({"angles": np.array([1.0, np.nan, 3.0])}, "'angles' contains non-finite values"),
     ({"angles": np.array([10.0, 10.0, 20.0])}, "'angles' repeats a value"),
     ({"angle_kind": None}, "'angles' needs the attribute 'angle_kind'"),
@@ -80,7 +83,8 @@ def raw3(path, n=6, a=3, e=16, **attrs):
     ({"energy": np.linspace(0, 1, 3)}, "'energy' has 3 points but 'frames' has 16 per frame"),
 ])
 def test_the_reader_refuses_a_malformed_channel_stack(tmp_path, attrs, reason):
-    path = raw3(tmp_path / "s.h5", **attrs)
+    attrs = dict(attrs)
+    path = raw3(tmp_path / "s.h5", a=attrs.pop("a", 3), **attrs)
     with pytest.raises(ValueError, match=reason.replace("(", r"\(").replace(")", r"\)")):
         read_frame_stack(path)
 
@@ -548,3 +552,94 @@ def test_workaround_indices_with_the_acquisition_id_give_a_documented_false_disj
             h[k].attrs["intensity_units"] = "counts"
     assert evaluate(monkeypatch, tmp_path, out)["evaluation_context"]["held_out_status"] == \
         "disjoint_by_identifiers"
+
+
+# ------------------------------------------------- review of 2a56df7, fixed findings
+
+
+@pytest.mark.parametrize("kind", ["other: a", "other:" + "x" * 200])
+def test_a_valid_other_kind_is_accepted_and_recorded(monkeypatch, tmp_path, kind):
+    stack = read_frame_stack(raw3(tmp_path / "s.h5", angle_kind=kind))
+    assert stack.angle_kind == kind
+    m = train(monkeypatch, stack3(tmp_path / "t.h5", angle_kind=kind), tmp_path / "m.pt",
+              method="moving-average")["provenance"]
+    assert m["training_data"]["angles"] == {"kind": kind, "units": "deg"}
+    assert prov.validate_manifest(json.loads(json.dumps(m)))
+
+
+@pytest.mark.parametrize("case", ["one-frame", "no-frame-index", "repeated-index"])
+def test_infer_accepts_a_channel_stack_that_only_training_would_refuse(monkeypatch, tmp_path,
+                                                                      ma_model, case):
+    n = 1 if case == "one-frame" else 6
+    index = {"one-frame": "default", "no-frame-index": None,
+             "repeated-index": np.array([0, 0, 1, 2, 3, 4])}[case]
+    path = raw3(tmp_path / "s.h5", n=n, e=256, frame_index=index)
+    with h5py.File(infer(monkeypatch, path, ma_model, tmp_path / "o.h5")) as o:
+        assert o["denoised"].shape == (n, 3, 256)
+
+
+def test_infer_checks_the_channel_axis_without_a_frame_index(monkeypatch, capsys, tmp_path, ma_model):
+    path = raw3(tmp_path / "s.h5", e=256, frame_index=None, angles=None)
+    assert "needs an 'angles' dataset" in refuse(monkeypatch, capsys, "infer", "-d", str(path), "-m",
+                                                 str(ma_model), "-o", str(tmp_path / "o.h5"),
+                                                 "--device", "cpu")
+
+
+def test_infer_reads_noisy_files_and_flat_stacks_exactly_as_before(monkeypatch, tmp_path, ma_model):
+    """Declarations outside the vocabulary on a noisy file or a 2-D stack: not checked,
+    not carried."""
+    noisy = tmp_path / "n.h5"
+    with h5py.File(noisy, "w") as f:
+        f.create_dataset("noisy", data=frames3(n=4, a=1)[:, 0])
+        f.create_dataset("energy", data=np.linspace(0, 1, 256))
+        f.create_dataset("angles", data=np.array([1.0, 2.0]))
+        f["angles"].attrs["angle_units"] = "rad"
+        f["angles"].attrs["angle_kind"] = np.int64(7)
+        f.create_dataset("frame_index", data=np.arange(4))
+        f["frame_index"].attrs["order_basis"] = "guessed"
+    flat = tmp_path / "f.h5"
+    with h5py.File(flat, "w") as f:
+        f.create_dataset("frames", data=frames3(n=4, a=1)[:, 0])
+        f.create_dataset("energy", data=np.linspace(0, 1, 256))
+        f.create_dataset("angles", data=np.array([1.0]))
+        f["angles"].attrs["angle_units"] = "radian"
+        f.create_dataset("frame_index", data=np.arange(4))
+        f["frame_index"].attrs["order_basis"] = "guessed"
+    for path in (noisy, flat):
+        with h5py.File(infer(monkeypatch, path, ma_model, tmp_path / f"o_{path.stem}.h5")) as o:
+            assert dict(o["angles"].attrs) == {}
+            assert dict(o["frame_index"].attrs) == {}
+
+
+def test_the_basis_is_unknown_without_a_frame_index(monkeypatch, tmp_path):
+    n, c = frames3(n=8, a=1, e=32)[:, 0], frames3(n=8, a=1, e=32, seed=1)[:, 0]
+    data = write(tmp_path / "s.h5", n, None, c, declaration=TRUTH)            # no frame_index
+    m = train(monkeypatch, data, tmp_path / "m.pt")["provenance"]
+    assert m["training_data"]["frame_index_basis"] == "unknown"
+    bad = json.loads(json.dumps(m))
+    bad["training_data"]["frame_index_basis"] = "recorded"
+    with pytest.raises(prov.MalformedProvenance, match="'unknown' when the training file has no frame_index"):
+        prov.validate_manifest(bad)
+
+
+@pytest.mark.parametrize("attrs, expected", [({}, {"kind": None, "units": None}),
+                                             ({"angle_kind": "emission", "angle_units": "deg"},
+                                              {"kind": "emission", "units": "deg"})])
+def test_a_flat_training_file_with_angles_records_them(monkeypatch, tmp_path, attrs, expected):
+    n, c = frames3(n=8, a=1, e=32)[:, 0], frames3(n=8, a=1, e=32, seed=1)[:, 0]
+    data = write(tmp_path / "s.h5", n, None, c, declaration=TRUTH)
+    with h5py.File(data, "a") as f:
+        f.create_dataset("angles", data=np.array([5.0, 6.0]))
+        for k, v in attrs.items():
+            f["angles"].attrs[k] = v
+    m = train(monkeypatch, data, tmp_path / "m.pt")["provenance"]
+    assert m["training_data"]["angles"] == expected
+
+
+def test_a_version_1_key_error_names_version_1(monkeypatch, tmp_path):
+    m = train(monkeypatch, stack3(tmp_path / "s.h5"), tmp_path / "m.pt",
+              method="moving-average")["provenance"]
+    v1 = as_version_1(m)
+    v1["training_data"]["angles"] = None
+    with pytest.raises(prov.MalformedProvenance, match="fields do not match dnd-provenance-1"):
+        prov.validate_manifest(v1)

@@ -65,9 +65,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - **Breaking: `infer` refuses a 3-D frame stack whose channel axis is not declared**
-  (no `angles`, malformed `angles`, or a `times` dataset), and `train` refuses an
-  `angle_kind`, `angle_units` or `order_basis` attribute outside its vocabulary. 2-D
-  stacks are read as before. Checkpoints written from this version carry a version-2
+  (no `angles`, malformed `angles`, no channels, or a `times` dataset), and `train`
+  refuses an `angle_kind`, `angle_units` or `order_basis` attribute outside its
+  vocabulary. `infer` reads `noisy` files and 2-D stacks exactly as before. Checkpoints written from this version carry a version-2
   manifest, which earlier versions refuse.
 - **Breaking: an evaluation of a model on its own training rows is renamed.** When
   `held_out_status` is `not_held_out`, the dB keys carry the prefix `training_fit_`

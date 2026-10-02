@@ -122,14 +122,14 @@ def _check_plain(value, path: str) -> None:
     raise MalformedProvenance(f"'{path}' holds a {type(value).__name__}, not a JSON value")
 
 
-def _keys(obj, expected: set, path: str) -> None:
+def _keys(obj, expected: set, path: str, schema: str = SCHEMA) -> None:
     if not isinstance(obj, dict):
         raise MalformedProvenance(f"'{path}' must be an object, got {type(obj).__name__}")
     if set(obj) != expected:
         missing, unknown = sorted(expected - set(obj)), sorted(set(obj) - expected)
         detail = "; ".join(x for x in (f"missing {missing}" if missing else "",
                                        f"unknown {unknown}" if unknown else "") if x)
-        raise MalformedProvenance(f"'{path}' fields do not match {SCHEMA}: {detail}")
+        raise MalformedProvenance(f"'{path}' fields do not match {schema}: {detail}")
 
 
 _ISO_UTC = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
@@ -253,6 +253,9 @@ def _validate_declared_channels(td: dict) -> None:
                     raise MalformedProvenance(f"'training_data.angles.{key}': {exc}") from None
     _require(td["frame_index_basis"] in fs.ORDER_BASES, "training_data.frame_index_basis",
              f"one of {list(fs.ORDER_BASES)}", td["frame_index_basis"])
+    _require("frame_index" in td["layout"] or td["frame_index_basis"] == "unknown",
+             "training_data.frame_index_basis",
+             "'unknown' when the training file has no frame_index", td["frame_index_basis"])
 
 
 def validate_manifest(obj) -> dict:
@@ -307,7 +310,7 @@ def validate_manifest(obj) -> dict:
 
     td = obj["training_data"]
     _keys(td, TRAINING_DATA_KEYS if obj["schema"] == SCHEMA else TRAINING_DATA_KEYS_V1,
-          "training_data")
+          "training_data", obj["schema"])
     validate_digest_object(td["digest"], "training_data.digest")
     _require(type(td["array_digests"]) is dict
              and set(td["array_digests"]) <= {"noisy", "frames", "clean"},

@@ -280,8 +280,10 @@ def channel_targets(
     frames = np.asarray(frames)
     if frames.ndim != 3:
         raise ValueError(f"frames must be (n_frames, n_channels, n_features), got {frames.shape}")
-    n, c, e = frames.shape
-    return moving_average_targets(frames.reshape(n, c * e), frame_indices, W).reshape(n, c, e)
+    # Channel by channel: the definition itself, and memory that does not grow with the
+    # number of channels (one call on the flattened frames would hold n x W x c x e).
+    return np.stack([moving_average_targets(frames[:, k], frame_indices, W)
+                     for k in range(frames.shape[1])], axis=1)
 
 
 def resample(arr: np.ndarray, n_new: int) -> np.ndarray:

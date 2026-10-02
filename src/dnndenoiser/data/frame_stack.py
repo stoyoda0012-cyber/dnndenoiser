@@ -163,6 +163,8 @@ def check_channel_axis(frames_shape: tuple, angles, angle_kind, angle_units,
     if len(frames_shape) != 3:
         return
     n_angles = frames_shape[1]
+    if n_angles == 0:
+        raise ValueError(f"a 3-D '{FRAMES}' {tuple(frames_shape)} has no channels")
     if angles is None:
         raise ValueError(f"a 3-D '{FRAMES}' {tuple(frames_shape)} needs an '{ANGLES}' "
                          "dataset naming its channels")
