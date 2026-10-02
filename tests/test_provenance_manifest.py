@@ -236,7 +236,7 @@ def test_no_run_produced_value_names_a_path_a_host_or_a_user(trained, tmp_path):
 
 
 def test_the_commit_is_recorded_for_this_checkout_only(tmp_path):
-    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True)
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, encoding="utf-8")
     if head.returncode != 0:
         pytest.skip("not a git checkout")
     mine = prov.code_record(REPO / "src" / "dnndenoiser")
@@ -745,7 +745,7 @@ def test_tree_clean_follows_tracked_changes_and_untracked_package_files(tmp_path
     pkg = make_checkout(tmp_path / "co")
     root = tmp_path / "co"
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True,
-                          text=True, check=True).stdout.strip()
+                          text=True, encoding="utf-8", check=True).stdout.strip()
     assert prov.code_record(pkg) == {"commit": head, "tree_clean": True}
     (root / "notes.txt").write_text("untracked outside the package", encoding="utf-8")
     assert prov.code_record(pkg)["tree_clean"] is True
