@@ -541,9 +541,11 @@ review before merge.
   array the method trained on (`frames` for moving-average, `noisy` otherwise), since a
   file may hold both; the versions note is given only when identities were compared
   (rule 2 or the signal identity), not on a content match; `input_array_digest` is
-  validated only where it is used. §5.2's "new draws" holds for Poisson noise; with the
-  same seed, Gaussian noise repeats its deviates rescaled, so `disjoint_by_identifiers`
-  stays literally true but the noise is not independent (QUICK_START says so).
+  validated only where it is used. §5.2's "new draws" overstates: with the same seed the
+  noise comes from the same random stream, so Gaussian noise repeats rescaled, mixed noise
+  stays highly correlated when only the Gaussian part changes, and Poisson noise at a
+  nearby level can be strongly correlated. `disjoint_by_identifiers` stays literally true
+  (the arrays differ); it was never a claim of independence (QUICK_START says so).
 
 ## Confirmation
 

@@ -286,9 +286,11 @@ reports it as `held_out_status` (also a top-level key), with `rows_in_training`:
 with the same seed and settings and a smaller `-n` is the training file's first rows
 (`not_held_out`); one with the same seed and another noise level holds the same signals
 (`disjoint_by_identifiers`, and the reference is reported as the model's training target).
-Its noise is new for Poisson noise, but **not for Gaussian noise**: the same seed draws the
-same Gaussian deviates, only rescaled. Use another `--seed` for a held-out synthetic test
-set.
+Its noise is **not independent** of the training noise: the same seed draws it from the
+same random stream, so Gaussian noise repeats rescaled, mixed noise stays highly
+correlated when only `--gaussian-std` changes, and Poisson noise at a nearby level can be
+strongly correlated. `disjoint_by_identifiers` says only that the arrays differ. Use
+another `--seed` for a held-out synthetic test set.
 
 ## Python API (minimal example)
 

@@ -1172,12 +1172,15 @@ def cmd_evaluate(args):
         try:
             signal = (None if reference_signal is None
                       else prov._attr_text(reference_signal, f"reference {prov.SIGNAL_IDENTITY}"))
+        except prov.MalformedProvenance as exc:
+            fail(f"malformed provenance metadata: {exc}")
+        try:
             input_array_digest = (None if raw_input_digest is None
                                   else prov.validate_digest_object(json.loads(
                                       prov._attr_text(raw_input_digest, prov.INPUT_ARRAY_DIGEST)),
                                       prov.INPUT_ARRAY_DIGEST))
         except (prov.MalformedProvenance, ValueError) as exc:
-            fail(f"malformed provenance metadata: {exc}")
+            fail(f"malformed provenance metadata: {prov.INPUT_ARRAY_DIGEST}: {exc}")
         training = prov.held_out(manifest, noisy=noisy, input_array_digest=input_array_digest,
                                  acquisition_id=acquisition_id, frame_index=frame_index)
         used, reference_rows = prov.reference_in_training(

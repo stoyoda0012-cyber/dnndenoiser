@@ -97,6 +97,8 @@ def test_the_training_file_itself_is_not_held_out_and_renamed(monkeypatch, capsy
                 "evaluation_context"}
     assert set(m) == expected
     assert "=== Fit to the training data — Error against the synthetic truth ===" in printed
+    assert ("held-out status not_held_out (established, 8 of 8 rows in training)") in printed
+    assert "rule" not in c and "rule" not in m
     assert ev.training_fit_caveat(8, 8) in c["caveats"]
 
 
@@ -652,8 +654,11 @@ def test_a_malformed_input_digest_matters_only_with_model_records(monkeypatch, c
     assert ctx(evaluate(monkeypatch, tmp_path, plain))["held_out_status"] == "unknown"
     with h5py.File(records, "a") as f:
         f["noisy"].attrs[prov.INPUT_ARRAY_DIGEST] = "not json"
-    assert "malformed provenance metadata" in refuse(monkeypatch, capsys, "evaluate", "-d",
-                                                     str(records))
+    for value in ("not json", "[1]", '{"sha256": "x"}'):
+        with h5py.File(records, "a") as f:
+            f["noisy"].attrs[prov.INPUT_ARRAY_DIGEST] = value
+        err = refuse(monkeypatch, capsys, "evaluate", "-d", str(records))
+        assert "malformed provenance metadata: input_array_digest" in err, value
 
 
 def test_printed_undefined_lines_follow_the_rename(monkeypatch, capsys, tmp_path, sup, records):
@@ -667,3 +672,54 @@ def test_printed_undefined_lines_follow_the_rename(monkeypatch, capsys, tmp_path
     assert "undefined: training_fit_snr_gain_mean -- no spectrum has non-zero reference power" in printed
     assert "undefined: snr_gain_mean" not in printed
     assert noisy.shape[0] == 8
+
+
+def test_rule_one_compares_noisy_for_a_clean_target_method(monkeypatch, tmp_path):
+    """The mirror of the moving-average case: a noise2clean file may also hold frames."""
+    data = supervised_file(tmp_path / "d.h5")
+    with h5py.File(data, "a") as f:
+        f.create_dataset("frames", data=(f["noisy"][:][::-1] * 1.5).astype(np.float32))
+        frames = f["frames"][:]
+        clean = f["clean"][:]
+    train(monkeypatch, data, tmp_path / "m.pt")
+    other = write(tmp_path / "o.h5", frames, None, clean, declaration=TRUTH)
+    out = infer(monkeypatch, other, tmp_path / "m.pt", tmp_path / "out.h5")
+    assert ctx(evaluate(monkeypatch, tmp_path, out))["held_out_status"] == "unknown"
+    own = infer(monkeypatch, data, tmp_path / "m.pt", tmp_path / "own.h5")
+    assert ctx(evaluate(monkeypatch, tmp_path, own))["held_out_status"] == "not_held_out"
+
+
+def manifest_for_rules(method="noise2clean"):
+    return {"command": {"method": method},
+            "training_data": {"array_digests": {}, "acquisition_id": "A",
+                              "frame_index_runs": [[0, 7]]}}
+
+
+@pytest.mark.parametrize("acq, frames, rule", [
+    ("A", np.arange(5, 9), 2), ("A", np.arange(20, 24), 3), ("B", np.arange(0, 4), 3),
+    ("A", None, 4), (None, np.arange(0, 4), 4)])
+def test_held_out_reports_which_rule_decided(acq, frames, rule):
+    got = prov.held_out(manifest_for_rules(), noisy=np.ones((4, 3)), input_array_digest=None,
+                        acquisition_id=acq, frame_index=frames)
+    assert got["rule"] == rule
+
+
+def test_no_versions_note_when_signal_identities_differ(monkeypatch, tmp_path):
+    """The training clean as an external reference, established by content: a different
+    signal identity on it was not an identity comparison."""
+    train_file = generate(monkeypatch, tmp_path / "train.h5", n=8)
+    train(monkeypatch, train_file, tmp_path / "m.pt")
+    test_file = generate(monkeypatch, tmp_path / "test.h5", n=8, seed=7)
+    out = infer(monkeypatch, test_file, tmp_path / "m.pt", tmp_path / "o.h5")
+    ref_file = tmp_path / "ref.h5"
+    with h5py.File(train_file) as t, h5py.File(ref_file, "w") as r:
+        r.create_dataset("clean", data=t["clean"][:])
+        decl = json.loads(t["clean"].attrs["reference_origin"])
+        decl["generator"] = "dnndenoiser 9.9.9 SyntheticGenerator"
+        ref.write_declaration(r["clean"], decl)
+        r["clean"].attrs["signal_identity"] = "generate-signal:ffffffffffffffff"
+        r.create_dataset("energy", data=t["energy"][:])
+    c = ctx(evaluate(monkeypatch, tmp_path, out, "--clean", str(ref_file), "--reference",
+                     "external", "--assert-alignment", "rows"))
+    assert c["relationship"]["used_in_model_development"] == "yes"
+    assert ev.VERSIONS_CAVEAT not in c["caveats"]
