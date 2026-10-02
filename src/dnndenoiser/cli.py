@@ -296,12 +296,8 @@ def cmd_train_moving_average(args, passed_flags):
     import torch
 
     from dnndenoiser.data.frame_stack import read_frame_stack
-    from dnndenoiser.training.selfsupervised import (
-        TARGET_LENGTH,
-        moving_average_targets,
-        resample,
-        train_selfsupervised,
-    )
+    from dnndenoiser.training import selfsupervised as ss
+    from dnndenoiser.training.selfsupervised import TARGET_LENGTH, channel_targets, resample
 
     refused = [flag for flag in _MOVING_AVERAGE_FIXED if flag in passed_flags]
     if refused:
@@ -326,10 +322,23 @@ def cmd_train_moving_average(args, passed_flags):
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
     contiguous = np.array_equal(stack.frame_index, np.arange(stack.n_frames))
-    print(f"  Frames: {stack.n_frames} x {stack.n_energy}")
-    print(f"  Acquisition order: {'contiguous' if contiguous else 'explicit'}")
+    n_frames, n_angles = stack.n_frames, stack.n_angles
+    if stack.frames.ndim == 3:
+        print(f"  Frames: {n_frames} x {n_angles} {stack.angle_kind} angle channels "
+              f"({stack.angle_units}) x {stack.n_energy}")
+    else:
+        print(f"  Frames: {n_frames} x {stack.n_energy}")
+    print(f"  Acquisition order: {'contiguous' if contiguous else 'explicit'}, "
+          f"basis {stack.order_basis}")
+    if stack.order_basis != "recorded":
+        print(f"Warning: the acquisition order is {stack.order_basis!r}, not recorded. "
+              "Every target is built from frame_index; an order that is wrong changes "
+              "them all without any visible error.", file=sys.stderr)
 
-    frames = np.asarray(stack.frames, dtype=np.float32)
+    # Rows are the (frame, channel) pairs, frame-major (docs/design/FRAME_STACK_CHANNELS.md
+    # §3). A 2-D stack is the one-channel case: the same rows, the same arithmetic.
+    frames = np.asarray(stack.frames, dtype=np.float32).reshape(n_frames * n_angles,
+                                                                stack.n_energy)
     if stack.n_energy != TARGET_LENGTH:
         print(f"  Resampling {stack.n_energy} -> {TARGET_LENGTH} points")
         frames = resample(frames, TARGET_LENGTH)
@@ -353,16 +362,20 @@ def cmd_train_moving_average(args, passed_flags):
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    window = min(args.window, stack.n_frames - 1)
+    window = min(args.window, n_frames - 1)
     if window != args.window:
-        print(f"  Window clamped to {window} ({stack.n_frames} frames available)")
-    targets = moving_average_targets(normalised, stack.frame_index, window)
+        print(f"  Window clamped to {window} ({n_frames} frames available)")
+    # One neighbour set per frame, the same in every channel: the targets of all channels
+    # at once, with each channel's values averaged only with the same channel's.
+    targets = channel_targets(
+        normalised.reshape(n_frames, n_angles, TARGET_LENGTH), stack.frame_index, window,
+    ).reshape(n_frames * n_angles, TARGET_LENGTH)
 
     device = _resolve_device(args.device)
     print(f"Device: {device}")
     print(f"\nTraining (window={window}, epochs={args.epochs}, batch={args.batch_size})...")
     losses: list = []
-    model = train_selfsupervised(
+    model = ss.train_selfsupervised(
         normalised, targets,
         epochs=args.epochs, batch_size=args.batch_size, device=device, seed=args.seed,
         losses=losses,
@@ -818,6 +831,29 @@ def cmd_infer(args):
         # A frame's acquisition index is what identifies it in a stack; without it the
         # output could not be matched back to the frames it came from.
         frame_index = f['frame_index'][:] if 'frame_index' in f else None
+        # Declarations carried with their datasets (docs/design/FRAME_STACK_CHANNELS.md §4).
+        from dnndenoiser.data import frame_stack as fs
+        try:
+            if input_name == 'frames' and noisy.ndim == 3:
+                # The channel axis only; conditions that matter for training alone (one
+                # frame, no frame_index) are left to train.
+                fs.check_channel_axis(noisy.shape, angles,
+                                      f['angles'].attrs.get(fs.ANGLE_KIND) if angles is not None else None,
+                                      f['angles'].attrs.get(fs.ANGLE_UNITS) if angles is not None else None,
+                                      times is not None)
+            angle_attrs = {}
+            if angles is not None:
+                for key, check in ((fs.ANGLE_KIND, fs.validate_angle_kind),
+                                   (fs.ANGLE_UNITS, fs.validate_angle_units)):
+                    value = check(f['angles'].attrs.get(key))
+                    if value is not None:
+                        angle_attrs[key] = value
+            order_basis = (fs.validate_order_basis(f['frame_index'].attrs.get(fs.ORDER_BASIS))
+                           if frame_index is not None and fs.ORDER_BASIS in f['frame_index'].attrs
+                           else None)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
 
     lineage_record = None
     if noisy.shape[-1] != n_features:
@@ -923,10 +959,14 @@ def cmd_infer(args):
                 f['clean'].attrs[prov.SIGNAL_IDENTITY] = signal_identity
         if angles is not None:
             f.create_dataset('angles', data=angles)
+            for key, value in angle_attrs.items():
+                f['angles'].attrs[key] = value
         if times is not None:
             f.create_dataset('times', data=times)
         if frame_index is not None:
             f.create_dataset('frame_index', data=frame_index)
+            if order_basis is not None:
+                f['frame_index'].attrs[fs.ORDER_BASIS] = order_basis
 
     print(f"Saved: {output_path}")
     print("Done.")

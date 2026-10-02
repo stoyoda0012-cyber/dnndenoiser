@@ -1,7 +1,7 @@
 # Design: frame stacks with angle channels, and what the acquisition order rests on
 
-**Status: adopted 2026-10-02 (revision 2, after two independent audits); not yet
-implemented.** Step 3 of the improvement plan that follows a reproducibility assessment of a
+**Status: adopted 2026-10-02 (revision 2, after two independent audits); implemented (see
+the CHANGELOG).** Step 3 of the improvement plan that follows a reproducibility assessment of a
 published study. It changes what the self-supervised `moving-average` method trains on for
 a new input form — which frames are a frame's neighbours, and over what the normalisation
 is taken — so under `AGENTS.md` §8 it is independently audited before any code is written.

@@ -33,7 +33,8 @@ import numpy as np
 
 from dnndenoiser import digest as dg
 
-SCHEMA = "dnd-provenance-1"
+SCHEMA = "dnd-provenance-2"      # written by this version
+SCHEMA_V1 = "dnd-provenance-1"   # still read, exactly as stored
 CHECKPOINT_MANIFEST = "provenance"
 CHECKPOINT_DIGEST = "model_digest"
 OUTPUT_MANIFEST = "model_provenance"          # dataset in an infer output
@@ -60,9 +61,12 @@ SOFTWARE_KEYS = {"dnndenoiser", "python", "numpy", "torch", "h5py", "torch_cuda"
                  "platform", "device"}
 CODE_KEYS = {"commit", "tree_clean"}
 COMMAND_KEYS = {"method", "arguments", "flags_passed", "effective", "seeds"}
-TRAINING_DATA_KEYS = {"digest", "array_digests", "layout", "rows_used", "intensity_units",
-                      "acquisition_id", "signal_identity", "frame_index_runs",
-                      "reference_declaration"}
+TRAINING_DATA_KEYS_V1 = {"digest", "array_digests", "layout", "rows_used", "intensity_units",
+                         "acquisition_id", "signal_identity", "frame_index_runs",
+                         "reference_declaration"}
+# Version 2 adds the declared angle channels and order basis
+# (docs/design/FRAME_STACK_CHANNELS.md §5).
+TRAINING_DATA_KEYS = TRAINING_DATA_KEYS_V1 | {"angles", "frame_index_basis"}
 PREPROCESSING_KEYS = {"resampling", "normalisation"}
 RESULT_KEYS = {"epochs", "final_loss"}
 TARGET_KINDS = {"clean": {"kind"},
@@ -229,6 +233,28 @@ def _validate_effective(eff, method: str) -> None:
              "a positive number", loss["delta"])
 
 
+def _validate_declared_channels(td: dict) -> None:
+    """Version 2's two fields, by their value rules."""
+    from dnndenoiser.data import frame_stack as fs
+    angles = td["angles"]
+    has_layout = "angles" in td["layout"]
+    if angles is None:
+        _require(not has_layout, "training_data.angles",
+                 "an object when the training file has an angles dataset", angles)
+    else:
+        _require(has_layout, "training_data.angles",
+                 "null when the training file has no angles dataset", angles)
+        _keys(angles, {"kind", "units"}, "training_data.angles")
+        for key, check in (("kind", fs.validate_angle_kind), ("units", fs.validate_angle_units)):
+            if angles[key] is not None:
+                try:
+                    check(angles[key])
+                except ValueError as exc:
+                    raise MalformedProvenance(f"'training_data.angles.{key}': {exc}") from None
+    _require(td["frame_index_basis"] in fs.ORDER_BASES, "training_data.frame_index_basis",
+             f"one of {list(fs.ORDER_BASES)}", td["frame_index_basis"])
+
+
 def validate_manifest(obj) -> dict:
     """Check every field's presence and type (design §2); return it unchanged if valid.
     Anything else -- a missing or unknown field, a wrong type at any depth -- is refused,
@@ -237,9 +263,9 @@ def validate_manifest(obj) -> dict:
 
     _keys(obj, MANIFEST_KEYS, "provenance")
     _check_plain(obj, "")
-    if obj["schema"] != SCHEMA:
+    if obj["schema"] not in (SCHEMA, SCHEMA_V1):
         raise MalformedProvenance(f"unknown provenance schema {obj['schema']!r}; this "
-                                  f"version reads {SCHEMA}")
+                                  f"version reads {SCHEMA} and {SCHEMA_V1}")
     _require(type(obj["created_utc"]) is str and bool(_ISO_UTC.fullmatch(obj["created_utc"])),
              "created_utc", "an ISO 8601 UTC time such as 2026-10-02T12:00:00Z",
              obj["created_utc"])
@@ -280,7 +306,8 @@ def validate_manifest(obj) -> dict:
              "command.seeds.targets", "null or a list of two integers", targets_seeds)
 
     td = obj["training_data"]
-    _keys(td, TRAINING_DATA_KEYS, "training_data")
+    _keys(td, TRAINING_DATA_KEYS if obj["schema"] == SCHEMA else TRAINING_DATA_KEYS_V1,
+          "training_data")
     validate_digest_object(td["digest"], "training_data.digest")
     _require(type(td["array_digests"]) is dict
              and set(td["array_digests"]) <= {"noisy", "frames", "clean"},
@@ -305,6 +332,8 @@ def validate_manifest(obj) -> dict:
         for r in runs) and all(runs[i][0] > runs[i - 1][1] + 1 for i in range(1, len(runs))))
     _require(ok, "training_data.frame_index_runs",
              "null or sorted, disjoint, non-adjacent [first, last] integer runs", runs)
+    if obj["schema"] == SCHEMA:
+        _validate_declared_channels(td)
     if td["reference_declaration"] is not None:
         try:
             ref.validate_origin(td["reference_declaration"])
@@ -546,6 +575,19 @@ def training_data_record(path, input_name: str) -> dict:
                 raise MalformedProvenance(f"the training '{name}' must be a numeric array, "
                                           f"got shape {arr.shape} and dtype {arr.dtype}")
             stored[name] = arr
+        from dnndenoiser.data import frame_stack as fs
+        try:
+            # Declarations are refused outside their vocabulary, for every method.
+            basis = (fs.validate_order_basis(f["frame_index"].attrs.get(fs.ORDER_BASIS))
+                     if "frame_index" in f else "unknown")
+            declared_angles = None
+            if "angles" in f and isinstance(f["angles"], h5py.Dataset):
+                declared_angles = {
+                    "kind": fs.validate_angle_kind(f["angles"].attrs.get(fs.ANGLE_KIND)),
+                    "units": fs.validate_angle_units(f["angles"].attrs.get(fs.ANGLE_UNITS)),
+                }
+        except ValueError as exc:
+            raise MalformedProvenance(str(exc)) from None
         attrs = f[input_name].attrs
         units = _attr_text(attrs.get(ref.UNITS_ATTR), f"'{input_name}' {ref.UNITS_ATTR}")
         acquisition = _attr_text(attrs.get(ref.ACQUISITION_ATTR),
@@ -581,6 +623,8 @@ def training_data_record(path, input_name: str) -> dict:
         "signal_identity": signal,
         "frame_index_runs": frame_index_runs(index),
         "reference_declaration": declaration,
+        "angles": declared_angles if "angles" in stored else None,
+        "frame_index_basis": basis,
     }
 
 
@@ -696,7 +740,7 @@ def model_identity(records: Optional[dict]):
         return "unknown"
     m = records["manifest"]
     import hashlib
-    return {
+    identity = {
         "model_digest": records["model_digest"],
         "manifest_digest": hashlib.sha256(records["manifest_text"].encode("utf-8")).hexdigest(),
         "method": m["command"]["method"],
@@ -705,6 +749,13 @@ def model_identity(records: Optional[dict]):
         "software": {"dnndenoiser": m["software"]["dnndenoiser"]},
         "code": dict(m["code"]),
     }
+    # Declarations, not checked; a version-1 manifest did not record them.
+    v2 = m["schema"] == SCHEMA
+    identity["training_data"]["declared_angles"] = (m["training_data"]["angles"] if v2
+                                                   else "not recorded")
+    identity["training_data"]["declared_frame_index_basis"] = (
+        m["training_data"]["frame_index_basis"] if v2 else "not recorded")
+    return identity
 
 
 def flags_from_argv(known_options) -> list:

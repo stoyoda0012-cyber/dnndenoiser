@@ -43,6 +43,17 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   recognised as a subset; the same seed with another noise level is recognised as the
   same signals; its noise comes from the same random stream and is not independent of
   the training noise (another `--seed` gives held-out synthetic data).
+- **Frame stacks with angle channels.** `frames` may be `(n_frames, n_angles, energy)`,
+  with an `angles` dataset naming the channels (finite, non-repeated, in the order of the
+  axis; `angle_kind` and `angle_units` required). `moving-average` builds every target
+  inside its own channel whatever `--window`, with one normalisation over all channels
+  and frame-major rows; a one-channel stack trains to the same weights as the 2-D stack.
+  `frame_index` may declare an `order_basis` (`recorded`, `inferred`, `unknown`), and
+  `moving-average` warns when it is not `recorded`. The declarations are recorded — in
+  `infer` output and in the model's manifest, now `dnd-provenance-2` (version-1 records
+  are still read, unchanged) — and never checked. The workaround of one 2-D stack with
+  separated indices is deprecated. Design and two independent audits:
+  `docs/design/FRAME_STACK_CHANNELS.md`.
 - **[`docs/WHEN_TO_TRUST.md`](docs/WHEN_TO_TRUST.md)** — what has been measured about
   where a trained model stops being trustworthy, one question at a time. The first
   answer is how far a shift in energy can be trusted, from the P2-A record: the
@@ -53,6 +64,11 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **Breaking: `infer` refuses a 3-D frame stack whose channel axis is not declared**
+  (no `angles`, malformed `angles`, or a `times` dataset), and `train` refuses an
+  `angle_kind`, `angle_units` or `order_basis` attribute outside its vocabulary. 2-D
+  stacks are read as before. Checkpoints written from this version carry a version-2
+  manifest, which earlier versions refuse.
 - **Breaking: an evaluation of a model on its own training rows is renamed.** When
   `held_out_status` is `not_held_out`, the dB keys carry the prefix `training_fit_`
   (`training_fit_snr_gain_mean`, …, `training_fit_agreement_db_change_std`), the printed

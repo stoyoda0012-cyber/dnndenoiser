@@ -178,9 +178,10 @@ nearest *other* frames (leave-one-out).
 
 | Dataset | Shape | Notes |
 |---------|-------|-------|
-| `frames` | (n_frames, energy) | the acquired frames, in any row order |
+| `frames` | (n_frames, energy) or (n_frames, n_angles, energy) | the acquired frames, in any row order; energy is the last axis |
 | `energy` | (energy,) | energy axis |
-| `frame_index` | (n_frames,) | acquisition order; **integer and unique** |
+| `frame_index` | (n_frames,) | acquisition order; **integer and unique**; one per frame, shared by its channels. Optional attribute `order_basis`: `recorded`, `inferred` or `unknown` |
+| `angles` | (n_angles,) | required with a 3-D `frames`: one finite, non-repeated value per channel, in the order of the axis; attributes `angle_kind` (`emission`, `analyser` or `other:<description>`) and `angle_units` (`deg`) |
 
 `frame_index` is what "temporally nearest" is measured on, so a file that
 omits it cannot be told from one whose frames were shuffled. **Duplicate
@@ -212,9 +213,34 @@ dnndenoiser infer -d stack.h5 -m model.pt -o denoised.h5
 resamples, every array it writes — `noisy`, `clean`, `denoised` and `energy` —
 is on the resampled grid.
 
-**Several channels in one stack.** To train one model on the frames of several
-channels — the emission-angle channels of an angle-resolved measurement, for
-example — put them in one stack and give channel *k* the indices
+**Angle channels.** To train one model on the frames of several angle channels, give
+`frames` a channel axis, `(n_frames, n_angles, energy)`, and name the channels in
+`angles`. Each frame's target is then built from its `--window` nearest other frames **in
+its own channel**, whatever the window; the min–max normalisation is taken over every
+channel together (so a channel much dimmer than the brightest contributes little to the
+loss, and the trained range is the whole stack's). Training rows are the (frame, channel)
+pairs, frame-major. `infer` checks the channel axis and carries `angles` and its
+attributes; `evaluate` compares `angles` with a reference that carries them.
+
+```python
+from dnndenoiser.data.frame_stack import write_frame_stack
+write_frame_stack("stack.h5", frames, energy, frame_index,           # frames: (n, A, E)
+                  angles=angles, angle_kind="emission", angle_units="deg",
+                  order_basis="inferred")
+```
+
+**What is declared and what is checked.** `angle_kind`, `angle_units` and `order_basis`
+are recorded — in the stack, in `infer` output and in the model's manifest
+(`evaluation_context.model.training_data.declared_angles`,
+`declared_frame_index_basis`) — and **never checked**. A permuted, offset or reversed
+channel axis changes no target, so training cannot detect it; only the angle *values* are
+compared, by `evaluate`, against a reference that carries them. `order_basis` says
+whether the order came from the instrument (`recorded`) or was derived by you
+(`inferred`); `train` warns when it is not `recorded`, because every target is only as
+right as the order. Leave it out rather than write `recorded` by default.
+
+**Several channels in one 2-D stack (deprecated).** Before the channel axis, the recipe
+was one 2-D stack with channel *k* at the indices
 *k* × *stride* + *t*, with *t* = 0, 1, … the acquisition order within the channel and
 
     stride ≥ (the largest channel's number of frames) + --window
@@ -228,7 +254,9 @@ and at 2 when a tie falls that way (an earlier version of this page gave that st
 safe). **So does a window as large
 as a channel:** `train` limits the window by the frames in the whole stack, not in one
 channel, so the nearest others of a frame run out of its own channel and reach into the
-next. Numbering the channels one after another
+next. These indices are not acquisition order: do not give such a stack the
+acquisition's `acquisition_id`, or `evaluate` can compare them with the acquisition's own
+`frame_index` and report its frames as disjoint from the training data. Numbering the channels one after another
 instead would make the last frame of one channel a neighbour of the first frame
 of the next.
 

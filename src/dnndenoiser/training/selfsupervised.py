@@ -263,6 +263,27 @@ def _interpolation_matrix(n_old: int, n_new: int) -> np.ndarray:
     return matrix
 
 
+def channel_targets(
+    frames: np.ndarray,
+    frame_indices: np.ndarray,
+    W: int,
+) -> np.ndarray:
+    """Leave-one-out moving-average targets for a stack with a channel axis.
+
+    ``frames`` is ``(n_frames, n_channels, n_features)``. There is one neighbour set per
+    frame -- chosen from ``frame_indices`` exactly as :func:`moving_average_targets`
+    chooses it, ties included -- and it is the same in every channel; each channel's
+    target averages only that channel's frames (docs/design/FRAME_STACK_CHANNELS.md §3).
+    Bit for bit this is :func:`moving_average_targets` applied to each channel alone,
+    for float32 frames. Returns ``(n_frames, n_channels, n_features)`` float64.
+    """
+    frames = np.asarray(frames)
+    if frames.ndim != 3:
+        raise ValueError(f"frames must be (n_frames, n_channels, n_features), got {frames.shape}")
+    n, c, e = frames.shape
+    return moving_average_targets(frames.reshape(n, c * e), frame_indices, W).reshape(n, c, e)
+
+
 def resample(arr: np.ndarray, n_new: int) -> np.ndarray:
     """Linear-resample the last axis: ``(..., n_old) -> (..., n_new)``.
 
