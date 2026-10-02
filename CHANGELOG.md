@@ -41,7 +41,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `acquisition_id` on `noisy` and a `signal_identity` on `clean`, each a hash of the
   settings that change those arrays. The same seed and settings with a smaller `-n` are
   recognised as a subset; the same seed with another noise level is recognised as the
-  same signals with new noise.
+  same signals (for Gaussian noise the noise draws repeat too, rescaled; another `--seed`
+  gives held-out synthetic data).
 - **[`docs/WHEN_TO_TRUST.md`](docs/WHEN_TO_TRUST.md)** — what has been measured about
   where a trained model stops being trustworthy, one question at a time. The first
   answer is how far a shift in energy can be trusted, from the P2-A record: the

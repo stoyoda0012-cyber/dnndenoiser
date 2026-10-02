@@ -161,6 +161,9 @@ def test_the_rules_on_identifiers(monkeypatch, tmp_path, records, acq, frames, s
     assert (k["held_out_status"], k["rows_in_training"], k["same_acquisition_rows_unidentified"]) == (
         status, rows, unidentified)
     assert k["held_out_basis"] == ("default" if status == "unknown" else "established")
+    assert k["relationship"]["used_in_model_development_basis"] == "default"
+    if rows is not None:
+        assert ev.training_fit_caveat(rows, 8) in k["caveats"]
     renamed = status == "not_held_out"
     assert ("training_fit_snr_gain_mean" in m) is renamed and ("snr_gain_mean" in m) is not renamed
 
@@ -278,9 +281,11 @@ MANIFEST_TD = {"acquisition_id": "acq-S", "frame_index_runs": [[0, 4], [10, 12]]
     ({"range": [6, 11]}, [[0, 4], [10, 12]], "yes"),
     ({"range": [5, 9]}, [[0, 4], [10, 12]], "unknown"),
     ({"range": [5, 13]}, [[7, 8]], "yes"),                       # spans a run, ends outside
+    ({"range": [2, 3]}, [[0, 4]], "yes"),                        # inside one run
     ([3], None, "unknown"),
     ("all", None, "yes"),
 ], ids=["all", "unrecorded", "list-hit", "list-miss", "range-hit", "range-miss", "range-spans",
+        "range-inside",
         "runs-null-list", "runs-null-all"])
 def test_shares_source_rules(frames, runs, expected):
     manifest = {"training_data": {"acquisition_id": "acq-S", "frame_index_runs": runs}}
@@ -373,6 +378,18 @@ SIGNAL_CASES = [
      {**TIM, "time_intensity_model": "linear_decay", "time_range": (10.0, 140.0)}, True),
     ({**TIM, "time_intensity_model": "none"}, {**TIM, "time_intensity_model": "none",
                                                "time_shift_rate": 0.01}, True),
+    ({**ANG}, {"n_angles": 4}, True),
+    ({**TIM}, {"n_times": 4}, True),
+    ({**ANG, "angle_intensity_model": "none", "angle_shift_rate": 0.05},
+     {**ANG, "angle_intensity_model": "none", "angle_shift_rate": 0.05,
+      "angle_range": (10.0, 70.0)}, True),
+    ({**TIM, "time_intensity_model": "none", "time_shift_rate": 0.01},
+     {**TIM, "time_intensity_model": "none", "time_shift_rate": 0.01,
+      "time_range": (10.0, 70.0)}, True),
+    ({**ANG, **TIM}, {**ANG, "n_times": 4}, True),
+    ({**ANG, **TIM}, {**ANG, **TIM, "angle_cosine_power": 2.0}, True),
+    ({**ANG, **TIM}, {**ANG, **TIM, "time_decay_constant": 20.0}, True),
+    ({**ANG, **TIM}, {**ANG, **TIM, "time_oscillation_frequency": 0.3}, False),
 ]
 
 
@@ -491,7 +508,7 @@ def test_new_generate_output_still_evaluates_as_before(monkeypatch, capsys, tmp_
     path = write(tmp_path / "x.h5", noisy, noisy, None, units="normalised_to_spectrum_max",
                  energy=energy, acquisition_id=acq, frame_index=index)
     err = refuse(monkeypatch, capsys, "evaluate", "-d", str(path), "--clean", str(other))
-    assert "the reference names no source acquisition (a synthetic-truth declaration has none)" in err
+    assert "the reference names no source acquisition (a synthetic-truth or undeclared reference has none)" in err
     m = evaluate(monkeypatch, tmp_path, path, "--clean", str(other), "--assert-alignment", "rows")
     assert ctx(m)["row_correspondence"] == "asserted" and "snr_gain_mean" in m
     single = tmp_path / "single.h5"
@@ -549,3 +566,104 @@ def test_a_moving_average_model_never_establishes_use_of_its_files_clean(monkeyp
                                                      clean_digest=digest),
                                       reference=h5py.File(data)["clean"][:],
                                       signal_identity=None, frame_index=None) == (False, None)
+
+
+# ------------------------------------------------- review of e269f60, fixed findings
+
+
+def test_rule_one_compares_the_array_the_method_trained_on(monkeypatch, tmp_path):
+    """A stack may also hold a noisy dataset; moving-average trains on frames only."""
+    data = stack_file(tmp_path / "s.h5", e=256)
+    with h5py.File(data, "a") as f:
+        f.create_dataset("noisy", data=(f["frames"][:][::-1] * 1.5).astype(np.float32))
+    train(monkeypatch, data, tmp_path / "m.pt", method="moving-average")
+    out = infer(monkeypatch, data, tmp_path / "m.pt", tmp_path / "o.h5")   # infer reads noisy
+    frames_only = stack_file(tmp_path / "f.h5", e=256)                       # the trained frames
+    out2 = infer(monkeypatch, frames_only, tmp_path / "m.pt", tmp_path / "o2.h5")
+    for path in (out, out2):
+        with h5py.File(path, "a") as f:
+            f.create_dataset("clean", data=f["noisy"][:])
+            ref.write_declaration(f["clean"], estimate(acquisition="other"))
+            for name in ("noisy", "denoised"):
+                f[name].attrs["intensity_units"] = "counts"
+    assert ctx(evaluate(monkeypatch, tmp_path, out))["held_out_status"] == "unknown"
+    c = ctx(evaluate(monkeypatch, tmp_path, out2))
+    assert (c["held_out_status"], c["rows_in_training"]) == ("not_held_out", 12)
+
+
+def test_held_out_uses_the_evaluated_frames_and_the_reference_its_own(monkeypatch, tmp_path):
+    """Rule 2 reads the evaluated file's frame_index; §5.2 reads the external reference's."""
+    train_file = generate(monkeypatch, tmp_path / "train.h5", n=8)
+    train(monkeypatch, train_file, tmp_path / "m.pt")
+    big = generate(monkeypatch, tmp_path / "big.h5", "--poisson-level", "300", n=16)
+    with h5py.File(big) as g:
+        noisy, energy = g["noisy"][:], g["energy"][:]
+        acq = g["noisy"].attrs["acquisition_id"]
+    with h5py.File(train_file) as t:
+        train_acq = t["noisy"].attrs["acquisition_id"]
+    # evaluated rows: the training acquisition, frames 5..20 (3 of them trained on)
+    data = write(tmp_path / "e.h5", noisy, None, None, units="normalised_to_spectrum_max",
+                 energy=energy, acquisition_id=train_acq, frame_index=np.arange(5, 21))
+    out = infer(monkeypatch, data, tmp_path / "m.pt", tmp_path / "o.h5")
+    # external reference: the same-seed truth, frames 0..15 (8 of them trained on)
+    m = evaluate(monkeypatch, tmp_path, out, "--clean", str(big), "--assert-alignment", "rows")
+    c = ctx(m)
+    assert (c["held_out_status"], c["rows_in_training"]) == ("not_held_out", 3)
+    assert c["relationship"]["used_in_model_development"] == "yes"
+    assert c["reference_rows_in_training"] == 8
+    assert acq != train_acq
+
+
+def test_the_versions_note_in_the_transfer_case(monkeypatch, tmp_path):
+    train_file = generate(monkeypatch, tmp_path / "train.h5", "--poisson-level", "100", n=16)
+    test_file = generate(monkeypatch, tmp_path / "test.h5", "--poisson-level", "300", n=8)
+    train(monkeypatch, train_file, tmp_path / "m.pt")
+    out = infer(monkeypatch, test_file, tmp_path / "m.pt", tmp_path / "o.h5")
+    with h5py.File(out, "a") as f:
+        decl = json.loads(f["clean"].attrs["reference_origin"])
+        decl["generator"] = "dnndenoiser 9.9.9 SyntheticGenerator"
+        ref.write_declaration(f["clean"], decl)
+    c = ctx(evaluate(monkeypatch, tmp_path, out))
+    assert c["held_out_status"] == "disjoint_by_identifiers"
+    assert ev.VERSIONS_CAVEAT in c["caveats"]
+
+
+def test_no_versions_note_on_a_content_match_without_identities(monkeypatch, tmp_path):
+    data = generate(monkeypatch, tmp_path / "d.h5", n=8)
+    train(monkeypatch, data, tmp_path / "m.pt")
+    out = infer(monkeypatch, data, tmp_path / "m.pt", tmp_path / "o.h5")
+    with h5py.File(out, "a") as f:
+        del f["noisy"].attrs["acquisition_id"], f["denoised"].attrs["acquisition_id"]
+        del f["clean"].attrs["signal_identity"]
+        decl = json.loads(f["clean"].attrs["reference_origin"])
+        decl["generator"] = "dnndenoiser 9.9.9 SyntheticGenerator"
+        ref.write_declaration(f["clean"], decl)
+    c = ctx(evaluate(monkeypatch, tmp_path, out))
+    assert c["held_out_status"] == "not_held_out"                    # by content
+    assert ev.VERSIONS_CAVEAT not in c["caveats"]
+
+
+def test_a_malformed_input_digest_matters_only_with_model_records(monkeypatch, capsys, tmp_path,
+                                                                  sup, records):
+    n, d, c = arrays(n=8, e=32)
+    plain = write(tmp_path / "p.h5", n, d, c, declaration=TRUTH)
+    with h5py.File(plain, "a") as f:
+        f["noisy"].attrs[prov.INPUT_ARRAY_DIGEST] = "not json"
+    assert ctx(evaluate(monkeypatch, tmp_path, plain))["held_out_status"] == "unknown"
+    with h5py.File(records, "a") as f:
+        f["noisy"].attrs[prov.INPUT_ARRAY_DIGEST] = "not json"
+    assert "malformed provenance metadata" in refuse(monkeypatch, capsys, "evaluate", "-d",
+                                                     str(records))
+
+
+def test_printed_undefined_lines_follow_the_rename(monkeypatch, capsys, tmp_path, sup, records):
+    with h5py.File(records, "a") as f:            # every row zero-power: no dB statistic
+        f["clean"][...] = np.zeros_like(f["clean"][:])
+        noisy = f["noisy"][:]
+    capsys.readouterr()
+    m = evaluate(monkeypatch, tmp_path, records)
+    printed = capsys.readouterr().out
+    assert m["status"]["training_fit_snr_gain_mean"] == "no spectrum has non-zero reference power"
+    assert "undefined: training_fit_snr_gain_mean -- no spectrum has non-zero reference power" in printed
+    assert "undefined: snr_gain_mean" not in printed
+    assert noisy.shape[0] == 8

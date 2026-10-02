@@ -276,5 +276,7 @@ def report_lines(case: str, result: dict, training_fit: bool = False) -> list:
                      f"{fmt(result['agreement_db_change_mean'], '+.2f')} ± "
                      f"{fmt(result['agreement_db_change_std'], '.2f')}")
     for key, reason in result.get("status", {}).items():
+        if training_fit and key in TRAINING_FIT_KEYS:
+            key = TRAINING_FIT_PREFIX + key
         lines.append(f"undefined: {key} -- {reason}")
     return lines

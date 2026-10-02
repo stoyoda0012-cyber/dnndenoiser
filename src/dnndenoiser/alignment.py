@@ -295,8 +295,8 @@ def _identify_rows(evaluated: Side, reference: Side, shared: bool, axes: dict,
         side = "evaluated file" if evaluated.frame_index is None else "reference"
         return f"the {side} carries no 'frame_index'"
     if reference.acquisition_id is None:
-        return ("the reference names no source acquisition (a synthetic-truth declaration "
-                "has none), so frame indices cannot identify its rows")
+        return ("the reference names no source acquisition (a synthetic-truth or undeclared "
+                "reference has none), so frame indices cannot identify its rows")
     if evaluated.acquisition_id is None:
         return ("the evaluated data carry no acquisition_id, so frame indices cannot be "
                 "compared with the reference's")

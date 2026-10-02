@@ -1054,13 +1054,8 @@ def cmd_evaluate(args):
         except prov.MalformedProvenance as exc:
             fail(f"malformed model provenance: {exc}")
         acquisition_id = f['noisy'].attrs.get(ref.ACQUISITION_ATTR)
-        try:
-            raw = f['noisy'].attrs.get(prov.INPUT_ARRAY_DIGEST)
-            input_array_digest = (None if raw is None else prov.validate_digest_object(
-                json.loads(prov._attr_text(raw, prov.INPUT_ARRAY_DIGEST)),
-                prov.INPUT_ARRAY_DIGEST))
-        except (prov.MalformedProvenance, ValueError) as exc:
-            fail(f"malformed {prov.INPUT_ARRAY_DIGEST}: {exc}")
+        # Read now, validated only where it is used (with a model's records).
+        raw_input_digest = f['noisy'].attrs.get(prov.INPUT_ARRAY_DIGEST)
         coordinates = _coordinates(f)
         frame_index = coordinates['frame_index']
         try:
@@ -1177,8 +1172,12 @@ def cmd_evaluate(args):
         try:
             signal = (None if reference_signal is None
                       else prov._attr_text(reference_signal, f"reference {prov.SIGNAL_IDENTITY}"))
-        except prov.MalformedProvenance as exc:
-            fail(str(exc))
+            input_array_digest = (None if raw_input_digest is None
+                                  else prov.validate_digest_object(json.loads(
+                                      prov._attr_text(raw_input_digest, prov.INPUT_ARRAY_DIGEST)),
+                                      prov.INPUT_ARRAY_DIGEST))
+        except (prov.MalformedProvenance, ValueError) as exc:
+            fail(f"malformed provenance metadata: {exc}")
         training = prov.held_out(manifest, noisy=noisy, input_array_digest=input_array_digest,
                                  acquisition_id=acquisition_id, frame_index=frame_index)
         used, reference_rows = prov.reference_in_training(
@@ -1197,10 +1196,13 @@ def cmd_evaluate(args):
         if training['held_out_status'] == 'not_held_out':
             extra_caveats.insert(0, ev.training_fit_caveat(training['rows_in_training'],
                                                            int(noisy.shape[0])))
-        identities_equal = (training['held_out_basis'] == 'established'
-                            and training['held_out_status'] == 'not_held_out') or used
+        # The note is about identities: rule 2 (acquisition ids) or the signal identity.
+        signal_equal = (signal is not None
+                        and signal == manifest['training_data']['signal_identity'])
+        identities_equal = training['rule'] == 2 or (used and signal_equal)
         if identities_equal and prov.generator_versions_differ(manifest, effective):
             extra_caveats.append(ev.VERSIONS_CAVEAT)
+    training.pop('rule', None)
     training_fit = training['held_out_status'] == 'not_held_out'
     if training_fit and args.legacy_output:
         fail("--legacy-output reproduces historical names, and these data include rows of "

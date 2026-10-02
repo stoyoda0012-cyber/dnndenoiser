@@ -739,9 +739,12 @@ def _range_meets_runs(first: int, last: int, runs) -> bool:
 def held_out(manifest: dict, *, noisy, input_array_digest: Optional[dict],
              acquisition_id: Optional[str], frame_index) -> dict:
     """§5.1: ``held_out_status`` of the evaluated rows, with its basis and count. The first
-    rule that applies decides."""
+    rule that applies decides; ``rule`` (not reported) says which, 1-4."""
     td = manifest["training_data"]
-    trained = td["array_digests"].get("noisy") or td["array_digests"].get("frames")
+    # The array the method trained on: moving-average reads `frames`, the others `noisy`.
+    # A file may hold both; only the trained one identifies training rows.
+    trained = td["array_digests"].get(
+        "frames" if manifest["command"]["method"] == "moving-average" else "noisy")
     n = int(np.asarray(noisy).shape[0])
     out = {"held_out_status": "unknown", "held_out_basis": "default",
            "rows_in_training": None, "same_acquisition_rows_unidentified": False}
@@ -749,21 +752,22 @@ def held_out(manifest: dict, *, noisy, input_array_digest: Optional[dict],
             matching_digest(noisy)["sha256"],
             (input_array_digest or {}).get("sha256")}:
         return {**out, "held_out_status": "not_held_out", "held_out_basis": "established",
-                "rows_in_training": n}
+                "rows_in_training": n, "rule": 1}
     t_acq = td["acquisition_id"]
     if acquisition_id is None or t_acq is None:
-        return out
+        return {**out, "rule": 4}
     if acquisition_id != t_acq:
         return {**out, "held_out_status": "disjoint_by_identifiers",
-                "held_out_basis": "established"}
+                "held_out_basis": "established", "rule": 3}
     runs = td["frame_index_runs"]
     if frame_index is None or runs is None:
-        return {**out, "same_acquisition_rows_unidentified": True}
+        return {**out, "same_acquisition_rows_unidentified": True, "rule": 4}
     k = count_in_runs(frame_index, runs)
     if k:
         return {**out, "held_out_status": "not_held_out", "held_out_basis": "established",
-                "rows_in_training": k}
-    return {**out, "held_out_status": "disjoint_by_identifiers", "held_out_basis": "established"}
+                "rows_in_training": k, "rule": 2}
+    return {**out, "held_out_status": "disjoint_by_identifiers", "held_out_basis": "established",
+            "rule": 3}
 
 
 def reference_in_training(manifest: dict, *, reference, signal_identity: Optional[str],
@@ -800,7 +804,8 @@ def shares_source(manifest: dict, effective: dict) -> str:
     if isinstance(frames, dict):
         first, last = frames["range"]
         return "yes" if _range_meets_runs(first, last, runs) else "unknown"
-    return "yes" if any(_in_runs(int(v), runs) for v in frames) else "unknown"
+    starts = [r[0] for r in runs]
+    return "yes" if any(_in_runs(int(v), runs, starts) for v in frames) else "unknown"
 
 
 def generator_versions_differ(manifest: dict, evaluated_declaration: dict) -> bool:

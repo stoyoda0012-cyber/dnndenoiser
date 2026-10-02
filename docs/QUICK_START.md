@@ -285,8 +285,10 @@ reports it as `held_out_status` (also a top-level key), with `rows_in_training`:
 `clean`, so this works for synthetic data without anything to declare: a test file made
 with the same seed and settings and a smaller `-n` is the training file's first rows
 (`not_held_out`); one with the same seed and another noise level holds the same signals
-with new noise (`disjoint_by_identifiers`, and the reference is reported as the model's
-training target). Use another `--seed` for a held-out synthetic test set.
+(`disjoint_by_identifiers`, and the reference is reported as the model's training target).
+Its noise is new for Poisson noise, but **not for Gaussian noise**: the same seed draws the
+same Gaussian deviates, only rescaled. Use another `--seed` for a held-out synthetic test
+set.
 
 ## Python API (minimal example)
 

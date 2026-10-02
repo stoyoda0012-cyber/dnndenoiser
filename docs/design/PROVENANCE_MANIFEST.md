@@ -537,6 +537,13 @@ review before merge.
   establishes `used_in_model_development` (its targets were window means); an external
   reference that cannot be matched by identifiers is refused naming the true reason
   (a truth declaration names no acquisition, or the evaluated data carry none).
+  After the independent review of the phase-B implementation: rule 1 compares the
+  array the method trained on (`frames` for moving-average, `noisy` otherwise), since a
+  file may hold both; the versions note is given only when identities were compared
+  (rule 2 or the signal identity), not on a content match; `input_array_digest` is
+  validated only where it is used. §5.2's "new draws" holds for Poisson noise; with the
+  same seed, Gaussian noise repeats its deviates rescaled, so `disjoint_by_identifiers`
+  stays literally true but the noise is not independent (QUICK_START says so).
 
 ## Confirmation
 

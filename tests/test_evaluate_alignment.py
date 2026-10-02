@@ -412,7 +412,7 @@ def test_identifiers_need_a_namespace_on_both_sides(monkeypatch, capsys, tmp_pat
                            data={"frame_index": np.arange(6)}, reference={"frame_index": np.arange(6)})
     err = refuse_external(monkeypatch, capsys, data, other)
     assert {"truth-no-ids": "the reference names no source acquisition (a synthetic-truth "
-                            "declaration has none)",
+                            "or undeclared reference has none)",
             "estimate-evaluated-without-id": "the evaluated data carry no acquisition_id"}[case] in err
 
 
