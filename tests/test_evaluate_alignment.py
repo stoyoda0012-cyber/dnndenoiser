@@ -541,6 +541,40 @@ def test_a_repeated_assert_alignment_flag_accumulates(monkeypatch, tmp_path):
     assert al.parse_assertions(["rows", "units,energy"]) == {"rows", "units", "energy"}
 
 
+# ------------------------------------- follow-up review of 6b6d55f, fixed findings
+
+
+@pytest.mark.parametrize("index, reason", [
+    (np.array([0.5]), "'frame_index' of the reference must hold integers"),
+    (np.arange(4), "'frame_index' of the reference has 4 values but its row axis has 1"),
+])
+def test_a_shared_reference_frame_index_obeys_the_integer_and_length_rules(monkeypatch, capsys,
+                                                                           tmp_path, index, reason):
+    """Follow-up finding 1: a shared reference's frame_index passed only the type check."""
+    n, d, c = arrays()
+    data, other = pair(tmp_path, n, d, c[:1], reference={"frame_index": index})
+    assert reason in refuse_external(monkeypatch, capsys, data, other, "--shared-reference", *ROWS)
+
+
+def test_a_shape_mismatch_is_named_before_the_reference_both_axes_rule(monkeypatch, capsys, tmp_path):
+    """Follow-up finding 2: a (16,) reference carrying angles and times against 3-D data is
+    a shape mismatch, not a one-axis layout carrying both."""
+    n, d, c = arrays3()
+    coords = np.array([1.0, 2.0, 3.0])
+    data = write(tmp_path / "data.h5", n, d, None, angles=coords)
+    other = tmp_path / "ref.h5"
+    with h5py.File(other, "w") as g:
+        g.create_dataset("clean", data=c[0, 0])
+        from dnndenoiser import reference as ref
+        ref.write_declaration(g["clean"], TRUTH)
+        g.create_dataset("energy", data=np.linspace(0, 1, 16))
+        g.create_dataset("angles", data=coords)
+        g.create_dataset("times", data=coords)
+    err = refuse_external(monkeypatch, capsys, data, other, *ROWS)
+    assert "shapes differ: evaluated (4, 3, 16), reference (16,)" in err
+    assert "carries both" not in err
+
+
 # ---------------------------------------------------- the check as a function
 
 

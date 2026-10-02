@@ -502,9 +502,11 @@ unchanged.
   not its axis applies, must be a finite one-dimensional numeric array, and a one-axis
   layout refuses `angles` and `times` together on the reference as on the evaluated file;
   a dataset for an axis the layout does not have is otherwise ignored for alignment and
-  still hashed as carried; (j) shapes are compared before the reference's coordinate
-  lengths, so a reference of another `ndim` is refused as a shape mismatch; (k) a repeated
-  `--assert-alignment` flag accumulates.
+  still hashed as carried; a carried `frame_index` obeys the integer and length rules in
+  every layout, a shared reference's included (it is still not a row identifier there);
+  (j) shapes are compared before the reference's coordinate lengths, so a reference of
+  another `ndim` is refused as a shape mismatch; (k) a repeated `--assert-alignment` flag
+  accumulates.
 - **Implementation phases.** Phase 1: the reference declaration and its propagation
   (`generate`, `save_hdf5`, `infer`), naming by origin (no SNR for an undeclared reference),
   legacy output, and no silent ignoring of `--clean`. Phase 2: the rest of the alignment

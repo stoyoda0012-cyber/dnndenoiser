@@ -151,6 +151,15 @@ def _check_lengths(side: Side, which: str, axes: dict, with_axes: bool) -> None:
         if len(energy) != side.shape[-1]:
             raise AlignmentError(f"'energy' of {which} has {len(energy)} values but its "
                                  f"spectra have {side.shape[-1]} points")
+    if side.frame_index is not None:
+        # The row axis exists in every layout, a shared reference's included.
+        index = _vector(side.frame_index, "frame_index", which)
+        if index.dtype.kind not in "iu":
+            raise AlignmentError(f"'frame_index' of {which} must hold integers, got dtype "
+                                 f"{index.dtype}")
+        if len(index) != side.shape[0]:
+            raise AlignmentError(f"'frame_index' of {which} has {len(index)} values but its "
+                                 f"row axis has {side.shape[0]}")
     if not with_axes:
         return
     for name, axis in axes.items():
@@ -160,14 +169,6 @@ def _check_lengths(side: Side, which: str, axes: dict, with_axes: bool) -> None:
             if len(coord) != side.shape[axis]:
                 raise AlignmentError(f"'{name}' of {which} has {len(coord)} values but its "
                                      f"{name} axis has {side.shape[axis]}")
-    if side.frame_index is not None:
-        index = _vector(side.frame_index, "frame_index", which)
-        if index.dtype.kind not in "iu":
-            raise AlignmentError(f"'frame_index' of {which} must hold integers, got dtype "
-                                 f"{index.dtype}")
-        if len(index) != side.shape[0]:
-            raise AlignmentError(f"'frame_index' of {which} has {len(index)} values but its "
-                                 f"row axis has {side.shape[0]}")
 
 
 def _shape(evaluated: tuple, reference: tuple, shared: bool) -> None:
@@ -183,9 +184,8 @@ def _shape(evaluated: tuple, reference: tuple, shared: bool) -> None:
 
 
 def _compare(name: str, a: np.ndarray, b: np.ndarray) -> None:
+    # Both sides are finite already: every carried coordinate passed _vector.
     a, b = np.asarray(a, dtype=np.float64), np.asarray(b, dtype=np.float64)
-    if not (np.all(np.isfinite(a)) and np.all(np.isfinite(b))):
-        raise AlignmentError(f"'{name}' contains non-finite values")
     if np.allclose(a, b, rtol=0.0, atol=TOLERANCE):
         return
     reversed_axis = np.allclose(a, b[::-1], rtol=0.0, atol=TOLERANCE)
