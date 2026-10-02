@@ -131,6 +131,17 @@ def cmd_generate(args):
         output_path, clean, noisy, energy, metadata,
         angles=gen.angles, times=gen.times, **gen.truth_arguments(clean.ndim)
     )
+    # Which draws these are (docs/design/PROVENANCE_MANIFEST.md §5.4): a row index and two
+    # identities, so that a model's training data can be recognised later.
+    import h5py
+    import numpy as np
+    from dnndenoiser.data.identity import identities
+    from dnndenoiser import provenance as prov
+    acquisition_id, signal_identity = identities(gen, args.seed)
+    with h5py.File(h5_path, 'a') as f:
+        f.create_dataset('frame_index', data=np.arange(clean.shape[0], dtype=np.int64))
+        f['noisy'].attrs['acquisition_id'] = acquisition_id
+        f['clean'].attrs[prov.SIGNAL_IDENTITY] = signal_identity
     print(f"\nSaved: {h5_path}")
 
     # Save manifest
@@ -1043,6 +1054,8 @@ def cmd_evaluate(args):
         except prov.MalformedProvenance as exc:
             fail(f"malformed model provenance: {exc}")
         acquisition_id = f['noisy'].attrs.get(ref.ACQUISITION_ATTR)
+        # Read now, validated only where it is used (with a model's records).
+        raw_input_digest = f['noisy'].attrs.get(prov.INPUT_ARRAY_DIGEST)
         coordinates = _coordinates(f)
         frame_index = coordinates['frame_index']
         try:
@@ -1068,6 +1081,7 @@ def cmd_evaluate(args):
                 fail(f"malformed reference declaration: {exc}")
             clean = f['clean'][:]
             stored_version = _stored_version(f['clean'], stored)
+            reference_signal = f['clean'].attrs.get(prov.SIGNAL_IDENTITY)
             reference_coordinates = coordinates
     if selected == 'external':
         if not args.clean:
@@ -1082,6 +1096,7 @@ def cmd_evaluate(args):
                 fail(f"malformed reference declaration: {exc}")
             clean = g['clean'][:]
             stored_version = _stored_version(g['clean'], stored)
+            reference_signal = g['clean'].attrs.get(prov.SIGNAL_IDENTITY)
             reference_coordinates = _coordinates(g)
 
     try:
@@ -1145,6 +1160,57 @@ def cmd_evaluate(args):
         fail(str(exc))
     case = ev.case_of(effective, relationship)
 
+    # Established from the model's manifest (docs/design/PROVENANCE_MANIFEST.md §5).
+    relationship['used_in_model_development_basis'] = (
+        'declared' if args.used_in_model_development is not None else 'default')
+    training = {'held_out_status': 'unknown', 'held_out_basis': 'default',
+                'rows_in_training': None, 'same_acquisition_rows_unidentified': False}
+    reference_rows, shares = None, 'unknown'
+    extra_caveats = []
+    if model_records is not None:
+        manifest = model_records['manifest']
+        try:
+            signal = (None if reference_signal is None
+                      else prov._attr_text(reference_signal, f"reference {prov.SIGNAL_IDENTITY}"))
+        except prov.MalformedProvenance as exc:
+            fail(f"malformed provenance metadata: {exc}")
+        try:
+            input_array_digest = (None if raw_input_digest is None
+                                  else prov.validate_digest_object(json.loads(
+                                      prov._attr_text(raw_input_digest, prov.INPUT_ARRAY_DIGEST)),
+                                      prov.INPUT_ARRAY_DIGEST))
+        except (prov.MalformedProvenance, ValueError) as exc:
+            fail(f"malformed provenance metadata: {prov.INPUT_ARRAY_DIGEST}: {exc}")
+        training = prov.held_out(manifest, noisy=noisy, input_array_digest=input_array_digest,
+                                 acquisition_id=acquisition_id, frame_index=frame_index)
+        used, reference_rows = prov.reference_in_training(
+            manifest, reference=reference_stored, signal_identity=signal,
+            frame_index=reference_coordinates['frame_index'])
+        if used:
+            if args.used_in_model_development == 'no_declared':
+                fail("--used-in-model-development no_declared contradicts the model's "
+                     "provenance: the reference took part in training this model")
+            relationship['used_in_model_development'] = 'yes'
+            relationship['used_in_model_development_basis'] = 'established'
+            extra_caveats.append(ev.REFERENCE_TRAINED_CAVEAT)
+        shares = prov.shares_source(manifest, effective)
+        if shares == 'yes':
+            extra_caveats.append(ev.REFERENCE_SHARES_CAVEAT)
+        if training['held_out_status'] == 'not_held_out':
+            extra_caveats.insert(0, ev.training_fit_caveat(training['rows_in_training'],
+                                                           int(noisy.shape[0])))
+        # The note is about identities: rule 2 (acquisition ids) or the signal identity.
+        signal_equal = (signal is not None
+                        and signal == manifest['training_data']['signal_identity'])
+        identities_equal = training['rule'] == 2 or (used and signal_equal)
+        if identities_equal and prov.generator_versions_differ(manifest, effective):
+            extra_caveats.append(ev.VERSIONS_CAVEAT)
+    training.pop('rule', None)
+    training_fit = training['held_out_status'] == 'not_held_out'
+    if training_fit and args.legacy_output:
+        fail("--legacy-output reproduces historical names, and these data include rows of "
+             "the model's training data, for which those names would be false")
+
     context = {
         'evaluate_output_version': ev.LEGACY_VERSION if args.legacy_output else ev.OUTPUT_VERSION,
         'dnndenoiser_version': __version__,
@@ -1152,7 +1218,9 @@ def cmd_evaluate(args):
                       'effective_declaration': effective, 'declaration_source': source,
                       'lineage': lineage},
         'relationship': relationship,
-        'held_out_status': 'unknown',
+        **training,
+        'reference_rows_in_training': reference_rows,
+        'shares_source_with_training_data': shares,
         'aggregation_unit': ev.AGGREGATION_UNIT,
         'alignment_verified': alignment['verified'],
         'alignment_asserted': alignment['asserted'],
@@ -1161,7 +1229,7 @@ def cmd_evaluate(args):
         'shared_reference': bool(args.shared_reference),
         'digests': digests,
         'model': prov.model_identity(model_records),
-        'caveats': ev.caveats(case, effective),
+        'caveats': ev.caveats(case, effective) + extra_caveats,
     }
 
     if args.legacy_output:
@@ -1182,11 +1250,19 @@ def cmd_evaluate(args):
         except ValueError as exc:
             fail(str(exc))
         print()
-        for line in ev.report_lines(case, metrics):
+        for line in ev.report_lines(case, metrics, training_fit=training_fit):
             print(line)
+        if training_fit:
+            metrics = ev.rename_for_training_fit(metrics)
+        metrics['held_out_status'] = training['held_out_status']
+        metrics['rows_in_training'] = training['rows_in_training']
+        rows = ("" if training['rows_in_training'] is None
+                else f", {training['rows_in_training']} of {noisy.shape[0]} rows in training")
         print(f"Relationship: overlap {relationship['overlap_with_evaluated']} "
               f"({relationship['overlap_basis']}), used in model development "
-              f"{relationship['used_in_model_development']}; held-out status unknown")
+              f"{relationship['used_in_model_development']} "
+              f"({relationship['used_in_model_development_basis']}); held-out status "
+              f"{training['held_out_status']} ({training['held_out_basis']}{rows})")
     print(al.report_line(alignment))
     for note in context['caveats']:
         print(f"\nNote: {note}")

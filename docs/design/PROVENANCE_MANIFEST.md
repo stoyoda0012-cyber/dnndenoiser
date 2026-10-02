@@ -1,7 +1,7 @@
 # Design: what a trained model records about how it was made
 
-**Status: adopted 2026-10-02 (revision 3, after three independent audits); phase A
-implemented (see the CHANGELOG); phase B not yet.** Step 2 of the improvement plan that follows a reproducibility assessment of a
+**Status: adopted 2026-10-02 (revision 3, after three independent audits); phases A and B
+implemented (see the CHANGELOG).** Step 2 of the improvement plan that follows a reproducibility assessment of a
 published study. Its recording part (phase A) changes no evaluation output; its
 relationship part (phase B) lets `evaluate` *establish* whether the evaluated data or the
 reference took part in training, and renames the outputs when they did, so under
@@ -526,6 +526,26 @@ review before merge.
   digest and the manifest so that `evaluate` verifies an `infer` output's manifest (owner's
   decision, 2026-10-02); unestablished values are stated; the compatibility list and the
   limits on stale row metadata are added.
+- **Implementation note (2026-10-02), phase B.** Decided in implementation and fixed by
+  tests: the identity classification is `CLASSIFICATION` in `src/dnndenoiser/data/identity.py`,
+  checked against the generator field by field and mode by mode; with a lower bound of 0
+  the linear angle and time models read only the ratio to the upper bound, so the arrays
+  agree to float32 rounding while the identity, as adopted, still includes the bound (it
+  can call identical draws different, never the reverse); noise components are
+  canonicalised to the active ones (a zero level or standard deviation is no component,
+  so `mixed` with one zero equals the other type); a moving-average model never
+  establishes `used_in_model_development` (its targets were window means); an external
+  reference that cannot be matched by identifiers is refused naming the true reason
+  (a truth declaration names no acquisition, or the evaluated data carry none).
+  After the independent review of the phase-B implementation: rule 1 compares the
+  array the method trained on (`frames` for moving-average, `noisy` otherwise), since a
+  file may hold both; the versions note is given only when identities were compared
+  (rule 2 or the signal identity), not on a content match; `input_array_digest` is
+  validated only where it is used. §5.2's "new draws" overstates: with the same seed the
+  noise comes from the same random stream, so Gaussian noise repeats rescaled, mixed noise
+  stays highly correlated when only the Gaussian part changes, and Poisson noise at a
+  nearby level can be strongly correlated. `disjoint_by_identifiers` stays literally true
+  (the arrays differ); it was never a claim of independence (QUICK_START says so).
 
 ## Confirmation
 

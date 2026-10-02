@@ -300,14 +300,19 @@ def test_infer_refuses_a_malformed_declaration(monkeypatch, capsys, tmp_path, mo
 
 @pytest.mark.parametrize("extra", [(), ("--n-angles", "3")], ids=["1-D", "angle-resolved"])
 def test_generate_infer_evaluate_yields_the_truth_output_with_no_extra_flags(monkeypatch, tmp_path, extra):
-    data, model, out = tmp_path / "d.h5", tmp_path / "m.pt", tmp_path / "o.h5"
-    run(monkeypatch, "generate", "-o", str(data), "-n", "8", "--n-energy", "32",
-        "--peak-set", "C1s_single", *extra)
+    """Evaluated on draws the model was not trained on (another seed). On its own training
+    file the same keys are renamed (test_provenance_phase_b.py)."""
+    data, test, model, out = (tmp_path / "d.h5", tmp_path / "t.h5", tmp_path / "m.pt",
+                              tmp_path / "o.h5")
+    for path, seed in ((data, "42"), (test, "7")):
+        run(monkeypatch, "generate", "-o", str(path), "-n", "8", "--n-energy", "32",
+            "--peak-set", "C1s_single", "--seed", seed, *extra)
     run(monkeypatch, "train", "-d", str(data), "-o", str(model), "--arch", "FCNN", "--epochs", "1",
         "--batch-size", "8", "--device", "cpu")
-    run(monkeypatch, "infer", "-d", str(data), "-m", str(model), "-o", str(out), "--device", "cpu")
+    run(monkeypatch, "infer", "-d", str(test), "-m", str(model), "-o", str(out), "--device", "cpu")
     metrics = evaluate(monkeypatch, tmp_path, out)
     assert {"snr_input_mean", "snr_gain_mean"} <= set(metrics)
+    assert metrics["held_out_status"] == "disjoint_by_identifiers"
     assert metrics["evaluation_context"]["reference"]["declaration_source"] == "file"
 
 
