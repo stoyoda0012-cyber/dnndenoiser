@@ -878,14 +878,23 @@ def _same_file(a, b) -> bool:
     return a.resolve() == b.resolve()
 
 
+def _coordinates(handle) -> dict:
+    """The comparison and source coordinates a file carries; None for each absent one."""
+    return {name: handle[name][:] if name in handle else None
+            for name in ('energy', 'angles', 'times', 'frame_index')}
+
+
 def cmd_evaluate(args):
     """Evaluate denoising results against a declared reference.
 
-    See docs/design/EVALUATION_REFERENCE_CONTRACT.md (adopted 2026-10-01, phase 1).
+    See docs/design/EVALUATION_REFERENCE_CONTRACT.md (adopted 2026-10-01; phases 1 and 2).
     """
     import json
     import h5py
+    import numpy as np
     from dnndenoiser import __version__
+    from dnndenoiser import alignment as al
+    from dnndenoiser import digest as dg
     from dnndenoiser import evaluation as ev
     from dnndenoiser import reference as ref
 
@@ -909,7 +918,13 @@ def cmd_evaluate(args):
         denoised = f['denoised'][:]
         noisy = f['noisy'][:]
         acquisition_id = f['noisy'].attrs.get(ref.ACQUISITION_ATTR)
-        frame_index = f['frame_index'][:] if 'frame_index' in f else None
+        coordinates = _coordinates(f)
+        frame_index = coordinates['frame_index']
+        try:
+            units, units_note = al.evaluated_units(f['noisy'].attrs.get(ref.UNITS_ATTR),
+                                                  f['denoised'].attrs.get(ref.UNITS_ATTR))
+        except al.AlignmentError as exc:
+            fail(str(exc))
         in_file = 'clean' in f
         # The reference is selected explicitly; an external one is never ignored.
         if in_file and args.clean and args.reference is None:
@@ -927,6 +942,7 @@ def cmd_evaluate(args):
             except ref.MalformedReference as exc:
                 fail(f"malformed reference declaration: {exc}")
             clean = f['clean'][:]
+            reference_coordinates = coordinates
     if selected == 'external':
         if not args.clean:
             fail("--reference external needs --clean")
@@ -939,6 +955,7 @@ def cmd_evaluate(args):
             except ref.MalformedReference as exc:
                 fail(f"malformed reference declaration: {exc}")
             clean = g['clean'][:]
+            reference_coordinates = _coordinates(g)
 
     try:
         cli_declaration = _cli_declaration(args)
@@ -959,12 +976,39 @@ def cmd_evaluate(args):
     except (ref.MalformedReference, ref.ReferenceConflict) as exc:
         fail(str(exc))
 
-    # Phase 1 of the alignment contract: equal shapes, no broadcasting.
-    if not (noisy.shape == denoised.shape == clean.shape):
-        fail(f"shapes differ: noisy {noisy.shape}, denoised {denoised.shape}, reference "
-             f"{clean.shape}; a reference is compared row by row and is never broadcast")
-
     acquisition_id = acquisition_id.decode() if isinstance(acquisition_id, bytes) else acquisition_id
+    if noisy.shape != denoised.shape:
+        fail(f"shapes differ: noisy {noisy.shape}, denoised {denoised.shape}")
+    # Alignment (design section 5): detected metadata is checked; an assertion fills in only
+    # what is missing and never overrides a detected mismatch.
+    reference_stored = clean
+    try:
+        asserted = al.parse_assertions(args.assert_alignment)
+        evaluated_side = al.Side(shape=noisy.shape, units=units, units_note=units_note,
+                                 acquisition_id=acquisition_id, **coordinates)
+        reference_side = al.Side(
+            shape=clean.shape, units=effective.get('units'),
+            units_note=(None if 'units' in effective
+                        else "the reference is undeclared, so its units are not declared"),
+            acquisition_id=(effective['source']['acquisition_id']
+                            if effective['origin'] == 'estimate' else None),
+            **reference_coordinates)
+        alignment = al.check(evaluated_side, reference_side, same_file=(selected == 'file'),
+                             shared=args.shared_reference, asserted=asserted)
+    except al.AlignmentError as exc:
+        fail(str(exc))
+    if args.shared_reference:
+        # Explicit, after the check: one spectrum for every row.
+        clean = np.broadcast_to(clean.reshape((1,) * (noisy.ndim - 1) + (noisy.shape[-1],)),
+                                noisy.shape)
+    digests = {
+        'format': dg.FORMAT,
+        'evaluated': dg.evaluated_digest(noisy, denoised, **coordinates),
+        'reference': dg.reference_digest(
+            reference_stored, **reference_coordinates,
+            declaration_stored=(None if stored is None else
+                                {ref.ORIGIN_ATTR: stored, ref.VERSION_ATTR: ref.SCHEMA_VERSION})),
+    }
     established = ref.established_overlap(effective, acquisition_id, frame_index)
     try:
         relationship = ref.resolve_relationship(effective, args.overlap,
@@ -983,8 +1027,12 @@ def cmd_evaluate(args):
         'relationship': relationship,
         'held_out_status': 'unknown',
         'aggregation_unit': ev.AGGREGATION_UNIT,
-        'alignment': {'verified': ['shape'],
-                      'not_checked_in_this_version': ['energy', 'units', 'rows', 'angles', 'times']},
+        'alignment_verified': alignment['verified'],
+        'alignment_asserted': alignment['asserted'],
+        'alignment_not_applicable': alignment['not_applicable'],
+        'row_correspondence': alignment['row_correspondence'],
+        'shared_reference': bool(args.shared_reference),
+        'digests': digests,
         'model': ev.model_identity() or 'unknown',
         'caveats': ev.caveats(case, effective),
     }
@@ -1012,8 +1060,7 @@ def cmd_evaluate(args):
         print(f"Relationship: overlap {relationship['overlap_with_evaluated']} "
               f"({relationship['overlap_basis']}), used in model development "
               f"{relationship['used_in_model_development']}; held-out status unknown")
-        print("Alignment checked: shape only (energy, units, rows, angles and times are not "
-              "checked in this version)")
+    print(al.report_line(alignment))
     for note in context['caveats']:
         print(f"\nNote: {note}")
 
@@ -1199,6 +1246,13 @@ Examples:
                              help='Whether the reference was used to train or select the model')
     eval_parser.add_argument('--signal-match',
                              help='Statement that the reference\'s conditions match the data\'s')
+    eval_parser.add_argument('--assert-alignment', metavar='CHECKS',
+                             help='Comma-separated checks to assert where their metadata is '
+                                  'absent: energy, units, rows, angles, times. Never overrides '
+                                  'a detected mismatch; refused for a check that was made')
+    eval_parser.add_argument('--shared-reference', action='store_true',
+                             help='The reference is a single spectrum shared by every row '
+                                  '(an external one then needs --assert-alignment rows)')
     eval_parser.add_argument('--legacy-output', action='store_true',
                              help='Pre-change keys and arithmetic, for undeclared references only')
     eval_parser.add_argument('-o', '--output', help='Output JSON with metrics')

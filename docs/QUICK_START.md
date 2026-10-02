@@ -114,27 +114,56 @@ for them. For a synthetic file, declare it:
 
 ```bash
 dnndenoiser evaluate -d denoised.h5 --reference-origin synthetic_truth \
-    --generator "dnndenoiser 0.1.x generate" --units normalised_to_spectrum_max -o m.json
+    --generator "dnndenoiser 0.1.x generate" --units normalised_to_spectrum_max \
+    --assert-alignment units -o m.json
 ```
 
-or reproduce the old output with `--legacy-output` (undeclared references only; it runs
-the old arithmetic in the input's own dtype, so it is exact on the same platform and NumPy
-version and can differ in the last bits elsewhere; it refuses if an old value would be
-infinite). The JSON keys changed; the CHANGELOG lists them. A reference estimated from measured data is
-declared in a JSON file passed with `--reference-declaration`; its required fields are in
-the design document. `--overlap`, `--used-in-model-development` and `--signal-match` state
-its relationship to the data being evaluated. `evaluate` never writes to its input files,
-never ignores `--clean` silently, and never broadcasts a reference of another shape.
+or reproduce the old output with `--legacy-output --assert-alignment units` (undeclared
+references only; it runs the old arithmetic in the input's own dtype, so it is exact on
+the same platform and NumPy version and can differ in the last bits elsewhere; it refuses
+if an old value would be infinite). Both need `--assert-alignment units` because such a
+file carries no `intensity_units` and an undeclared reference declares none, so the units
+check cannot be made (below). The JSON keys changed; the CHANGELOG lists them. A reference
+estimated from measured data is declared in a JSON file passed with
+`--reference-declaration`; its required fields are in the design document. `--overlap`,
+`--used-in-model-development` and `--signal-match` state its relationship to the data being
+evaluated. `evaluate` never writes to its input files, never ignores `--clean` silently, and
+never broadcasts a reference of another shape.
+
+**Alignment is verified before any metric.** `evaluate` compares the energy grid, the
+angle and time axes the layout has, the units (`intensity_units` on the evaluated arrays
+against the reference's declared units) and the row correspondence, from the metadata both
+sides carry. A mismatch is refused, and no option overrides it. A check whose metadata is
+absent is refused too, unless you assert it:
+
+```bash
+# an external reference without frame identifiers: its rows are the data's rows, you say
+dnndenoiser evaluate -d denoised.h5 --clean ref.h5 --assert-alignment rows -o m.json
+# one reference spectrum for every row
+dnndenoiser evaluate -d denoised.h5 --clean ref.h5 --shared-reference --assert-alignment rows
+# a file written before this version: no units on its arrays, none declared
+dnndenoiser evaluate -d old.h5 --legacy-output --assert-alignment units
+```
+
+The output lists what was verified, what was asserted and what does not apply (angles and
+times for plain spectra), and how the rows were matched: the same file, identifiers
+(`frame_index` within one acquisition, plus matching axes), or your assertion. An assertion
+for a check that was made, or for an axis the layout does not have, is refused, so a
+verified check is never confused with an asserted one. The output also carries a content
+digest (`dnd-digest-1`) of the evaluated arrays and of the reference, each with its
+coordinates and stored declaration; a digest identifies what was compared, not where it
+came from.
 
 ## HDF5 schema
 
 | Dataset | Shape | Notes |
 |---------|-------|-------|
-| `noisy` | (n, …, energy) | input spectra; extra axes (angle/time) allowed. Attribute `intensity_units` |
+| `noisy` | (n, …, energy) | input spectra; extra axes (angle/time) allowed. Attributes `intensity_units` and, optionally, `acquisition_id` |
 | `clean` | (n, …, energy) | reference; required for noise2clean/noise2noise and evaluate. Attributes `reference_schema_version` and `reference_origin` declare what it is |
-| `energy` | (energy,) | energy axis |
-| `denoised` | (n, …, energy) | written by `infer` |
-| `angles` / `times` | optional | written by `generate` for 3D/4D data |
+| `energy` | (energy,) | energy axis; `evaluate` compares it between the data and an external reference |
+| `denoised` | (n, …, energy) | written by `infer`, with the same attributes as `noisy` |
+| `angles` / `times` | (angles,) / (times,) | written by `generate` for 3D/4D data; they name the coordinate axes (a 3D layout has one, a 4D layout is `(n, times, angles, energy)`) |
+| `frame_index` | (n,) | optional; integer acquisition order, carried by `infer`; `evaluate` matches rows by it within one acquisition |
 
 ### Frame stacks — `--method moving-average`
 

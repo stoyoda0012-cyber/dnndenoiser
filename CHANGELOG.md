@@ -48,8 +48,28 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   own reference, and refuses a reference of another shape instead of broadcasting it.
   `SyntheticGenerator.save_hdf5` now requires `reference_declaration` and
   `intensity_units`. Design, four independent audits and the owner's adoption:
-  `docs/design/EVALUATION_REFERENCE_CONTRACT.md` (phase 1; the rest of the alignment
-  checks and content digests are phase 2).
+  `docs/design/EVALUATION_REFERENCE_CONTRACT.md`.
+- **`evaluate` verifies alignment before any metric, or refuses.** The energy grid, the
+  angle and time axes the layout has, the units (`intensity_units` on the evaluated
+  arrays against the reference's declared units) and the row correspondence between the
+  evaluated arrays and the reference are checked from the metadata both carry. A
+  detected mismatch — an energy grid off by more than 1e-6, a reversed angle or time
+  axis, different units, frame identifiers that disagree within one acquisition — is
+  refused, and no option overrides it. A check whose metadata is absent is refused too
+  unless asserted with `--assert-alignment energy,units,rows,angles,times`; an assertion
+  for a check that was made, or for an axis the layout does not have, is refused. The
+  output lists `alignment_verified`, `alignment_asserted` and `alignment_not_applicable`
+  separately, with `row_correspondence` (`same_file`, `identifiers` or `asserted`). A
+  single reference spectrum shared by every row needs `--shared-reference`. **An
+  undeclared reference has no declared units, so the two migration routes now need
+  `--assert-alignment units`**: `--legacy-output --assert-alignment units`, and
+  `--reference-origin synthetic_truth --generator … --units … --assert-alignment units`
+  when the file's arrays carry no `intensity_units` (files written before this version).
+  The output also carries content digests of the evaluated arrays and of the reference
+  (`dnd-digest-1`: SHA-256 over the arrays, their coordinates and the stored
+  declaration) under `evaluation_context.digests`; a digest identifies what was
+  compared, it does not establish where it came from. This completes the design's
+  phase 2.
 
 ### Fixed
 

@@ -1,7 +1,7 @@
 # Design: what `evaluate` compares against, and what it may call the result
 
-**Status: adopted 2026-10-01 (revision 4, after four independent audits); phase 1 implemented
-(see the CHANGELOG); phase 2 not yet.** Step 1 of
+**Status: adopted 2026-10-01 (revision 4, after four independent audits); phases 1 and 2
+implemented (see the CHANGELOG).** Step 1 of
 the improvement plan that follows a reproducibility assessment of a published study. It
 changes the meaning of an evaluation output, so under `AGENTS.md` §8 it was independently
 audited before any code was written. The owner's adoption is recorded at the end.
@@ -473,6 +473,31 @@ unchanged.
   resampled integer energy axis becomes floating point; frame identifiers are compared as
   exact integers of any width; legacy output is also compared exactly with an independent
   transcription of the `cb5e000` arithmetic in the same runtime.
+- **Implementation note (2026-10-02), phase 2.** Decided in implementation and fixed by
+  tests, as revision 4 provides: (a) the coordinate axes of a layout are the `ndim − 2`
+  axes between the row axis and the energy axis; with one such axis, the coordinate
+  dataset the evaluated file carries (`angles` or `times`) names it, and a file carrying
+  neither has an unnamed axis that the user names and asserts with `--assert-alignment
+  angles` or `--assert-alignment times`; with two, the layout is `(rows, times, angles,
+  energy)` as `generate` writes it; more are refused; (b) metadata that contradicts the
+  arrays it describes — a coordinate of the wrong length, a non-integer `frame_index`, a
+  one-axis layout carrying both `angles` and `times` — is refused outright; (c) an
+  assertion is accepted only for a check that could not be made: one for a verified
+  check, or for an axis the layout does not have, is refused, so a verified check is
+  never reported as asserted nor the reverse; (d) a shared reference
+  (`--shared-reference`: one spectrum, shape `(energy,)` or with leading dimensions of
+  one) carries no row identifiers and no angle or time axis, so each of those checks
+  needs its assertion; in the same file its rows are matched under the file schema; (e)
+  in the same file a present coordinate is verified and an absent one is still absent;
+  (f) `intensity_units` must be present and equal on `noisy` and `denoised`: present on
+  one only counts as absent, different values are a mismatch; (g) the
+  `evaluation_context` fields are `alignment_verified`, `alignment_asserted`,
+  `alignment_not_applicable`, `row_correspondence` and `shared_reference`, and the
+  digests are under `digests` with `format` and, per side, `sha256` and `absent`; (h) in
+  `dnd-digest-1` the dtype string is NumPy's dtype name (`float32`, `int64`, …), and
+  `declaration_stored` is the JSON object `{"reference_origin": …,
+  "reference_schema_version": …}` as read from the attributes; the lineage is not part of
+  the digest, as the array bytes already reflect any transform.
 - **Implementation phases.** Phase 1: the reference declaration and its propagation
   (`generate`, `save_hdf5`, `infer`), naming by origin (no SNR for an undeclared reference),
   legacy output, and no silent ignoring of `--clean`. Phase 2: the rest of the alignment
