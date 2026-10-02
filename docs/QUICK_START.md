@@ -247,6 +247,31 @@ See
 [the preregistration](preregistration/P1-selfsupervised-moving-average.md) for
 what the port does and does not establish.
 
+### What a checkpoint records about its training
+
+`train` writes a provenance manifest into the checkpoint, and `infer` carries it into
+its output, where `evaluate` reports it under `evaluation_context.model`. It records the
+training data's content digest and identifiers, the targets, the options and the settings
+actually used, every seed, the software versions, the device, and the commit when the
+package runs from its own git checkout. A `model_digest` binds it to the weights and the
+normalisation: `infer` refuses a checkpoint edited without updating it, and `evaluate`
+refuses an output whose carried records do not belong together. The design is
+[docs/design/PROVENANCE_MANIFEST.md](design/PROVENANCE_MANIFEST.md).
+
+- **Identifiers travel with the model.** The training file's `acquisition_id` and its
+  reference declaration (including free-text conditions) are copied verbatim into the
+  manifest, so sharing a checkpoint or any of its outputs shares them. Keep names of
+  people, places and specimens out of them, and give each acquisition its own
+  `acquisition_id`: one reused for two acquisitions makes them look like the same data.
+- **Tools that edit files must keep the metadata true.** A tool that takes a subset of
+  rows and renumbers `frame_index`, or replaces `noisy` or `clean` but keeps
+  `input_array_digest` or `signal_identity`, leaves metadata that describes other data.
+  Drop or rewrite it.
+- **The commit** is recorded only for this package's own checkout, never for another
+  repository the package happens to sit in; a repository that vendors the package at a
+  tracked top-level `src/dnndenoiser/` is recorded as such a checkout.
+- A manifest records what was run. It does not make training reproducible.
+
 ## Python API (minimal example)
 
 ```python

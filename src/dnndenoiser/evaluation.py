@@ -17,7 +17,6 @@ is not an established error against the signal. The names below say which.
 from __future__ import annotations
 
 import math
-from typing import Optional
 
 import numpy as np
 
@@ -245,8 +244,3 @@ def report_lines(case: str, result: dict) -> list:
     for key, reason in result.get("status", {}).items():
         lines.append(f"undefined: {key} -- {reason}")
     return lines
-
-
-def model_identity() -> Optional[str]:
-    """Model provenance arrives in step 2 of the plan; until then it is unknown."""
-    return None

@@ -109,6 +109,20 @@ def moving_average_targets(
     return frames[neighbours].mean(axis=1)
 
 
+# The archived reference's fixed settings. One place, read by the trainer below and by
+# the provenance manifest, so that what is recorded is what was used.
+FIXED_SETTINGS = {
+    "architecture": "ResNet-FCNN",
+    "num_hidden_units": 100,
+    "encoder_output_dim": 64,
+    "optimiser": {"name": "Adam", "lr": 1e-3, "weight_decay": 1e-9,
+                  "betas": [0.9, 0.999], "eps": 1e-8},
+    "scheduler": {"name": "StepLR", "step_size": 25, "gamma": 0.5},
+    "loss": {"name": "HuberLoss", "delta": 1.0},
+    "grad_clip": 4.0,
+}
+
+
 def train_selfsupervised(
     frames: np.ndarray,
     targets: np.ndarray,
@@ -117,6 +131,7 @@ def train_selfsupervised(
     batch_size: int = 32,
     device: str = "cpu",
     seed: int | None = None,
+    losses: list | None = None,
 ) -> DenoisingNetwork:
     """Train a ResNet-FCNN on (frame, self-supervised target) pairs.
 
@@ -134,6 +149,8 @@ def train_selfsupervised(
             **Construction consumes the random stream**, so a caller that builds
             anything else drawing from it first will get a different model from
             the same seed.
+        losses: if given, the mean training loss of each epoch is appended to it.
+            Reading the loss does not touch any random stream.
 
     Returns:
         The trained model, in eval mode.
@@ -157,11 +174,12 @@ def train_selfsupervised(
         torch.manual_seed(seed)
 
     dev = torch.device(device)
+    fixed = FIXED_SETTINGS
     model = DenoisingNetwork(
         num_features=frames.shape[1],
-        num_hidden_units=100,
-        layer_type="ResNet-FCNN",
-        encoder_output_dim=64,
+        num_hidden_units=fixed["num_hidden_units"],
+        layer_type=fixed["architecture"],
+        encoder_output_dim=fixed["encoder_output_dim"],
     ).to(dev)
 
     dataset = torch.utils.data.TensorDataset(
@@ -170,12 +188,18 @@ def train_selfsupervised(
     )
     loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    optimiser = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-9)
-    schedule = torch.optim.lr_scheduler.StepLR(optimiser, step_size=25, gamma=0.5)
-    criterion = nn.HuberLoss(delta=1.0)
+    optimiser = torch.optim.Adam(model.parameters(), lr=fixed["optimiser"]["lr"],
+                                 weight_decay=fixed["optimiser"]["weight_decay"],
+                                 betas=tuple(fixed["optimiser"]["betas"]),
+                                 eps=fixed["optimiser"]["eps"])
+    schedule = torch.optim.lr_scheduler.StepLR(optimiser,
+                                               step_size=fixed["scheduler"]["step_size"],
+                                               gamma=fixed["scheduler"]["gamma"])
+    criterion = nn.HuberLoss(delta=fixed["loss"]["delta"])
 
     model.train()
     for _ in range(epochs):
+        total, batches = 0.0, 0
         for batch_frames, batch_targets in loader:
             batch_frames = batch_frames.to(dev)
             batch_targets = batch_targets.to(dev)
@@ -183,9 +207,14 @@ def train_selfsupervised(
             denoised, _ = model(batch_frames)
             loss = criterion(denoised, batch_targets)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 4.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), fixed["grad_clip"])
             optimiser.step()
+            if losses is not None:
+                total += loss.item()
+                batches += 1
         schedule.step()
+        if losses is not None:
+            losses.append(total / batches if batches else float("nan"))
 
     model.eval()
     return model
