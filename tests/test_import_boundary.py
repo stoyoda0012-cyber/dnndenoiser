@@ -98,7 +98,12 @@ def test_only_the_golden_generator_may_read_the_p1_reference():
         pathlib.Path("tests/fixtures/generate_p1_reference_targets.py"),
         pathlib.Path("tests/test_p1_weight_interchange.py"),
     }
-    skip_dirs = {".git", "build", "dist", "__pycache__", ".ruff_cache", ".pytest_cache"}
+    # ``.claude`` is local agent state and never part of the repository
+    # (AGENTS.md §9); an agent worktree under it is a full checkout whose
+    # copies of the two allowed files would otherwise be reported as readers.
+    skip_dirs = {
+        ".git", ".claude", "build", "dist", "__pycache__", ".ruff_cache", ".pytest_cache",
+    }
     readers = set()
     parsed = 0
 
