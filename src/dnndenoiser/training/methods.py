@@ -204,6 +204,8 @@ class Noise2Noise(TrainingMethod):
         """
         super().__init__(noise_fn)
         # Two independent RNGs for generating independent noise
+        # The seeds actually used, recorded by the provenance manifest.
+        self.seeds = (int(seed), int(seed) + 1000)
         self._rng1 = np.random.default_rng(seed)
         self._rng2 = np.random.default_rng(seed + 1000)
         self._use_internal_noise = noise_fn is None

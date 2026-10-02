@@ -1,7 +1,7 @@
 # Design: what a trained model records about how it was made
 
-**Status: adopted 2026-10-02 (revision 3, after three independent audits); not yet
-implemented.** Step 2 of the improvement plan that follows a reproducibility assessment of a
+**Status: adopted 2026-10-02 (revision 3, after three independent audits); phase A
+implemented (see the CHANGELOG); phase B not yet.** Step 2 of the improvement plan that follows a reproducibility assessment of a
 published study. Its recording part (phase A) changes no evaluation output; its
 relationship part (phase B) lets `evaluate` *establish* whether the evaluated data or the
 reference took part in training, and renames the outputs when they did, so under

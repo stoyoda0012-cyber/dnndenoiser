@@ -29,7 +29,11 @@ EVALUATED_COMPONENTS = ("noisy", "denoised", "energy", "angles", "times", "frame
 
 
 def array_payload(value) -> bytes:
-    arr = np.ascontiguousarray(value)
+    arr = np.asarray(value)
+    if not arr.flags.c_contiguous:
+        # Not np.ascontiguousarray: it turns a 0-d array into shape (1,), which would
+        # change the header the format defines.
+        arr = arr.copy(order="C")
     if arr.dtype.kind not in "biuf":
         raise TypeError(f"an array of dtype {arr.dtype} has no digest")
     if arr.dtype.byteorder == ">" or (arr.dtype.byteorder == "=" and sys.byteorder == "big"):

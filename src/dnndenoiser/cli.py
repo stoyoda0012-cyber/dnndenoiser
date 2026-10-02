@@ -333,6 +333,15 @@ def cmd_train_moving_average(args, passed_flags):
         sys.exit(1)
     normalised = (frames - g_min) / (g_max - g_min)
 
+    from dnndenoiser import provenance as prov
+    # The training file as stored, recorded before anything is done to it; non-finite
+    # frames and a malformed frame_index are refused here.
+    try:
+        training_data = prov.training_data_record(args.data, 'frames')
+    except prov.MalformedProvenance as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
     window = min(args.window, stack.n_frames - 1)
     if window != args.window:
         print(f"  Window clamped to {window} ({stack.n_frames} frames available)")
@@ -341,13 +350,15 @@ def cmd_train_moving_average(args, passed_flags):
     device = _resolve_device(args.device)
     print(f"Device: {device}")
     print(f"\nTraining (window={window}, epochs={args.epochs}, batch={args.batch_size})...")
+    losses: list = []
     model = train_selfsupervised(
         normalised, targets,
         epochs=args.epochs, batch_size=args.batch_size, device=device, seed=args.seed,
+        losses=losses,
     )
 
-    torch.save(
-        {
+    from dnndenoiser.training.selfsupervised import FIXED_SETTINGS
+    checkpoint = {
             "model_state_dict": model.state_dict(),
             "architecture": "ResNet-FCNN",
             "num_features": TARGET_LENGTH,
@@ -360,9 +371,21 @@ def cmd_train_moving_average(args, passed_flags):
             # A tensor, not a NumPy array: an array makes the whole checkpoint
             # unloadable without unpickling it, and nothing else here needs that.
             "energy": torch.as_tensor(np.asarray(stack.energy, dtype=np.float32)),
+        }
+    effective = {**FIXED_SETTINGS, "num_features": TARGET_LENGTH, "epochs": args.epochs,
+                 "batch_size": args.batch_size, "window": window}
+    resampled = stack.n_energy != TARGET_LENGTH
+    _seal_checkpoint(
+        checkpoint, args, device, training_data,
+        targets={"kind": "leave_one_out_window_mean", "window": window},
+        effective=effective, seeds={"torch": args.seed, "targets": None},
+        preprocessing={
+            "resampling": ({"from_points": int(stack.n_energy), "to_points": TARGET_LENGTH}
+                           if resampled else None),
+            "normalisation": dict(checkpoint["normalisation"]),
         },
-        args.output,
-    )
+        epochs=len(losses), final_loss=losses[-1] if losses else None)
+    torch.save(checkpoint, args.output)
     print(f"\nSaved: {args.output}")
     print("  Evaluation note: a measured stack has no clean reference. A mean over "
           "the same frames is not independent of these targets, so any SNR computed "
@@ -370,8 +393,29 @@ def cmd_train_moving_average(args, passed_flags):
     return 0
 
 
+def _seal_checkpoint(checkpoint, args, device, training_data, *, targets, effective,
+                     seeds, preprocessing, epochs, final_loss):
+    """Write the provenance manifest and model_digest into a checkpoint about to be
+    saved (docs/design/PROVENANCE_MANIFEST.md, phase A)."""
+    from dnndenoiser import provenance as prov
+    try:
+        manifest = prov.build_manifest(
+            args=args, flags_passed=_flags_passed(sys.argv[1:], args._train_options),
+            device=device, training_data=training_data, targets=targets,
+            effective=effective, seeds=seeds, preprocessing=preprocessing,
+            epochs=epochs, final_loss=final_loss)
+        prov.seal(checkpoint, manifest, checkpoint_model_config(checkpoint, args.output))
+    except prov.MalformedProvenance as exc:
+        print(f"Error: cannot record the provenance manifest: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_train(args):
     """Train denoising model."""
+    if args.epochs < 1:
+        # Zero epochs used to crash after "training", with no loss to save.
+        print(f"Error: --epochs must be at least 1, got {args.epochs}", file=sys.stderr)
+        sys.exit(1)
     if args.method == 'moving-average':
         # A different data layout and fixed hyperparameters: routed to its own
         # command rather than threaded through the generic loop, so the knobs
@@ -402,6 +446,15 @@ def cmd_train(args):
     print(f"  Noisy shape: {noisy.shape}")
     if clean is not None:
         print(f"  Clean shape: {clean.shape}")
+
+    from dnndenoiser import provenance as prov
+    # The training file as stored, recorded before anything is done to it; non-finite
+    # arrays and a malformed frame_index are refused here.
+    try:
+        training_data = prov.training_data_record(args.data, 'noisy')
+    except prov.MalformedProvenance as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     # Flatten if multidimensional
     if noisy.ndim > 2:
@@ -527,21 +580,38 @@ def cmd_train(args):
     if args.scheduler == 'cosine':
         from dnndenoiser.training.schedulers import get_cosine_schedule_with_warmup
         num_warmup_steps = num_batches * args.warmup_epochs
+        schedule_settings = {"name": "cosine_with_warmup",
+                             "num_warmup_steps": num_warmup_steps,
+                             "num_training_steps": num_training_steps,
+                             "num_cycles": 0.5, "min_lr_ratio": 0.01}
         scheduler = get_cosine_schedule_with_warmup(
             optimizer,
-            num_warmup_steps=num_warmup_steps,
-            num_training_steps=num_training_steps,
-            num_cycles=0.5,
-            min_lr_ratio=0.01
+            num_warmup_steps=schedule_settings["num_warmup_steps"],
+            num_training_steps=schedule_settings["num_training_steps"],
+            num_cycles=schedule_settings["num_cycles"],
+            min_lr_ratio=schedule_settings["min_lr_ratio"],
         )
         scheduler_step_per_batch = True
     else:
         scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer, step_size=args.lr_drop_period, gamma=args.lr_drop_factor
         )
+        schedule_settings = {"name": "StepLR", "step_size": scheduler.step_size,
+                             "gamma": scheduler.gamma}
         scheduler_step_per_batch = False
 
     loss_fn = torch.nn.HuberLoss(delta=1.0)
+    # What this run uses, read from the objects that use it.
+    effective = {
+        "architecture": args.arch, "num_features": int(n_features),
+        "num_hidden_units": args.hidden_units, "encoder_output_dim": args.encoder_dim,
+        "optimiser": {"name": type(optimizer).__name__,
+                      "lr": float(optimizer.defaults["lr"]),
+                      "weight_decay": float(optimizer.defaults["weight_decay"])},
+        "scheduler": schedule_settings,
+        "loss": {"name": type(loss_fn).__name__, "delta": float(loss_fn.delta)},
+        "grad_clip": args.grad_clip, "epochs": args.epochs, "batch_size": args.batch_size,
+    }
 
     # Training loop
     print("\nTraining...")
@@ -598,7 +668,7 @@ def cmd_train(args):
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    torch.save({
+    checkpoint = {
         'model_state_dict': model.state_dict(),
         'architecture': args.arch,
         'n_features': n_features,
@@ -609,7 +679,18 @@ def cmd_train(args):
                         if method_type == TrainingMethodType.NOISE2NOISE else None),
         'epochs': args.epochs,
         'final_loss': avg_loss,
-    }, output_path)
+    }
+    is_n2n = method_type == TrainingMethodType.NOISE2NOISE
+    _seal_checkpoint(
+        checkpoint, args, device, training_data,
+        targets=({"kind": "synthesised_realisation", "noise_level": args.noise_level}
+                 if is_n2n else {"kind": "clean"}),
+        effective=effective,
+        seeds={"torch": args.seed,
+               "targets": list(training_method.seeds) if is_n2n else None},
+        preprocessing={"resampling": None, "normalisation": None},
+        epochs=args.epochs, final_loss=avg_loss)
+    torch.save(checkpoint, output_path)
 
     print(f"Saved: {output_path}")
     print("Done.")
@@ -661,6 +742,20 @@ def cmd_infer(args):
     model = model.to(device)
     model.eval()
 
+    # The manifest is carried only if it still describes these weights and this
+    # configuration; a checkpoint written before manifests has none.
+    from dnndenoiser import provenance as prov
+    try:
+        model_records = prov.verify_checkpoint(checkpoint, config)
+    except prov.MalformedProvenance as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if model_records is None:
+        print("  Provenance: none (a checkpoint written before manifests)")
+    else:
+        print(f"  Provenance: verified, model_digest "
+              f"{model_records['model_digest']['sha256'][:16]}...")
+
     # Load data
     from types import SimpleNamespace
     from dnndenoiser import reference as ref
@@ -677,6 +772,9 @@ def cmd_infer(args):
             input_name = None
         if input_name is not None:
             noisy = f[input_name][:]
+            # The input as read, before resampling, so a resampled output can still be
+            # matched with the data a model was trained on.
+            input_array_digest = prov.matching_digest(noisy)
             # Units and acquisition identity travel with the data they describe.
             carried = {k: f[input_name].attrs[k] for k in (ref.UNITS_ATTR, ref.ACQUISITION_ATTR)
                        if k in f[input_name].attrs}
@@ -687,6 +785,8 @@ def cmd_infer(args):
         energy = f['energy'][:]
         clean = f['clean'][:] if 'clean' in f else None
         clean_attrs = None
+        signal_identity = (f['clean'].attrs.get(prov.SIGNAL_IDENTITY)
+                           if clean is not None else None)
         if clean is not None:
             # The reference's declaration is carried through unchanged; a malformed one
             # is refused here rather than passed on.
@@ -791,12 +891,23 @@ def cmd_infer(args):
         for name in ('noisy', 'denoised'):
             for key, value in carried.items():
                 f[name].attrs[key] = value
+        f['noisy'].attrs[prov.INPUT_ARRAY_DIGEST] = prov.canonical(input_array_digest)
+        if model_records is not None:
+            # Exactly the canonical serialisation, as a dataset (no size limit).
+            f.create_dataset(prov.OUTPUT_MANIFEST, data=model_records['manifest_text'],
+                             dtype=h5py.string_dtype('utf-8'))
+            f['denoised'].attrs[prov.OUTPUT_DIGEST] = prov.canonical(
+                model_records['model_digest'])
+            f['denoised'].attrs[prov.OUTPUT_BODY_DIGEST] = prov.canonical(
+                model_records['body'])
         # Coordinates keep their values and dtype; only a resampled energy axis changes.
         f.create_dataset('energy', data=energy)
         if clean is not None:
             f.create_dataset('clean', data=clean, dtype='float32')
             ref.copy_declaration(SimpleNamespace(attrs=clean_attrs), f['clean'],
                                  append=lineage_record)
+            if signal_identity is not None:
+                f['clean'].attrs[prov.SIGNAL_IDENTITY] = signal_identity
         if angles is not None:
             f.create_dataset('angles', data=angles)
         if times is not None:
@@ -903,6 +1014,7 @@ def cmd_evaluate(args):
     from dnndenoiser import alignment as al
     from dnndenoiser import digest as dg
     from dnndenoiser import evaluation as ev
+    from dnndenoiser import provenance as prov
     from dnndenoiser import reference as ref
 
     def fail(message):
@@ -924,6 +1036,10 @@ def cmd_evaluate(args):
             fail("no 'denoised' dataset found in the input file")
         denoised = f['denoised'][:]
         noisy = f['noisy'][:]
+        try:
+            model_records = prov.read_output_records(f)
+        except prov.MalformedProvenance as exc:
+            fail(f"malformed model provenance: {exc}")
         acquisition_id = f['noisy'].attrs.get(ref.ACQUISITION_ATTR)
         coordinates = _coordinates(f)
         frame_index = coordinates['frame_index']
@@ -1042,7 +1158,7 @@ def cmd_evaluate(args):
         'row_correspondence': alignment['row_correspondence'],
         'shared_reference': bool(args.shared_reference),
         'digests': digests,
-        'model': ev.model_identity() or 'unknown',
+        'model': prov.model_identity(model_records),
         'caveats': ev.caveats(case, effective),
     }
 

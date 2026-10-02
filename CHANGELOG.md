@@ -10,6 +10,23 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **A trained model records how it was made.** `train` writes a provenance manifest
+  into the checkpoint: a content digest of the training data and the identifiers it
+  carries (`acquisition_id`, `frame_index`), what the targets were made from, every
+  recorded option as parsed, the settings the run actually used (for `moving-average`,
+  its fixed optimiser and schedule rather than the parser defaults), every seed used
+  (including noise2noise's target seeds when `--seed` is not given), the software
+  versions, the device, and the commit of this package's own checkout (or `"unknown"`).
+  A `model_digest` binds it to the weights, the normalisation and the configuration.
+  `infer` refuses a checkpoint whose digest no longer matches, carries the manifest into
+  its output, and records a digest of its input as read; `evaluate` checks that the
+  carried records belong together and reports the model's identity under
+  `evaluation_context.model` (it was always `"unknown"`). A record that is present is
+  valid or refused, never read as absent; checkpoints written before this version have
+  none and work as before. The manifest records what was run; it does not make training
+  reproducible. Design and three independent audits:
+  `docs/design/PROVENANCE_MANIFEST.md` (phase A; establishing whether the evaluated data
+  were training data is phase B).
 - **[`docs/WHEN_TO_TRUST.md`](docs/WHEN_TO_TRUST.md)** — what has been measured about
   where a trained model stops being trustworthy, one question at a time. The first
   answer is how far a shift in energy can be trusted, from the P2-A record: the
@@ -73,6 +90,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **`train --epochs 0` crashed after "training"**, with no loss to save. It is now
+  refused. Non-finite training arrays and a malformed `frame_index` in the training file
+  are refused too, before anything is trained.
+- **A content digest of a 0-d array hashed it as shape (1,)**, against the format's
+  definition. No array `evaluate` digests is 0-d, so no evaluation output changes; a
+  model's BatchNorm counters are.
 - **`infer` could not take the frame stack a moving-average model was trained on.**
   It read only a `noisy` dataset, where a stack holds `frames`, and it did not
   resample, where `train` resamples a stack that is not 256 points — so a measured
