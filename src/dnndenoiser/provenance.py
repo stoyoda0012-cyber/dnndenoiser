@@ -128,46 +128,170 @@ def _keys(obj, expected: set, path: str) -> None:
         raise MalformedProvenance(f"'{path}' fields do not match {SCHEMA}: {detail}")
 
 
+_ISO_UTC = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+_METHODS = ("noise2clean", "noise2noise", "moving-average")
+_EFFECTIVE_KEYS = {"architecture", "num_features", "num_hidden_units", "encoder_output_dim",
+                   "optimiser", "scheduler", "loss", "grad_clip", "epochs", "batch_size"}
+
+
+def _is_number(v) -> bool:
+    return type(v) in (int, float)
+
+
+def _require(ok: bool, path: str, what: str, value) -> None:
+    if not ok:
+        raise MalformedProvenance(f"'{path}' must be {what}, got {value!r}")
+
+
+def _str(v, path, nullable=False):
+    _require(type(v) is str or (nullable and v is None), path,
+             "a string" + (" or null" if nullable else ""), v)
+
+
+def _int(v, path, minimum=None, nullable=False):
+    ok = (type(v) is int and (minimum is None or v >= minimum)) or (nullable and v is None)
+    _require(ok, path, "an integer" + (f" >= {minimum}" if minimum is not None else "")
+             + (" or null" if nullable else ""), v)
+
+
+def _num(v, path, nullable=False):
+    _require(_is_number(v) or (nullable and v is None), path,
+             "a number" + (" or null" if nullable else ""), v)
+
+
+def _validate_effective(eff, method: str) -> None:
+    keys = _EFFECTIVE_KEYS | ({"window"} if method == "moving-average" else set())
+    _keys(eff, keys, "command.effective")
+    _str(eff["architecture"], "command.effective.architecture")
+    for k in ("num_features", "num_hidden_units", "encoder_output_dim", "epochs", "batch_size"):
+        _int(eff[k], f"command.effective.{k}", minimum=1)
+    if "window" in eff:
+        _int(eff["window"], "command.effective.window", minimum=1)
+    _num(eff["grad_clip"], "command.effective.grad_clip")
+    for name in ("optimiser", "scheduler", "loss"):
+        value = eff[name]
+        _require(type(value) is dict and type(value.get("name")) is str,
+                 f"command.effective.{name}", "an object with a string 'name'", value)
+        for k, v in value.items():
+            if k != "name":
+                _require(_is_number(v) or (type(v) is list and all(_is_number(x) for x in v)),
+                         f"command.effective.{name}.{k}", "a number or a list of numbers", v)
+
+
 def validate_manifest(obj) -> dict:
-    """Check a manifest's structure and types; return it unchanged if valid."""
+    """Check every field's presence and type (design §2); return it unchanged if valid.
+    Anything else -- a missing or unknown field, a wrong type at any depth -- is refused,
+    naming the field."""
+    from dnndenoiser import reference as ref
+
     _keys(obj, MANIFEST_KEYS, "provenance")
     _check_plain(obj, "")
     if obj["schema"] != SCHEMA:
         raise MalformedProvenance(f"unknown provenance schema {obj['schema']!r}; this "
                                   f"version reads {SCHEMA}")
-    _keys(obj["software"], SOFTWARE_KEYS, "software")
-    _keys(obj["code"], CODE_KEYS, "code")
-    _keys(obj["command"], COMMAND_KEYS, "command")
-    _keys(obj["training_data"], TRAINING_DATA_KEYS, "training_data")
-    _keys(obj["preprocessing"], PREPROCESSING_KEYS, "preprocessing")
-    _keys(obj["result"], RESULT_KEYS, "result")
-    targets = obj["targets"]
-    if not isinstance(targets, dict) or targets.get("kind") not in TARGET_KINDS:
-        raise MalformedProvenance(f"'targets.kind' must be one of {sorted(TARGET_KINDS)}")
-    _keys(targets, TARGET_KINDS[targets["kind"]], "targets")
-    if not isinstance(obj["statuses"], dict) or not all(
-            isinstance(v, str) for v in obj["statuses"].values()):
-        raise MalformedProvenance("'statuses' must map field paths to strings")
-    for key in ("commit", "tree_clean"):
-        value = obj["code"][key]
-        ok = (value == "unknown" or (key == "commit" and isinstance(value, str)
-                                     and re.fullmatch(r"[0-9a-f]{40,64}", value))
-              or (key == "tree_clean" and isinstance(value, bool)))
-        if not ok:
-            raise MalformedProvenance(f"'code.{key}' is not a commit, a boolean or "
-                                      f"'unknown': {value!r}")
-    runs = obj["training_data"]["frame_index_runs"]
-    if runs is not None and not (isinstance(runs, list) and all(
-            isinstance(r, list) and len(r) == 2 and all(type(v) is int for v in r)
-            and r[0] <= r[1] for r in runs)):
-        raise MalformedProvenance("'training_data.frame_index_runs' must be null or a list "
-                                  "of [first, last] integer runs")
-    validate_digest_object(obj["training_data"]["digest"], "training_data.digest")
-    arrays = obj["training_data"]["array_digests"]
-    if not isinstance(arrays, dict):
-        raise MalformedProvenance("'training_data.array_digests' must be an object")
-    for name, value in arrays.items():
+    _require(type(obj["created_utc"]) is str and bool(_ISO_UTC.fullmatch(obj["created_utc"])),
+             "created_utc", "an ISO 8601 UTC time such as 2026-10-02T12:00:00Z",
+             obj["created_utc"])
+
+    sw = obj["software"]
+    _keys(sw, SOFTWARE_KEYS, "software")
+    for k in ("dnndenoiser", "python", "numpy", "torch", "h5py", "device"):
+        _str(sw[k], f"software.{k}")
+    _str(sw["torch_cuda"], "software.torch_cuda", nullable=True)
+    _keys(sw["platform"], {"system", "machine"}, "software.platform")
+    for k in ("system", "machine"):
+        _str(sw["platform"][k], f"software.platform.{k}")
+
+    code = obj["code"]
+    _keys(code, CODE_KEYS, "code")
+    known = (type(code["commit"]) is str and re.fullmatch(r"[0-9a-f]{40,64}", code["commit"])
+             and type(code["tree_clean"]) is bool)
+    unknown = code["commit"] == "unknown" and code["tree_clean"] == "unknown"
+    _require(bool(known or unknown), "code",
+             "a commit with a boolean tree_clean, or both 'unknown'", code)
+
+    cmd = obj["command"]
+    _keys(cmd, COMMAND_KEYS, "command")
+    _require(cmd["method"] in _METHODS, "command.method", f"one of {list(_METHODS)}",
+             cmd["method"])
+    _keys(cmd["arguments"], set(RECORDED_ARGUMENTS), "command.arguments")
+    for k, v in cmd["arguments"].items():
+        _require(v is None or type(v) in (bool, int, float, str), f"command.arguments.{k}",
+                 "a scalar", v)
+    _require(type(cmd["flags_passed"]) is list and all(
+        type(f) is str and f.startswith("-") for f in cmd["flags_passed"]),
+        "command.flags_passed", "a list of option names", cmd["flags_passed"])
+    _validate_effective(cmd["effective"], cmd["method"])
+    _keys(cmd["seeds"], {"torch", "targets"}, "command.seeds")
+    _int(cmd["seeds"]["torch"], "command.seeds.torch", nullable=True)
+    targets_seeds = cmd["seeds"]["targets"]
+    _require(targets_seeds is None or (type(targets_seeds) is list and len(targets_seeds) == 2
+                                       and all(type(x) is int for x in targets_seeds)),
+             "command.seeds.targets", "null or a list of two integers", targets_seeds)
+
+    td = obj["training_data"]
+    _keys(td, TRAINING_DATA_KEYS, "training_data")
+    validate_digest_object(td["digest"], "training_data.digest")
+    _require(type(td["array_digests"]) is dict
+             and set(td["array_digests"]) <= {"noisy", "frames", "clean"},
+             "training_data.array_digests", "an object keyed by noisy, frames or clean",
+             td["array_digests"])
+    for name, value in td["array_digests"].items():
         validate_digest_object(value, f"training_data.array_digests.{name}")
+    _require(type(td["layout"]) is dict and set(td["layout"]) <= set(TRAINING_COMPONENTS),
+             "training_data.layout", "an object keyed by stored components", td["layout"])
+    for name, value in td["layout"].items():
+        _keys(value, {"shape", "dtype"}, f"training_data.layout.{name}")
+        _require(type(value["shape"]) is list and all(type(n) is int and n >= 0
+                                                      for n in value["shape"]),
+                 f"training_data.layout.{name}.shape", "a list of sizes", value["shape"])
+        _str(value["dtype"], f"training_data.layout.{name}.dtype")
+    _require(td["rows_used"] == "all", "training_data.rows_used", "'all'", td["rows_used"])
+    for k in ("intensity_units", "acquisition_id", "signal_identity"):
+        _str(td[k], f"training_data.{k}", nullable=True)
+    runs = td["frame_index_runs"]
+    ok = runs is None or (type(runs) is list and all(
+        type(r) is list and len(r) == 2 and all(type(v) is int for v in r) and r[0] <= r[1]
+        for r in runs) and all(runs[i][0] > runs[i - 1][1] + 1 for i in range(1, len(runs))))
+    _require(ok, "training_data.frame_index_runs",
+             "null or sorted, disjoint, non-adjacent [first, last] integer runs", runs)
+    if td["reference_declaration"] is not None:
+        try:
+            ref.validate_origin(td["reference_declaration"])
+        except ref.MalformedReference as exc:
+            raise MalformedProvenance(f"'training_data.reference_declaration': {exc}") from None
+
+    targets = obj["targets"]
+    _require(type(targets) is dict and type(targets.get("kind")) is str
+             and targets["kind"] in TARGET_KINDS, "targets.kind",
+             f"one of {sorted(TARGET_KINDS)}", targets.get("kind") if type(targets) is dict
+             else targets)
+    _keys(targets, TARGET_KINDS[targets["kind"]], "targets")
+    if "noise_level" in targets:
+        _require(_is_number(targets["noise_level"]) and targets["noise_level"] > 0,
+                 "targets.noise_level", "a positive number", targets["noise_level"])
+    if "window" in targets:
+        _int(targets["window"], "targets.window", minimum=1)
+
+    pre = obj["preprocessing"]
+    _keys(pre, PREPROCESSING_KEYS, "preprocessing")
+    if pre["resampling"] is not None:
+        _keys(pre["resampling"], {"from_points", "to_points"}, "preprocessing.resampling")
+        for k in ("from_points", "to_points"):
+            _int(pre["resampling"][k], f"preprocessing.resampling.{k}", minimum=1)
+    if pre["normalisation"] is not None:
+        _keys(pre["normalisation"], {"kind", "min", "max"}, "preprocessing.normalisation")
+        _str(pre["normalisation"]["kind"], "preprocessing.normalisation.kind")
+        for k in ("min", "max"):
+            _num(pre["normalisation"][k], f"preprocessing.normalisation.{k}")
+
+    res = obj["result"]
+    _keys(res, RESULT_KEYS, "result")
+    _int(res["epochs"], "result.epochs", minimum=1)
+    _num(res["final_loss"], "result.final_loss", nullable=True)
+    _require(type(obj["statuses"]) is dict and all(
+        type(v) is str for v in obj["statuses"].values()),
+        "statuses", "an object mapping field paths to strings", obj["statuses"])
     return obj
 
 
@@ -213,6 +337,9 @@ def body_digest(state_dict: dict, config: dict) -> dict:
     import torch
 
     components = []
+    bad = [k for k in state_dict if type(k) is not str]
+    if bad:
+        raise MalformedProvenance(f"state-dict key {bad[0]!r} is not a string")
     for key in sorted(state_dict):
         value = state_dict[key]
         if not isinstance(value, torch.Tensor):
@@ -324,12 +451,19 @@ def arguments_record(args) -> dict:
     return out
 
 
-def _attr_text(value) -> Optional[str]:
+def _attr_text(value, name: str = "attribute") -> Optional[str]:
+    """A string attribute's text; anything else is refused, never stringified."""
     if value is None:
         return None
-    if isinstance(value, bytes):
-        value = value.decode("utf-8")
-    return str(value)
+    if isinstance(value, (bytes, np.bytes_)):
+        try:
+            return bytes(value).decode("utf-8")
+        except UnicodeDecodeError:
+            raise MalformedProvenance(f"the {name} is not valid UTF-8") from None
+    if isinstance(value, (str, np.str_)):
+        return str(value)
+    raise MalformedProvenance(f"the {name} must be a string, got {type(value).__name__} "
+                              f"{value!r}")
 
 
 def validate_training_frame_index(frame_index, n_rows: int, name: str) -> None:
@@ -351,10 +485,21 @@ def training_data_record(path, input_name: str) -> dict:
 
     from dnndenoiser import reference as ref
     with h5py.File(path, "r") as f:
-        stored = {name: f[name][:] for name in TRAINING_COMPONENTS if name in f}
+        stored = {}
+        for name in TRAINING_COMPONENTS:
+            if name not in f:
+                continue
+            if not isinstance(f[name], h5py.Dataset):
+                raise MalformedProvenance(f"the training file's '{name}' is not a dataset")
+            arr = np.asarray(f[name][()])
+            if arr.ndim < 1 or arr.dtype.kind not in "biuf":
+                raise MalformedProvenance(f"the training '{name}' must be a numeric array, "
+                                          f"got shape {arr.shape} and dtype {arr.dtype}")
+            stored[name] = arr
         attrs = f[input_name].attrs
-        units = _attr_text(attrs.get(ref.UNITS_ATTR))
-        acquisition = _attr_text(attrs.get(ref.ACQUISITION_ATTR))
+        units = _attr_text(attrs.get(ref.UNITS_ATTR), f"'{input_name}' {ref.UNITS_ATTR}")
+        acquisition = _attr_text(attrs.get(ref.ACQUISITION_ATTR),
+                                 f"'{input_name}' {ref.ACQUISITION_ATTR}")
         declaration = signal = None
         if "clean" in f:
             try:
@@ -362,10 +507,11 @@ def training_data_record(path, input_name: str) -> dict:
             except ref.MalformedReference as exc:
                 raise MalformedProvenance(f"the training file's reference declaration is "
                                           f"malformed: {exc}") from None
-            signal = _attr_text(f["clean"].attrs.get(SIGNAL_IDENTITY))
+            signal = _attr_text(f["clean"].attrs.get(SIGNAL_IDENTITY),
+                                f"'clean' {SIGNAL_IDENTITY}")
     rows = stored[input_name].shape[0]
-    for name in ("noisy", "frames", "clean"):
-        if name in stored and not np.all(np.isfinite(stored[name])):
+    for name, arr in stored.items():
+        if arr.dtype.kind == "f" and not np.all(np.isfinite(arr)):
             raise MalformedProvenance(f"the training '{name}' contains non-finite values")
     index = stored.get("frame_index")
     if index is not None:
@@ -465,12 +611,15 @@ def read_output_records(handle) -> Optional[dict]:
     if not all(present.values()):
         missing = sorted(k for k, v in present.items() if not v)
         raise MalformedProvenance(f"the model records are incomplete: missing {missing}")
-    raw = handle[OUTPUT_MANIFEST][()]
-    text = raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
+    import h5py
+    node = handle[OUTPUT_MANIFEST]
+    if not isinstance(node, h5py.Dataset) or node.shape != ():
+        raise MalformedProvenance(f"'{OUTPUT_MANIFEST}' must be a scalar string dataset")
+    text = _attr_text(node[()], f"'{OUTPUT_MANIFEST}' dataset")
     try:
         manifest = json.loads(text, parse_constant=_no_constant)
-        digest_obj = json.loads(_attr_text(denoised[OUTPUT_DIGEST]))
-        body = json.loads(_attr_text(denoised[OUTPUT_BODY_DIGEST]))
+        digest_obj = json.loads(_attr_text(denoised[OUTPUT_DIGEST], OUTPUT_DIGEST))
+        body = json.loads(_attr_text(denoised[OUTPUT_BODY_DIGEST], OUTPUT_BODY_DIGEST))
     except (ValueError, TypeError) as exc:
         raise MalformedProvenance(f"a model record is not valid JSON: {exc}") from None
     validate_manifest(manifest)

@@ -115,7 +115,8 @@ FIXED_SETTINGS = {
     "architecture": "ResNet-FCNN",
     "num_hidden_units": 100,
     "encoder_output_dim": 64,
-    "optimiser": {"name": "Adam", "lr": 1e-3, "weight_decay": 1e-9},
+    "optimiser": {"name": "Adam", "lr": 1e-3, "weight_decay": 1e-9,
+                  "betas": [0.9, 0.999], "eps": 1e-8},
     "scheduler": {"name": "StepLR", "step_size": 25, "gamma": 0.5},
     "loss": {"name": "HuberLoss", "delta": 1.0},
     "grad_clip": 4.0,
@@ -188,7 +189,9 @@ def train_selfsupervised(
     loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     optimiser = torch.optim.Adam(model.parameters(), lr=fixed["optimiser"]["lr"],
-                                 weight_decay=fixed["optimiser"]["weight_decay"])
+                                 weight_decay=fixed["optimiser"]["weight_decay"],
+                                 betas=tuple(fixed["optimiser"]["betas"]),
+                                 eps=fixed["optimiser"]["eps"])
     schedule = torch.optim.lr_scheduler.StepLR(optimiser,
                                                step_size=fixed["scheduler"]["step_size"],
                                                gamma=fixed["scheduler"]["gamma"])

@@ -91,8 +91,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 
 - **`train --epochs 0` crashed after "training"**, with no loss to save. It is now
-  refused. Non-finite training arrays and a malformed `frame_index` in the training file
-  are refused too, before anything is trained.
+  refused. A training file with non-finite values in any stored array or coordinate, a
+  non-numeric coordinate, or a malformed `frame_index` is refused too, naming the dataset,
+  before anything is trained.
 - **A content digest of a 0-d array hashed it as shape (1,)**, against the format's
   definition. No array `evaluate` digests is 0-d, so no evaluation output changes; a
   model's BatchNorm counters are.

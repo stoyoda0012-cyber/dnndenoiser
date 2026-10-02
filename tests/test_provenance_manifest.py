@@ -175,7 +175,8 @@ def test_noise2noise_target_seeds_follow_the_seed(monkeypatch, tmp_path, trained
 def check_moving_average_effective(m):
     eff = m["command"]["effective"]
     assert eff["architecture"] == "ResNet-FCNN" and eff["num_hidden_units"] == 100
-    assert eff["optimiser"] == {"name": "Adam", "lr": 1e-3, "weight_decay": 1e-9}
+    assert eff["optimiser"] == {"name": "Adam", "lr": 1e-3, "weight_decay": 1e-9,
+                                "betas": [0.9, 0.999], "eps": 1e-8}
     assert eff["scheduler"] == {"name": "StepLR", "step_size": 25, "gamma": 0.5}
     assert eff["loss"] == {"name": "HuberLoss", "delta": 1.0} and eff["grad_clip"] == 4.0
 
@@ -207,7 +208,8 @@ def test_arguments_record_values_and_flags_and_exclude_paths(monkeypatch, tmp_pa
     assert "data" not in args and "output" not in args
     assert "--lr" in m["command"]["flags_passed"] and "--data" not in m["command"]["flags_passed"]
     assert m["command"]["effective"]["optimiser"] == {"name": "Adam", "lr": 0.05,
-                                                      "weight_decay": 0.0}
+                                                      "weight_decay": 0.0,
+                                                      "betas": [0.9, 0.999], "eps": 1e-8}
 
 
 def test_every_train_option_is_classified_for_the_record():
@@ -362,7 +364,7 @@ def infer(monkeypatch, data, model, out, *extra):
     return out
 
 
-@pytest.mark.parametrize("edit", ["weight", "buffer", "architecture-key", "normalisation",
+@pytest.mark.parametrize("edit", ["weight", "buffer", "training-method-key", "normalisation",
                                   "manifest"])
 def test_infer_refuses_a_checkpoint_changed_without_its_digest(monkeypatch, capsys, tmp_path,
                                                               trained, edit):
@@ -379,9 +381,8 @@ def test_infer_refuses_a_checkpoint_changed_without_its_digest(monkeypatch, caps
         key = sorted(ck["model_state_dict"])[0]
         ck["model_state_dict"][key] = ck["model_state_dict"][key].clone()
         ck["model_state_dict"][key].view(-1)[0] += 1e-3
-    elif edit == "architecture-key":
-        ck["hidden_units"] = ck["hidden_units"]       # unchanged value...
-        ck["training_method"] = "noise2noise"          # ...but a key infer reports changed
+    elif edit == "training-method-key":
+        ck["training_method"] = "noise2noise"
     elif edit == "normalisation":
         ck["normalisation"] = {**ck["normalisation"], "max": ck["normalisation"]["max"] * 2}
     elif edit == "manifest":
@@ -417,6 +418,14 @@ def test_both_spellings_of_a_shape_key_hash_the_resolved_values(monkeypatch, tmp
     both = tmp_path / "both.pt"
     torch.save(ck, both)
     infer(monkeypatch, data, both, tmp_path / "o.h5")         # still verifies
+    # With different values the resolved one (num_features, read first) is hashed.
+    from dnndenoiser.cli import checkpoint_model_config
+    small = {"model_state_dict": SMALL_STATE, "architecture": "FCNN", "num_features": 3,
+             "n_features": 99, "num_hidden_units": 2, "encoder_output_dim": 2,
+             "training_method": "noise2clean"}
+    config = prov.body_config(small, checkpoint_model_config(small, "x"))
+    assert config["num_features"] == 3
+    assert prov.body_digest(SMALL_STATE, config)["sha256"] == FROZEN_BODY
 
 
 def test_a_state_dict_entry_without_a_digest_is_refused_naming_it():
@@ -435,7 +444,7 @@ def test_a_state_dict_entry_without_a_digest_is_refused_naming_it():
     ("unknown-schema", "unknown provenance schema 'dnd-provenance-9'"),
     ("missing-field", "'result' fields do not match dnd-provenance-1: missing ['final_loss']"),
     ("unknown-field", "'provenance' fields do not match dnd-provenance-1: unknown ['extra']"),
-    ("wrong-type", "'training_data.frame_index_runs' must be null or a list"),
+    ("wrong-type", "'training_data.frame_index_runs' must be null or sorted, disjoint"),
     ("bad-digest", "'model_digest' must be {'format': 'dnd-digest-1'"),
 ])
 def test_a_partial_or_malformed_checkpoint_record_is_refused(monkeypatch, capsys, tmp_path,
@@ -583,3 +592,235 @@ def test_evaluate_reports_unknown_without_a_manifest(monkeypatch, tmp_path):
     n, d, c = arrays()
     path = write(tmp_path / "t.h5", n, d, c, declaration=TRUTH)
     assert evaluate(monkeypatch, tmp_path, path)["evaluation_context"]["model"] == "unknown"
+
+
+# ------------------------------------------------- review of 3a3c545, fixed findings
+
+NESTED = [
+    ("command.method", 5, "'command.method' must be one of"),
+    ("created_utc", 5, "'created_utc' must be an ISO 8601 UTC time"),
+    ("result.epochs", "1", "'result.epochs' must be an integer >= 1"),
+    ("result.final_loss", "low", "'result.final_loss' must be a number or null"),
+    ("training_data.acquisition_id", {"who": "x"}, "'training_data.acquisition_id' must be a string or null"),
+    ("training_data.intensity_units", [1], "'training_data.intensity_units' must be a string or null"),
+    ("software.dnndenoiser", 7, "'software.dnndenoiser' must be a string"),
+    ("command.effective", None, "'command.effective' must be an object"),
+    ("command.seeds", {}, "'command.seeds' fields do not match"),
+    ("command.arguments", {}, "'command.arguments' fields do not match"),
+    ("command.flags_passed", "--lr", "'command.flags_passed' must be a list of option names"),
+    ("training_data.layout", None, "'training_data.layout' must be an object keyed by stored components"),
+    ("training_data.rows_used", "some", "'training_data.rows_used' must be 'all'"),
+    ("preprocessing.resampling", "x", "'preprocessing.resampling' must be an object"),
+    ("software.platform", "Darwin", "'software.platform' must be an object"),
+    ("targets", {"kind": "synthesised_realisation", "noise_level": "x"}, "'targets.noise_level' must be a positive number"),
+    ("targets", {"kind": ["clean"]}, "'targets.kind' must be one of"),
+    ("targets", {"kind": "clean", "window": 3}, "'targets' fields do not match dnd-provenance-1: unknown ['window']"),
+    ("targets", {"kind": "leave_one_out_window_mean"}, "'targets' fields do not match dnd-provenance-1: missing ['window']"),
+    ("code", {"commit": "a" * 40, "tree_clean": "unknown"}, "'code' must be a commit with a boolean tree_clean"),
+    ("code", {"commit": "unknown", "tree_clean": True}, "'code' must be a commit with a boolean tree_clean"),
+    ("training_data.frame_index_runs", [[5, 9], [0, 7]], "'training_data.frame_index_runs' must be null or sorted, disjoint"),
+    ("training_data.frame_index_runs", [[0, 3], [4, 7]], "'training_data.frame_index_runs' must be null or sorted, disjoint"),
+    ("training_data.array_digests", {"bogus": {"format": "dnd-digest-1", "sha256": "0" * 64}}, "'training_data.array_digests' must be an object keyed by"),
+    ("training_data.reference_declaration", 3, "'training_data.reference_declaration'"),
+    ("training_data.digest", {"format": "dnd-digest-1", "sha256": "xyz"}, "'training_data.digest' must be"),
+]
+
+
+def mutated(manifest, path, value):
+    m = json.loads(json.dumps(manifest))
+    *head, last = path.split(".")
+    node = m
+    for k in head:
+        node = node[k]
+    node[last] = value
+    return m
+
+
+@pytest.mark.parametrize("path, value, reason", NESTED, ids=[f"{p}={v!r}"[:40] for p, v, _ in NESTED])
+def test_a_wrong_nested_field_is_refused_naming_it(trained, path, value, reason):
+    m = manifest_of(trained["noise2clean"][1])
+    assert prov.validate_manifest(json.loads(json.dumps(m)))          # positive counterpart
+    with pytest.raises(prov.MalformedProvenance) as exc:
+        prov.validate_manifest(mutated(m, path, value))
+    assert reason in str(exc.value)
+
+
+@pytest.mark.parametrize("path, value, reason", [NESTED[0], NESTED[4], NESTED[16]],
+                         ids=["method", "acquisition_id", "targets-kind-list"])
+def test_a_wrong_nested_field_with_a_matching_digest_is_refused_by_infer_and_evaluate(
+        monkeypatch, capsys, tmp_path, trained, output, path, value, reason):
+    data, model = trained["noise2clean"]
+    ck = torch.load(model, map_location="cpu", weights_only=True)
+    bad_manifest = mutated(ck["provenance"], path, value)
+    from dnndenoiser.cli import checkpoint_model_config
+    prov.seal(ck, bad_manifest, checkpoint_model_config(ck, "x"))     # a consistent digest
+    bad = tmp_path / "bad.pt"
+    torch.save(ck, bad)
+    assert reason in refuse(monkeypatch, capsys, "infer", "-d", str(data), "-m", str(bad),
+                            "-o", str(tmp_path / "o.h5"), "--device", "cpu")
+    with h5py.File(output, "a") as f:
+        body = json.loads(f["denoised"].attrs[prov.OUTPUT_BODY_DIGEST])
+        text = prov.canonical(bad_manifest)
+        del f[prov.OUTPUT_MANIFEST]
+        f.create_dataset(prov.OUTPUT_MANIFEST, data=text, dtype=h5py.string_dtype("utf-8"))
+        f["denoised"].attrs[prov.OUTPUT_DIGEST] = prov.canonical(prov.model_digest(body, text))
+    assert reason in refuse(monkeypatch, capsys, "evaluate", "-d", str(output))
+
+
+@pytest.mark.parametrize("case, reason", [
+    ("group", "'model_provenance' must be a scalar string dataset"),
+    ("bad-utf8", "the 'model_provenance' dataset is not valid UTF-8"),
+    ("digest-not-string", "the model_digest must be a string"),
+])
+def test_a_malformed_output_record_is_refused_not_a_traceback(monkeypatch, capsys, output,
+                                                              case, reason):
+    with h5py.File(output, "a") as f:
+        if case == "group":
+            del f[prov.OUTPUT_MANIFEST]
+            f.create_group(prov.OUTPUT_MANIFEST)
+        elif case == "bad-utf8":
+            del f[prov.OUTPUT_MANIFEST]
+            f.create_dataset(prov.OUTPUT_MANIFEST, data=b"\xff\xfe")
+        elif case == "digest-not-string":
+            f["denoised"].attrs[prov.OUTPUT_DIGEST] = 7
+    assert reason in refuse(monkeypatch, capsys, "evaluate", "-d", str(output))
+
+
+def test_a_non_string_state_dict_key_is_refused():
+    with pytest.raises(prov.MalformedProvenance, match="state-dict key 3 is not a string"):
+        prov.body_digest({3: torch.zeros(1), "a": torch.zeros(1)}, SMALL_CONFIG)
+
+
+def make_checkout(root, track=True):
+    pkg = root / "src" / "dnndenoiser"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (root / "README").write_text("x", encoding="utf-8")
+    git = ["-c", "user.email=t@example.invalid", "-c", "user.name=t"]
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "add", "README", *(["src/dnndenoiser/__init__.py"] if track else [])],
+                   cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", *git, "commit", "-q", "-m", "x"], cwd=root, check=True,
+                   capture_output=True)
+    return pkg
+
+
+def test_tree_clean_follows_tracked_changes_and_untracked_package_files(tmp_path):
+    pkg = make_checkout(tmp_path / "co")
+    root = tmp_path / "co"
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True,
+                          text=True, check=True).stdout.strip()
+    assert prov.code_record(pkg) == {"commit": head, "tree_clean": True}
+    (root / "notes.txt").write_text("untracked outside the package", encoding="utf-8")
+    assert prov.code_record(pkg)["tree_clean"] is True
+    (pkg / "extra.py").write_text("", encoding="utf-8")
+    assert prov.code_record(pkg)["tree_clean"] is False
+    (pkg / "extra.py").unlink()
+    (root / "README").write_text("changed", encoding="utf-8")
+    assert prov.code_record(pkg)["tree_clean"] is False
+
+
+def test_an_untracked_package_in_a_checkout_has_no_commit(tmp_path):
+    pkg = make_checkout(tmp_path / "co", track=False)
+    assert prov.code_record(pkg) == {"commit": "unknown", "tree_clean": "unknown"}
+
+
+def test_moving_average_records_its_seed_normalisation_and_network_length(monkeypatch, tmp_path):
+    data = stack_file(tmp_path / "s.h5", e=256)
+    m = train(monkeypatch, data, tmp_path / "m.pt", "--seed", "4",
+              method="moving-average")["provenance"]
+    with h5py.File(data) as f:
+        frames = f["frames"][:].astype(np.float32)
+    assert m["command"]["seeds"] == {"torch": 4, "targets": None}
+    assert m["preprocessing"] == {"resampling": None,
+                                  "normalisation": {"kind": "element-global min-max",
+                                                    "min": float(frames.min()),
+                                                    "max": float(frames.max())}}
+    assert m["command"]["effective"]["num_features"] == 256
+    short = train(monkeypatch, stack_file(tmp_path / "s64.h5", e=64), tmp_path / "m64.pt",
+                  method="moving-average")["provenance"]
+    assert short["command"]["effective"]["num_features"] == 256
+
+
+def test_supervised_records_the_step_schedule_and_clip_it_used(monkeypatch, tmp_path, trained):
+    m = train(monkeypatch, trained["noise2clean"][0], tmp_path / "m.pt", "--grad-clip", "2.5",
+              "--lr-drop-period", "7", "--lr-drop-factor", "0.3",
+              "--weight-decay", "0.01")["provenance"]
+    eff = m["command"]["effective"]
+    assert eff["grad_clip"] == 2.5
+    assert eff["scheduler"] == {"name": "StepLR", "step_size": 7, "gamma": 0.3}
+    assert eff["optimiser"]["name"] == "AdamW" and eff["optimiser"]["weight_decay"] == 0.01
+
+
+def test_supervised_records_the_cosine_schedule_it_used(monkeypatch, tmp_path, trained):
+    m = train(monkeypatch, trained["noise2clean"][0], tmp_path / "m.pt", "--scheduler", "cosine",
+              "--warmup-epochs", "1", "--epochs", "2", "--batch-size", "4")["provenance"]
+    assert m["command"]["effective"]["scheduler"] == {
+        "name": "cosine_with_warmup", "num_warmup_steps": 2, "num_training_steps": 4,
+        "num_cycles": 0.5, "min_lr_ratio": 0.01}
+
+
+def test_final_loss_is_the_mean_over_the_last_epoch(monkeypatch, tmp_path, trained):
+    """With lr 0 the weights never move, so the epoch's mean batch loss is the Huber loss
+    over the whole set (two equal batches), computed here from the saved weights."""
+    data = trained["noise2clean"][0]
+    out = tmp_path / "m.pt"
+    ck = train(monkeypatch, data, out, "--lr", "0", "--batch-size", "4", "--arch", "FCNN")
+    from dnndenoiser.models.network import DenoisingNetwork
+    net = DenoisingNetwork(num_features=32, num_hidden_units=100, layer_type="FCNN",
+                           encoder_output_dim=64)
+    net.load_state_dict(ck["model_state_dict"])
+    net.eval()
+    with h5py.File(data) as f:
+        x = torch.tensor(f["noisy"][:], dtype=torch.float32)
+        y = torch.tensor(f["clean"][:], dtype=torch.float32)
+    with torch.no_grad():
+        pred = net(x)
+        pred = pred[0] if isinstance(pred, tuple) else pred
+        expected = torch.nn.functional.huber_loss(pred, y, delta=1.0).item()
+    assert ck["provenance"]["result"]["final_loss"] == pytest.approx(expected, rel=1e-5)
+
+
+@pytest.mark.parametrize("case, reason", [
+    ("nan-energy", "the training 'energy' contains non-finite values"),
+    ("nan-clean", "the training 'clean' contains non-finite values"),
+    ("string-angles", "the training 'angles' must be a numeric array"),
+    ("scalar-frame-index", "the training 'frame_index' must be a numeric array"),
+    ("units-not-string", "the 'noisy' intensity_units must be a string, got int64"),
+    ("units-bad-bytes", "the 'noisy' intensity_units is not valid UTF-8"),
+])
+def test_an_unusual_training_file_is_refused_by_name(monkeypatch, capsys, tmp_path, case, reason):
+    data = supervised_file(tmp_path / "d.h5")
+    with h5py.File(data, "a") as f:
+        if case == "nan-energy":
+            f["energy"][0] = np.nan
+        elif case == "nan-clean":
+            f["clean"][1, 1] = np.nan
+        elif case == "string-angles":
+            f.create_dataset("angles", data=np.array(["a", "b"], dtype=h5py.string_dtype()))
+        elif case == "scalar-frame-index":
+            f.create_dataset("frame_index", data=3)
+        elif case == "units-not-string":
+            f["noisy"].attrs["intensity_units"] = np.int64(7)
+        elif case == "units-bad-bytes":
+            f["noisy"].attrs["intensity_units"] = np.bytes_(b"\xff")
+    err = refuse(monkeypatch, capsys, "train", "-d", str(data), "-o", str(tmp_path / "m.pt"),
+                 "--epochs", "1", "--device", "cpu")
+    assert reason in err
+    assert not (tmp_path / "m.pt").exists()
+
+
+def test_a_nan_energy_in_a_frame_stack_is_refused(monkeypatch, capsys, tmp_path):
+    data = stack_file(tmp_path / "s.h5")
+    with h5py.File(data, "a") as f:
+        f["energy"][0] = np.nan
+    err = refuse(monkeypatch, capsys, "train", "-d", str(data), "-o", str(tmp_path / "m.pt"),
+                 "--method", "moving-average", "--epochs", "1", "--device", "cpu")
+    assert "the training 'energy' contains non-finite values" in err
+
+
+def test_the_restricted_loader_reads_large_integers_in_a_manifest(tmp_path):
+    record = {"runs": [[2**64 - 1, 2**64 - 1], [-2**70, -2**70]], "n": None, "ok": True}
+    path = tmp_path / "x.pt"
+    torch.save({"provenance": record}, path)
+    assert torch.load(path, map_location="cpu", weights_only=True)["provenance"] == record
