@@ -5,7 +5,10 @@ positive counterpart, so an implementation that refuses every hard case fails to
 values are computed here from the arrays, never by the code under test, and the legacy
 expectations come from a golden file produced by ``cmd_evaluate`` at ``cb5e000``.
 
-Phase 2 (the rest of the alignment contract, and content digests) is not tested here.
+Phase 2 (the rest of the alignment contract, and content digests) is tested in
+``test_evaluate_alignment.py``; the evaluations here carry the assertions it requires
+(``--assert-alignment units`` for an undeclared reference, ``rows`` for an external one
+without identifiers).
 """
 from __future__ import annotations
 
@@ -59,9 +62,10 @@ def estimate(acquisition="acq-A", frames="all", construction="frame_mean", **ext
 
 
 def write(path, noisy, denoised, clean, declaration=None, raw_attrs=None, units="counts",
-          acquisition_id=None, frame_index=None, energy=None):
+          acquisition_id=None, frame_index=None, energy=None, angles=None, times=None):
     """An evaluate input. ``declaration`` writes a valid bundle; ``raw_attrs`` writes
-    attributes as given (for malformed cases)."""
+    attributes as given (for malformed cases). ``units`` goes on ``noisy`` and ``denoised``,
+    as ``infer`` writes them."""
     noisy = np.asarray(noisy, dtype=np.float32)
     with h5py.File(path, "w") as f:
         f.create_dataset("noisy", data=noisy)
@@ -71,6 +75,11 @@ def write(path, noisy, denoised, clean, declaration=None, raw_attrs=None, units=
             f["noisy"].attrs["acquisition_id"] = acquisition_id
         if denoised is not None:
             f.create_dataset("denoised", data=np.asarray(denoised, dtype=np.float32))
+            if units is not None:
+                f["denoised"].attrs["intensity_units"] = units
+        for axis, values in (("angles", angles), ("times", times)):
+            if values is not None:
+                f.create_dataset(axis, data=np.asarray(values))
         if clean is not None:
             f.create_dataset("clean", data=np.asarray(clean, dtype=np.float32))
             if declaration is not None:
@@ -159,7 +168,8 @@ def test_a_malformed_declaration_is_refused_not_read_as_undeclared(monkeypatch, 
 def test_absent_and_explicit_undeclared_both_read_as_undeclared(monkeypatch, tmp_path):
     n, d, c = arrays()
     for name, decl in (("absent.h5", None), ("explicit.h5", {"origin": "undeclared"})):
-        out = evaluate(monkeypatch, tmp_path, write(tmp_path / name, n, d, c, declaration=decl))
+        out = evaluate(monkeypatch, tmp_path, write(tmp_path / name, n, d, c, declaration=decl),
+                       "--assert-alignment", "units")
         ctx = out["evaluation_context"]["reference"]
         assert ctx["effective_declaration"] == {"origin": "undeclared"}
         assert ctx["stored_declaration"] == (None if decl is None else decl)
@@ -377,7 +387,8 @@ def test_non_truth_output_uses_no_quality_words(monkeypatch, capsys, tmp_path, c
             "undeclared": None}[case]
     path = write(tmp_path / "x.h5", n, d, c, declaration=decl, acquisition_id="acq-A")
     capsys.readouterr()
-    m = evaluate(monkeypatch, tmp_path, path)
+    m = evaluate(monkeypatch, tmp_path, path,
+                 *(("--assert-alignment", "units") if case == "undeclared" else ()))
     printed = capsys.readouterr().out.splitlines()
     start = printed.index(next(line for line in printed if line.startswith("=== ") and "Evaluation" not in line))
     headings = [line.split("  ")[0] for line in printed[start:] if line and not line.startswith("Note:")
@@ -420,13 +431,14 @@ GOLDEN = json.loads((DATA / "legacy_evaluate_golden_cb5e000.json").read_text(enc
 
 
 def test_an_undeclared_legacy_file_yields_no_snr_by_default(monkeypatch, tmp_path, legacy_file):
-    m = evaluate(monkeypatch, tmp_path, legacy_file)
+    m = evaluate(monkeypatch, tmp_path, legacy_file, "--assert-alignment", "units")
     assert not any(k.startswith("snr") for k in m)
 
 
 def test_declaring_the_legacy_file_as_truth_restores_the_values(monkeypatch, tmp_path, legacy_file):
     m = evaluate(monkeypatch, tmp_path, legacy_file, "--reference-origin", "synthetic_truth",
-                 "--generator", "unknown legacy generator", "--units", "normalised_to_spectrum_max")
+                 "--generator", "unknown legacy generator", "--units", "normalised_to_spectrum_max",
+                 "--assert-alignment", "units")
     for new, old in (("snr_input_mean", "snr_input_mean"), ("snr_output_mean", "snr_output_mean"),
                      ("snr_gain_mean", "snr_gain_mean"), ("mse_in_mean", "mse_input_mean"),
                      ("mse_out_mean", "mse_output_mean")):
@@ -453,7 +465,7 @@ def matches_golden(m):
 
 
 def test_legacy_output_reproduces_the_golden_file(monkeypatch, tmp_path, legacy_file):
-    m = evaluate(monkeypatch, tmp_path, legacy_file, "--legacy-output")
+    m = evaluate(monkeypatch, tmp_path, legacy_file, "--legacy-output", "--assert-alignment", "units")
     ctx = m.pop("evaluation_context")
     matches_golden(m)
     assert ctx["evaluate_output_version"] == "1-legacy"
@@ -464,7 +476,8 @@ def test_legacy_output_refuses_a_non_finite_historical_value(monkeypatch, capsys
     n, d, c = arrays(seed=9)
     n[0] = c[0]                      # zero input MSE, positive output MSE: reduction is -inf
     path = write(tmp_path / "x.h5", n, d, c, units=None)
-    err = refuse(monkeypatch, capsys, "evaluate", "-d", str(path), "--legacy-output")
+    err = refuse(monkeypatch, capsys, "evaluate", "-d", str(path), "--legacy-output",
+                 "--assert-alignment", "units")
     assert "legacy output refused" in err and "'mse_reduction_mean'" in err
 
 
@@ -486,7 +499,7 @@ def test_legacy_output_accepts_an_explicit_undeclared_bundle(monkeypatch, tmp_pa
     path = write(tmp_path / "u.h5", np.asarray(g["noisy"]), np.asarray(g["denoised"]),
                  np.asarray(g["clean"]), declaration={"origin": "undeclared"}, units=None,
                  energy=np.asarray(g["energy"], dtype=np.float32))
-    m = evaluate(monkeypatch, tmp_path, path, "--legacy-output")
+    m = evaluate(monkeypatch, tmp_path, path, "--legacy-output", "--assert-alignment", "units")
     m.pop("evaluation_context")
     matches_golden(m)
 
@@ -500,7 +513,8 @@ def test_two_references_without_a_choice_are_refused(monkeypatch, capsys, tmp_pa
     other = write(tmp_path / "b.h5", n, None, c + 1, declaration=TRUTH)
     assert "choose one with --reference" in refuse(
         monkeypatch, capsys, "evaluate", "-d", str(path), "--clean", str(other))
-    m = evaluate(monkeypatch, tmp_path, path, "--clean", str(other), "--reference", "external")
+    m = evaluate(monkeypatch, tmp_path, path, "--clean", str(other), "--reference", "external",
+                 "--assert-alignment", "rows")
     _mi, mo, *_ = expected(n, d, c + 1)
     assert m["mse_out_mean"] == pytest.approx(mo.mean(), rel=1e-12)
     assert m["evaluation_context"]["reference"]["selected"] == "external"
@@ -798,7 +812,7 @@ def test_legacy_output_equals_the_frozen_arithmetic_exactly_in_this_runtime(monk
         for k, v in arrs.items():
             f.create_dataset(k, data=v)
         f.create_dataset("energy", data=np.asarray(g["energy"], dtype=dtype))
-    m = evaluate(monkeypatch, tmp_path, path, "--legacy-output")
+    m = evaluate(monkeypatch, tmp_path, path, "--legacy-output", "--assert-alignment", "units")
     m.pop("evaluation_context")
     assert m == frozen_cb5e000(arrs["noisy"], arrs["denoised"], arrs["clean"])
 
