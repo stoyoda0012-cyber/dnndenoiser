@@ -159,6 +159,37 @@ def _num(v, path, nullable=False):
              "a number" + (" or null" if nullable else ""), v)
 
 
+# The type of each recorded `train` option, as its parser produces it.
+_ARGUMENT_TYPES = {
+    "arch": "str", "method": "str", "window": "int", "noise_level": "num?", "epochs": "int",
+    "batch_size": "int", "seed": "int?", "lr": "num", "lr_drop_period": "int",
+    "lr_drop_factor": "num", "scheduler": "str", "warmup_epochs": "int",
+    "weight_decay": "num", "grad_clip": "num", "hidden_units": "int", "encoder_dim": "int",
+    "device": "str",
+}
+_OPTIMISERS = {"Adam", "AdamW"}
+_SCHEDULERS = {
+    "StepLR": {"step_size": ("int", 1), "gamma": ("num", None)},
+    "cosine_with_warmup": {"num_warmup_steps": ("int", 0), "num_training_steps": ("int", 1),
+                           "num_cycles": ("num", None), "min_lr_ratio": ("num", None)},
+}
+
+
+def _typed(value, kind: str, path: str, minimum=None) -> None:
+    nullable = kind.endswith("?")
+    kind = kind.rstrip("?")
+    if nullable and value is None:
+        return
+    if kind == "str":
+        _str(value, path, nullable=nullable)
+    elif kind == "int":
+        _int(value, path, minimum=minimum, nullable=nullable)
+    else:
+        _num(value, path, nullable=nullable)
+        if minimum is not None:
+            _require(value >= minimum, path, f"a number >= {minimum}", value)
+
+
 def _validate_effective(eff, method: str) -> None:
     keys = _EFFECTIVE_KEYS | ({"window"} if method == "moving-average" else set())
     _keys(eff, keys, "command.effective")
@@ -168,14 +199,34 @@ def _validate_effective(eff, method: str) -> None:
     if "window" in eff:
         _int(eff["window"], "command.effective.window", minimum=1)
     _num(eff["grad_clip"], "command.effective.grad_clip")
-    for name in ("optimiser", "scheduler", "loss"):
-        value = eff[name]
-        _require(type(value) is dict and type(value.get("name")) is str,
-                 f"command.effective.{name}", "an object with a string 'name'", value)
-        for k, v in value.items():
-            if k != "name":
-                _require(_is_number(v) or (type(v) is list and all(_is_number(x) for x in v)),
-                         f"command.effective.{name}.{k}", "a number or a list of numbers", v)
+
+    opt, path = eff["optimiser"], "command.effective.optimiser"
+    _keys(opt, {"name", "lr", "weight_decay", "betas", "eps"}, path)
+    _require(opt["name"] in _OPTIMISERS, f"{path}.name", f"one of {sorted(_OPTIMISERS)}",
+             opt["name"])
+    _typed(opt["lr"], "num", f"{path}.lr", minimum=0)
+    _typed(opt["weight_decay"], "num", f"{path}.weight_decay", minimum=0)
+    _require(type(opt["betas"]) is list and len(opt["betas"]) == 2
+             and all(_is_number(b) for b in opt["betas"]), f"{path}.betas",
+             "a list of two numbers", opt["betas"])
+    _require(_is_number(opt["eps"]) and opt["eps"] > 0, f"{path}.eps", "a positive number",
+             opt["eps"])
+
+    sched, path = eff["scheduler"], "command.effective.scheduler"
+    if sched is not None:
+        _require(type(sched) is dict and sched.get("name") in _SCHEDULERS, f"{path}.name",
+                 f"one of {sorted(_SCHEDULERS)} (or the scheduler null)",
+                 sched.get("name") if type(sched) is dict else sched)
+        spec = _SCHEDULERS[sched["name"]]
+        _keys(sched, {"name", *spec}, path)
+        for k, (kind, minimum) in spec.items():
+            _typed(sched[k], kind, f"{path}.{k}", minimum=minimum)
+
+    loss, path = eff["loss"], "command.effective.loss"
+    _keys(loss, {"name", "delta"}, path)
+    _require(loss["name"] == "HuberLoss", f"{path}.name", "'HuberLoss'", loss["name"])
+    _require(_is_number(loss["delta"]) and loss["delta"] > 0, f"{path}.delta",
+             "a positive number", loss["delta"])
 
 
 def validate_manifest(obj) -> dict:
@@ -216,8 +267,7 @@ def validate_manifest(obj) -> dict:
              cmd["method"])
     _keys(cmd["arguments"], set(RECORDED_ARGUMENTS), "command.arguments")
     for k, v in cmd["arguments"].items():
-        _require(v is None or type(v) in (bool, int, float, str), f"command.arguments.{k}",
-                 "a scalar", v)
+        _typed(v, _ARGUMENT_TYPES[k], f"command.arguments.{k}")
     _require(type(cmd["flags_passed"]) is list and all(
         type(f) is str and f.startswith("-") for f in cmd["flags_passed"]),
         "command.flags_passed", "a list of option names", cmd["flags_passed"])

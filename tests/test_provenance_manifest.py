@@ -623,7 +623,43 @@ NESTED = [
     ("training_data.array_digests", {"bogus": {"format": "dnd-digest-1", "sha256": "0" * 64}}, "'training_data.array_digests' must be an object keyed by"),
     ("training_data.reference_declaration", 3, "'training_data.reference_declaration'"),
     ("training_data.digest", {"format": "dnd-digest-1", "sha256": "xyz"}, "'training_data.digest' must be"),
+    # follow-up review of 28c7a57
+    ("command.effective.optimiser.bogus", 1, "'command.effective.optimiser' fields do not match dnd-provenance-1: unknown ['bogus']"),
+    ("command.effective.optimiser.lr", [0.01], "'command.effective.optimiser.lr' must be a number"),
+    ("command.effective.optimiser.betas", 0.9, "'command.effective.optimiser.betas' must be a list of two numbers"),
+    ("command.effective.optimiser.eps", 0, "'command.effective.optimiser.eps' must be a positive number"),
+    ("command.effective.optimiser.name", "SGD", "'command.effective.optimiser.name' must be one of"),
+    ("command.effective.scheduler", {"name": "StepLR"}, "'command.effective.scheduler' fields do not match dnd-provenance-1: missing"),
+    ("command.effective.scheduler.step_size", 2.5, "'command.effective.scheduler.step_size' must be an integer >= 1"),
+    ("command.effective.scheduler.name", "Plateau", "'command.effective.scheduler.name' must be one of"),
+    ("command.effective.loss.delta", [], "'command.effective.loss.delta' must be a positive number"),
+    ("command.effective.num_features", 0, "'command.effective.num_features' must be an integer >= 1"),
+    ("command.arguments.epochs", "three", "'command.arguments.epochs' must be an integer"),
+    ("command.arguments.method", 5, "'command.arguments.method' must be a string"),
+    ("command.arguments.seed", True, "'command.arguments.seed' must be an integer or null"),
+    ("command.arguments.lr", True, "'command.arguments.lr' must be a number"),
+    ("result.final_loss", True, "'result.final_loss' must be a number or null"),
+    ("created_utc", "2026-10-02T12:00:00Zjunk", "'created_utc' must be an ISO 8601 UTC time"),
+    ("training_data.frame_index_runs", [[7, 5]], "'training_data.frame_index_runs' must be null or sorted, disjoint"),
+    ("training_data.layout.noisy.shape", [-1, 32], "'training_data.layout.noisy.shape' must be a list of sizes"),
+    ("training_data.layout.noisy.shape", "8x32", "'training_data.layout.noisy.shape' must be a list of sizes"),
+    ("targets", {"kind": "synthesised_realisation", "noise_level": 0}, "'targets.noise_level' must be a positive number"),
+    ("command.seeds.targets", [1], "'command.seeds.targets' must be null or a list of two integers"),
+    ("code.commit", "abcd", "'code' must be a commit with a boolean tree_clean"),
+    ("preprocessing.normalisation", {"kind": "k", "min": "x", "max": 1.0}, "'preprocessing.normalisation.min' must be a number"),
+    ("statuses", {"result.final_loss": 1}, "'statuses' must be an object mapping field paths to strings"),
+    ("software.platform.system", 3, "'software.platform.system' must be a string"),
 ]
+
+
+def test_a_null_scheduler_is_accepted(trained):
+    """Design §2.2: the scheduler is its name and parameters, or null."""
+    m = manifest_of(trained["noise2clean"][1])
+    assert prov.validate_manifest(mutated(m, "command.effective.scheduler", None))
+
+
+def test_every_recorded_argument_has_a_type():
+    assert set(prov._ARGUMENT_TYPES) == set(prov.RECORDED_ARGUMENTS)
 
 
 def mutated(manifest, path, value):
@@ -718,6 +754,8 @@ def test_tree_clean_follows_tracked_changes_and_untracked_package_files(tmp_path
     (pkg / "extra.py").unlink()
     (root / "README").write_text("changed", encoding="utf-8")
     assert prov.code_record(pkg)["tree_clean"] is False
+    subprocess.run(["git", "add", "README"], cwd=root, check=True, capture_output=True)
+    assert prov.code_record(pkg)["tree_clean"] is False          # staged only
 
 
 def test_an_untracked_package_in_a_checkout_has_no_commit(tmp_path):
@@ -784,7 +822,10 @@ def test_final_loss_is_the_mean_over_the_last_epoch(monkeypatch, tmp_path, train
 @pytest.mark.parametrize("case, reason", [
     ("nan-energy", "the training 'energy' contains non-finite values"),
     ("nan-clean", "the training 'clean' contains non-finite values"),
+    ("nan-angles", "the training 'angles' contains non-finite values"),
+    ("inf-times", "the training 'times' contains non-finite values"),
     ("string-angles", "the training 'angles' must be a numeric array"),
+    ("fixed-bytes-angles", "the training 'angles' must be a numeric array"),
     ("scalar-frame-index", "the training 'frame_index' must be a numeric array"),
     ("units-not-string", "the 'noisy' intensity_units must be a string, got int64"),
     ("units-bad-bytes", "the 'noisy' intensity_units is not valid UTF-8"),
@@ -796,8 +837,14 @@ def test_an_unusual_training_file_is_refused_by_name(monkeypatch, capsys, tmp_pa
             f["energy"][0] = np.nan
         elif case == "nan-clean":
             f["clean"][1, 1] = np.nan
+        elif case == "nan-angles":
+            f.create_dataset("angles", data=np.array([1.0, np.nan]))
+        elif case == "inf-times":
+            f.create_dataset("times", data=np.array([0.0, np.inf]))
         elif case == "string-angles":
             f.create_dataset("angles", data=np.array(["a", "b"], dtype=h5py.string_dtype()))
+        elif case == "fixed-bytes-angles":
+            f.create_dataset("angles", data=np.array([b"1", b"2"], dtype="S1"))
         elif case == "scalar-frame-index":
             f.create_dataset("frame_index", data=3)
         elif case == "units-not-string":
