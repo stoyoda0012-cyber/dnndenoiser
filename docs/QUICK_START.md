@@ -215,14 +215,20 @@ is on the resampled grid.
 **Several channels in one stack.** To train one model on the frames of several
 channels — the emission-angle channels of an angle-resolved measurement, for
 example — put them in one stack and give channel *k* the indices
-*k* × *stride* + *t*, with *t* the acquisition order within the channel and the
-stride larger than any channel's number of frames. As long as `--window` is
-smaller than the number of frames in every channel, each frame's `--window`
-nearest others are then in its own channel, and the min–max normalisation is
-taken over all channels together. **With a larger window the recipe fails
-silently:** `train` limits the window by the frames in the whole stack, not in
-one channel, so the nearest others of a frame run out of its own channel and
-reach into the next. Numbering the channels one after another
+*k* × *stride* + *t*, with *t* = 0, 1, … the acquisition order within the channel and
+
+    stride ≥ (the largest channel's number of frames) + --window
+
+and `--window` smaller than the number of frames in every channel. Each frame's
+`--window` nearest others are then in its own channel, and the min–max normalisation is
+taken over all channels together. **A smaller stride fails silently:** the first frame of
+a channel is only *stride* − (*n* − 1) away from the last frame of the previous one, so
+with a stride of just *n* + 1 it takes that frame as a neighbour from a window of 3 on,
+and at 2 when a tie falls that way (an earlier version of this page gave that stride as
+safe). **So does a window as large
+as a channel:** `train` limits the window by the frames in the whole stack, not in one
+channel, so the nearest others of a frame run out of its own channel and reach into the
+next. Numbering the channels one after another
 instead would make the last frame of one channel a neighbour of the first frame
 of the next.
 
