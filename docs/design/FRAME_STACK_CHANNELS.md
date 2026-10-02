@@ -293,4 +293,5 @@ processing") says it holds for channel stacks too.
 
 **2026-10-02 — the owner adopted this design, revision 2, as a whole**, after two
 independent audits (the second returning "adopt with named changes", all applied in this
-revision). The status line changes to "implemented" only when an implementation is merged.
+revision). The status line says "implemented" only in the change that merges the
+implementation.

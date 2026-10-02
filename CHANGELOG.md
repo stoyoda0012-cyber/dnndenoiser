@@ -65,7 +65,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Changed
 
 - **Breaking: `infer` refuses a 3-D frame stack whose channel axis is not declared**
-  (no `angles`, malformed `angles`, no channels, or a `times` dataset), and `train`
+  (no `angles`, malformed `angles`, no channels, a `times` dataset, or an `order_basis`
+  outside its vocabulary), and `train`
   refuses an `angle_kind`, `angle_units` or `order_basis` attribute outside its
   vocabulary. `infer` reads `noisy` files and 2-D stacks exactly as before. Checkpoints written from this version carry a version-2
   manifest, which earlier versions refuse.

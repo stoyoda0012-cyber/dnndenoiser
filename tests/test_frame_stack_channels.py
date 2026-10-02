@@ -643,3 +643,66 @@ def test_a_version_1_key_error_names_version_1(monkeypatch, tmp_path):
     v1["training_data"]["angles"] = None
     with pytest.raises(prov.MalformedProvenance, match="fields do not match dnd-provenance-1"):
         prov.validate_manifest(v1)
+
+
+# --------------------------------------- follow-up review of fc57946, fixed findings
+
+
+@pytest.mark.parametrize("seed", [2, 3, 5])
+def test_channel_targets_is_the_definition_bit_for_bit_in_float64(seed):
+    """Cases where one call on the flattened frames differs in the last bit (pairwise
+    summation over many neighbours of a one-point energy axis): the per-channel
+    definition must hold exactly."""
+    rng = np.random.default_rng(seed)
+    n = int(rng.integers(10, 25))
+    a = int(rng.choice([2, 3, 7]))
+    e = int(rng.choice([1, 5]))
+    W = int(rng.integers(9, n))
+    f = rng.normal(1, 0.3, (n, a, e))
+    index = rng.permutation(n * 3)[:n]
+    got = channel_targets(f, index, W)
+    for c in range(a):
+        np.testing.assert_array_equal(got[:, c], moving_average_targets(f[:, c], index, W))
+
+
+@pytest.mark.parametrize("case, reason", [("zero-channels", "has no channels"),
+                                          ("bad-basis", "attribute 'order_basis' must be one of")])
+def test_infer_refuses_zero_channels_and_an_out_of_vocabulary_basis(monkeypatch, capsys, tmp_path,
+                                                                    ma_model, case, reason):
+    if case == "zero-channels":
+        path = raw3(tmp_path / "s.h5", a=0, e=256, angles=np.array([]))
+    else:
+        path = raw3(tmp_path / "s.h5", e=256, order_basis="guessed")
+    assert reason in refuse(monkeypatch, capsys, "infer", "-d", str(path), "-m", str(ma_model),
+                            "-o", str(tmp_path / "o.h5"), "--device", "cpu")
+
+
+def test_infer_writes_no_order_basis_the_input_does_not_declare(monkeypatch, tmp_path, ma_model):
+    with h5py.File(infer(monkeypatch, stack3(tmp_path / "s.h5"), ma_model, tmp_path / "o.h5")) as o:
+        assert "order_basis" not in o["frame_index"].attrs
+
+
+@pytest.mark.parametrize("basis", ["recorded", "inferred"])
+def test_any_declared_basis_without_a_frame_index_is_refused(monkeypatch, tmp_path, basis):
+    n, c = frames3(n=8, a=1, e=32)[:, 0], frames3(n=8, a=1, e=32, seed=1)[:, 0]
+    m = train(monkeypatch, write(tmp_path / "s.h5", n, None, c, declaration=TRUTH),
+              tmp_path / "m.pt")["provenance"]
+    bad = json.loads(json.dumps(m))
+    bad["training_data"]["frame_index_basis"] = basis
+    with pytest.raises(prov.MalformedProvenance, match="'unknown' when the training file has no frame_index"):
+        prov.validate_manifest(bad)
+
+
+@pytest.mark.parametrize("version", ["dnd-provenance-1", "dnd-provenance-2"])
+def test_key_errors_name_the_manifest_version(monkeypatch, tmp_path, version):
+    m = train(monkeypatch, stack3(tmp_path / "s.h5"), tmp_path / "m.pt",
+              method="moving-average")["provenance"]
+    base = as_version_1(m) if version == "dnd-provenance-1" else json.loads(json.dumps(m))
+    for mutate in (lambda x: x["training_data"].update(extra=1),
+                   lambda x: x["result"].update(extra=1),
+                   lambda x: x["software"].pop("device"),
+                   lambda x: x["command"].update(extra=1)):
+        bad = json.loads(json.dumps(base))
+        mutate(bad)
+        with pytest.raises(prov.MalformedProvenance, match=f"fields do not match {version}"):
+            prov.validate_manifest(bad)

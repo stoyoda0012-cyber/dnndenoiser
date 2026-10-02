@@ -269,21 +269,22 @@ def validate_manifest(obj) -> dict:
     if obj["schema"] not in (SCHEMA, SCHEMA_V1):
         raise MalformedProvenance(f"unknown provenance schema {obj['schema']!r}; this "
                                   f"version reads {SCHEMA} and {SCHEMA_V1}")
+    version = obj["schema"]
     _require(type(obj["created_utc"]) is str and bool(_ISO_UTC.fullmatch(obj["created_utc"])),
              "created_utc", "an ISO 8601 UTC time such as 2026-10-02T12:00:00Z",
              obj["created_utc"])
 
     sw = obj["software"]
-    _keys(sw, SOFTWARE_KEYS, "software")
+    _keys(sw, SOFTWARE_KEYS, "software", version)
     for k in ("dnndenoiser", "python", "numpy", "torch", "h5py", "device"):
         _str(sw[k], f"software.{k}")
     _str(sw["torch_cuda"], "software.torch_cuda", nullable=True)
-    _keys(sw["platform"], {"system", "machine"}, "software.platform")
+    _keys(sw["platform"], {"system", "machine"}, "software.platform", version)
     for k in ("system", "machine"):
         _str(sw["platform"][k], f"software.platform.{k}")
 
     code = obj["code"]
-    _keys(code, CODE_KEYS, "code")
+    _keys(code, CODE_KEYS, "code", version)
     known = (type(code["commit"]) is str and re.fullmatch(r"[0-9a-f]{40,64}", code["commit"])
              and type(code["tree_clean"]) is bool)
     unknown = code["commit"] == "unknown" and code["tree_clean"] == "unknown"
@@ -291,17 +292,17 @@ def validate_manifest(obj) -> dict:
              "a commit with a boolean tree_clean, or both 'unknown'", code)
 
     cmd = obj["command"]
-    _keys(cmd, COMMAND_KEYS, "command")
+    _keys(cmd, COMMAND_KEYS, "command", version)
     _require(cmd["method"] in _METHODS, "command.method", f"one of {list(_METHODS)}",
              cmd["method"])
-    _keys(cmd["arguments"], set(RECORDED_ARGUMENTS), "command.arguments")
+    _keys(cmd["arguments"], set(RECORDED_ARGUMENTS), "command.arguments", version)
     for k, v in cmd["arguments"].items():
         _typed(v, _ARGUMENT_TYPES[k], f"command.arguments.{k}")
     _require(type(cmd["flags_passed"]) is list and all(
         type(f) is str and f.startswith("-") for f in cmd["flags_passed"]),
         "command.flags_passed", "a list of option names", cmd["flags_passed"])
     _validate_effective(cmd["effective"], cmd["method"])
-    _keys(cmd["seeds"], {"torch", "targets"}, "command.seeds")
+    _keys(cmd["seeds"], {"torch", "targets"}, "command.seeds", version)
     _int(cmd["seeds"]["torch"], "command.seeds.torch", nullable=True)
     targets_seeds = cmd["seeds"]["targets"]
     _require(targets_seeds is None or (type(targets_seeds) is list and len(targets_seeds) == 2
@@ -310,7 +311,7 @@ def validate_manifest(obj) -> dict:
 
     td = obj["training_data"]
     _keys(td, TRAINING_DATA_KEYS if obj["schema"] == SCHEMA else TRAINING_DATA_KEYS_V1,
-          "training_data", obj["schema"])
+          "training_data", version)
     validate_digest_object(td["digest"], "training_data.digest")
     _require(type(td["array_digests"]) is dict
              and set(td["array_digests"]) <= {"noisy", "frames", "clean"},
@@ -321,7 +322,7 @@ def validate_manifest(obj) -> dict:
     _require(type(td["layout"]) is dict and set(td["layout"]) <= set(TRAINING_COMPONENTS),
              "training_data.layout", "an object keyed by stored components", td["layout"])
     for name, value in td["layout"].items():
-        _keys(value, {"shape", "dtype"}, f"training_data.layout.{name}")
+        _keys(value, {"shape", "dtype"}, f"training_data.layout.{name}", version)
         _require(type(value["shape"]) is list and all(type(n) is int and n >= 0
                                                       for n in value["shape"]),
                  f"training_data.layout.{name}.shape", "a list of sizes", value["shape"])
@@ -348,7 +349,7 @@ def validate_manifest(obj) -> dict:
              and targets["kind"] in TARGET_KINDS, "targets.kind",
              f"one of {sorted(TARGET_KINDS)}", targets.get("kind") if type(targets) is dict
              else targets)
-    _keys(targets, TARGET_KINDS[targets["kind"]], "targets")
+    _keys(targets, TARGET_KINDS[targets["kind"]], "targets", version)
     if "noise_level" in targets:
         _require(_is_number(targets["noise_level"]) and targets["noise_level"] > 0,
                  "targets.noise_level", "a positive number", targets["noise_level"])
@@ -356,7 +357,7 @@ def validate_manifest(obj) -> dict:
         _int(targets["window"], "targets.window", minimum=1)
 
     pre = obj["preprocessing"]
-    _keys(pre, PREPROCESSING_KEYS, "preprocessing")
+    _keys(pre, PREPROCESSING_KEYS, "preprocessing", version)
     if pre["resampling"] is not None:
         _keys(pre["resampling"], {"from_points", "to_points"}, "preprocessing.resampling")
         for k in ("from_points", "to_points"):
@@ -368,7 +369,7 @@ def validate_manifest(obj) -> dict:
             _num(pre["normalisation"][k], f"preprocessing.normalisation.{k}")
 
     res = obj["result"]
-    _keys(res, RESULT_KEYS, "result")
+    _keys(res, RESULT_KEYS, "result", version)
     _int(res["epochs"], "result.epochs", minimum=1)
     _num(res["final_loss"], "result.final_loss", nullable=True)
     _require(type(obj["statuses"]) is dict and all(
