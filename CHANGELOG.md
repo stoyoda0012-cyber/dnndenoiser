@@ -114,6 +114,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **QUICK_START's recipe for several channels in one stack mixed channels.** It said a
+  stride larger than any channel's number of frames was enough; the first frame of a
+  channel is then only a few indices from the last frame of the previous one, and takes
+  it as a neighbour from `--window 3` on, and at 2 when a tie falls that way (at the
+  default window of 5, the edge frames of every channel). The condition is stride ≥ the largest channel's number of frames +
+  `--window`; a test pins both the failure and the condition. Stacks built with a smaller
+  stride trained on targets that mixed channels at their edges.
 - **`train --epochs 0` crashed after "training"**, with no loss to save. It is now
   refused. A training file with non-finite values in any stored array or coordinate, a
   non-numeric coordinate, or a malformed `frame_index` is refused too, naming the dataset,
