@@ -884,6 +884,13 @@ def _coordinates(handle) -> dict:
             for name in ('energy', 'angles', 'times', 'frame_index')}
 
 
+def _stored_version(dataset, stored):
+    """The schema version as stored with a declared reference (validated already), for
+    the digest of the bundle as stored."""
+    from dnndenoiser import reference as ref
+    return None if stored is None else int(dataset.attrs[ref.VERSION_ATTR])
+
+
 def cmd_evaluate(args):
     """Evaluate denoising results against a declared reference.
 
@@ -942,6 +949,7 @@ def cmd_evaluate(args):
             except ref.MalformedReference as exc:
                 fail(f"malformed reference declaration: {exc}")
             clean = f['clean'][:]
+            stored_version = _stored_version(f['clean'], stored)
             reference_coordinates = coordinates
     if selected == 'external':
         if not args.clean:
@@ -955,6 +963,7 @@ def cmd_evaluate(args):
             except ref.MalformedReference as exc:
                 fail(f"malformed reference declaration: {exc}")
             clean = g['clean'][:]
+            stored_version = _stored_version(g['clean'], stored)
             reference_coordinates = _coordinates(g)
 
     try:
@@ -1007,7 +1016,7 @@ def cmd_evaluate(args):
         'reference': dg.reference_digest(
             reference_stored, **reference_coordinates,
             declaration_stored=(None if stored is None else
-                                {ref.ORIGIN_ATTR: stored, ref.VERSION_ATTR: ref.SCHEMA_VERSION})),
+                                {ref.ORIGIN_ATTR: stored, ref.VERSION_ATTR: stored_version})),
     }
     established = ref.established_overlap(effective, acquisition_id, frame_index)
     try:
@@ -1246,10 +1255,11 @@ Examples:
                              help='Whether the reference was used to train or select the model')
     eval_parser.add_argument('--signal-match',
                              help='Statement that the reference\'s conditions match the data\'s')
-    eval_parser.add_argument('--assert-alignment', metavar='CHECKS',
+    eval_parser.add_argument('--assert-alignment', metavar='CHECKS', action='append',
                              help='Comma-separated checks to assert where their metadata is '
-                                  'absent: energy, units, rows, angles, times. Never overrides '
-                                  'a detected mismatch; refused for a check that was made')
+                                  'absent: energy, units, rows, angles, times (may be repeated). '
+                                  'Never overrides a detected mismatch; refused for a check '
+                                  'that was made')
     eval_parser.add_argument('--shared-reference', action='store_true',
                              help='The reference is a single spectrum shared by every row '
                                   '(an external one then needs --assert-alignment rows)')

@@ -59,13 +59,16 @@ class Side:
     acquisition_id: Optional[str] = None
 
 
-def parse_assertions(text: Optional[str]) -> set:
-    """``--assert-alignment energy,units,rows,angles,times`` as a set of check names."""
+def parse_assertions(text) -> set:
+    """``--assert-alignment energy,units,rows,angles,times`` as a set of check names. A
+    repeated flag accumulates: a list of values is read as their union."""
     if text is None:
         return set()
+    if isinstance(text, (list, tuple)):
+        text = ",".join(text)
     names = [part.strip() for part in text.split(",")]
     unknown = [n for n in names if n not in ASSERTABLE]
-    if unknown or not names:
+    if unknown:
         raise AlignmentError(f"--assert-alignment names checks among {', '.join(ASSERTABLE)}, "
                              f"got {text!r}")
     return set(names)
@@ -131,11 +134,18 @@ def _vector(value, name: str, which: str) -> np.ndarray:
     if arr.ndim != 1 or arr.dtype.kind not in "biuf":
         raise AlignmentError(f"'{name}' of {which} must be a one-dimensional numeric array, "
                              f"got shape {arr.shape} and dtype {arr.dtype}")
+    if arr.dtype.kind == "f" and not np.all(np.isfinite(arr)):
+        raise AlignmentError(f"'{name}' of {which} contains non-finite values")
     return arr
 
 
 def _check_lengths(side: Side, which: str, axes: dict, with_axes: bool) -> None:
-    """Metadata that contradicts the arrays it describes is refused outright."""
+    """Metadata that contradicts the arrays it describes is refused outright. Every carried
+    coordinate is a finite one-dimensional numeric array, whether or not its axis applies;
+    lengths are checked for the axes the layout has."""
+    for name in COORDINATES:
+        if getattr(side, name) is not None:
+            _vector(getattr(side, name), name, which)
     if side.energy is not None:
         energy = _vector(side.energy, "energy", which)
         if len(energy) != side.shape[-1]:
@@ -195,8 +205,13 @@ def check(evaluated: Side, reference: Side, *, same_file: bool, shared: bool,
     """
     axes, not_applicable = _axes(evaluated, asserted)
     _check_lengths(evaluated, "the evaluated file", axes, with_axes=True)
-    _check_lengths(reference, "the reference", axes, with_axes=not shared)
+    # Shapes first: the reference's axes are indexed by the evaluated layout only once the
+    # shapes are known to agree (or the reference is one spectrum).
     _shape(evaluated.shape, reference.shape, shared)
+    if len(axes) == 1 and not shared and reference.angles is not None and reference.times is not None:
+        raise AlignmentError("a (rows, axis, energy) layout has one coordinate axis, but the "
+                             "reference carries both 'angles' and 'times'")
+    _check_lengths(reference, "the reference", axes, with_axes=not shared)
     verified = ["shape"]
     missing: dict = {}
 

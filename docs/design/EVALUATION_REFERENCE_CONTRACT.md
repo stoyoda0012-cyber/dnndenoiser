@@ -497,7 +497,14 @@ unchanged.
   `dnd-digest-1` the dtype string is NumPy's dtype name (`float32`, `int64`, …), and
   `declaration_stored` is the JSON object `{"reference_origin": …,
   "reference_schema_version": …}` as read from the attributes; the lineage is not part of
-  the digest, as the array bytes already reflect any transform.
+  the digest, as the array bytes already reflect any transform. After the independent
+  review of `f1b335a`: (i) every carried coordinate dataset, on either side and whether or
+  not its axis applies, must be a finite one-dimensional numeric array, and a one-axis
+  layout refuses `angles` and `times` together on the reference as on the evaluated file;
+  a dataset for an axis the layout does not have is otherwise ignored for alignment and
+  still hashed as carried; (j) shapes are compared before the reference's coordinate
+  lengths, so a reference of another `ndim` is refused as a shape mismatch; (k) a repeated
+  `--assert-alignment` flag accumulates.
 - **Implementation phases.** Phase 1: the reference declaration and its propagation
   (`generate`, `save_hdf5`, `infer`), naming by origin (no SNR for an undeclared reference),
   legacy output, and no silent ignoring of `--clean`. Phase 2: the rest of the alignment

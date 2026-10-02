@@ -122,8 +122,9 @@ or reproduce the old output with `--legacy-output --assert-alignment units` (und
 references only; it runs the old arithmetic in the input's own dtype, so it is exact on
 the same platform and NumPy version and can differ in the last bits elsewhere; it refuses
 if an old value would be infinite). Both need `--assert-alignment units` because such a
-file carries no `intensity_units` and an undeclared reference declares none, so the units
-check cannot be made (below). The JSON keys changed; the CHANGELOG lists them. A reference
+file carries no `intensity_units` on its arrays, so the units check cannot be made (below);
+with `--legacy-output` the reference's units are not declared either. The JSON keys changed;
+the CHANGELOG lists them. A reference
 estimated from measured data is declared in a JSON file passed with
 `--reference-declaration`; its required fields are in the design document. `--overlap`,
 `--used-in-model-development` and `--signal-match` state its relationship to the data being
@@ -138,9 +139,13 @@ absent is refused too, unless you assert it:
 
 ```bash
 # an external reference without frame identifiers: its rows are the data's rows, you say
-dnndenoiser evaluate -d denoised.h5 --clean ref.h5 --assert-alignment rows -o m.json
+# (--reference external is needed when the evaluated file carries its own `clean`, as an
+# `infer` output from a `generate` file does)
+dnndenoiser evaluate -d denoised.h5 --clean ref.h5 --reference external \
+    --assert-alignment rows -o m.json
 # one reference spectrum for every row
-dnndenoiser evaluate -d denoised.h5 --clean ref.h5 --shared-reference --assert-alignment rows
+dnndenoiser evaluate -d denoised.h5 --clean ref.h5 --reference external \
+    --shared-reference --assert-alignment rows
 # a file written before this version: no units on its arrays, none declared
 dnndenoiser evaluate -d old.h5 --legacy-output --assert-alignment units
 ```

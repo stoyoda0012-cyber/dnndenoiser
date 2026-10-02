@@ -343,7 +343,8 @@ def test_a_non_finite_coordinate_is_refused(monkeypatch, capsys, tmp_path):
     grid = np.linspace(0, 1, n.shape[-1])
     grid[3] = np.nan
     data, other = pair(tmp_path, n, d, c, reference={"energy": grid})
-    assert "'energy' contains non-finite values" in refuse_external(monkeypatch, capsys, data, other, *ROWS)
+    assert "'energy' of the reference contains non-finite values" in refuse_external(
+        monkeypatch, capsys, data, other, *ROWS)
 
 
 def test_a_missing_energy_axis_needs_an_assertion(monkeypatch, capsys, tmp_path):
@@ -378,6 +379,166 @@ def test_generate_infer_evaluate_verifies_angles_without_assertions(monkeypatch,
     ctx = context(evaluate(monkeypatch, tmp_path, out))
     assert ctx["alignment_verified"] == ["shape", "energy", "units", "rows", "angles"]
     assert ctx["alignment_not_applicable"] == ["times"] and ctx["alignment_asserted"] == []
+
+
+# ------------------------------------------------- review of f1b335a, fixed findings
+
+
+@pytest.mark.parametrize("field, bad", [("energy", "nan"), ("angles", "inf")])
+def test_a_same_file_non_finite_coordinate_is_refused(monkeypatch, capsys, tmp_path, field, bad):
+    """Finding 1: finiteness was checked only when comparing two files."""
+    n, d, c = arrays3()
+    angles = np.array([1.0, 2.0, 3.0])
+    energy = np.linspace(0, 1, 16)
+    if field == "energy":
+        energy[3] = np.nan
+    else:
+        angles[1] = np.inf
+    path = write(tmp_path / "f.h5", n, d, c, declaration=TRUTH, angles=angles, energy=energy)
+    assert f"'{field}' of the evaluated file contains non-finite values" in refuse(
+        monkeypatch, capsys, "evaluate", "-d", str(path))
+
+
+@pytest.mark.parametrize("case", ["truth-no-ids", "estimate-evaluated-without-id"])
+def test_identifiers_need_a_namespace_on_both_sides(monkeypatch, capsys, tmp_path, case):
+    """Finding 2: equal frame indices without an acquisition namespace establish nothing,
+    even when neither side has one (None is not a namespace)."""
+    n, d, c = arrays()
+    if case == "truth-no-ids":
+        data, other = pair(tmp_path, n, d, c[::-1], data={"frame_index": np.arange(6)},
+                           reference={"frame_index": np.arange(6)})
+    else:
+        data, other = pair(tmp_path, n, d, c[::-1], declaration=estimate(acquisition="acq-A"),
+                           data={"frame_index": np.arange(6)}, reference={"frame_index": np.arange(6)})
+    err = refuse_external(monkeypatch, capsys, data, other)
+    assert "equal frame indices from different acquisitions establish nothing" in err
+
+
+def test_noisy_and_denoised_must_have_the_same_shape(monkeypatch, capsys, tmp_path):
+    """Finding 3: the check existed, no test pinned it."""
+    n, d, c = arrays()
+    path = write(tmp_path / "s.h5", n, d[:1], c, declaration=TRUTH)
+    assert "shapes differ: noisy (6, 16), denoised (1, 16)" in refuse(
+        monkeypatch, capsys, "evaluate", "-d", str(path))
+
+
+def test_the_reference_digest_uses_the_coordinates_carried_with_the_reference(monkeypatch, tmp_path):
+    """Finding 4: an external reference with its own coordinates (same values as the
+    evaluated file's, other dtypes) hashes its own, not the evaluated file's."""
+    n, d, c = arrays3(n=2, k=3, e=8)
+    angles = np.array([5.0, 15.0, 25.0])
+    decl = estimate(acquisition="acq-A")
+    data = write(tmp_path / "data.h5", n, d, None, acquisition_id="acq-A",
+                 frame_index=np.array([7, 9], dtype=np.int64), angles=angles,
+                 energy=np.linspace(0, 1, 8))
+    other = write(tmp_path / "ref.h5", n, None, c, declaration=decl,
+                  frame_index=np.array([7, 9], dtype=np.int32), angles=angles.astype(np.float32),
+                  energy=np.linspace(0, 1, 8).astype(np.float32))
+    m = external(monkeypatch, tmp_path, data, other)
+    assert context(m)["row_correspondence"] == "identifiers"
+    with h5py.File(other) as g, h5py.File(data) as f:
+        stored = {"reference_origin": json.loads(g["clean"].attrs["reference_origin"]),
+                  "reference_schema_version": 1}
+        own = _digest(reference_parts(g["clean"][:], g["energy"][:], g["angles"][:], None,
+                                      g["frame_index"][:], stored))
+        borrowed = _digest(reference_parts(g["clean"][:], f["energy"][:], f["angles"][:], None,
+                                           f["frame_index"][:], stored))
+    assert own != borrowed
+    assert context(m)["digests"]["reference"] == {"sha256": own, "absent": ["times"]}
+
+
+@pytest.mark.parametrize("offset, accepted", [(2e-6, False), (5e-7, True)])
+def test_the_energy_tolerance_is_one_millionth(monkeypatch, capsys, tmp_path, offset, accepted):
+    """Finding 5: the tolerance's value was not pinned."""
+    n, d, c = arrays()
+    grid = np.linspace(0, 1, n.shape[-1])
+    data, other = pair(tmp_path, n, d, c, reference={"energy": grid + offset})
+    if accepted:
+        assert "energy" in context(external(monkeypatch, tmp_path, data, other, *ROWS))["alignment_verified"]
+    else:
+        assert "'energy' differs" in refuse_external(monkeypatch, capsys, data, other, *ROWS)
+
+
+@pytest.mark.parametrize("case", ["3-D data, 1-D reference with angles", "4-D data, 2-D reference with times"])
+def test_a_reference_of_another_ndim_carrying_coordinates_is_a_shape_mismatch(monkeypatch, capsys,
+                                                                             tmp_path, case):
+    """Finding 6: the reference's axis lengths were indexed by the evaluated layout before
+    the shapes were compared (an IndexError, or a refusal naming the wrong axis)."""
+    if case.startswith("3-D"):
+        n, d, c = arrays3()
+        data = write(tmp_path / "data.h5", n, d, None, angles=np.array([1.0, 2.0, 3.0]))
+        other = tmp_path / "ref.h5"
+        with h5py.File(other, "w") as g:
+            g.create_dataset("clean", data=c[0, 0])
+            from dnndenoiser import reference as ref
+            ref.write_declaration(g["clean"], TRUTH)
+            g.create_dataset("energy", data=np.linspace(0, 1, 16))
+            g.create_dataset("angles", data=np.array([1.0, 2.0, 3.0]))
+        err = refuse_external(monkeypatch, capsys, data, other, *ROWS)
+        assert "shapes differ: evaluated (4, 3, 16), reference (16,)" in err
+    else:
+        rng = np.random.default_rng(5)
+        c = rng.uniform(1, 2, (2, 3, 4, 8)).astype(np.float32)
+        data = write(tmp_path / "data.h5", c + 0.1, c + 0.05, None, times=np.arange(3.0),
+                     angles=np.arange(4.0))
+        other = write(tmp_path / "ref.h5", c[0, 0], None, c[0, 0], declaration=TRUTH,
+                      times=np.arange(3.0))
+        err = refuse_external(monkeypatch, capsys, data, other)
+        assert "shapes differ: evaluated (2, 3, 4, 8), reference (4, 8)" in err
+    assert "--shared-reference" in err
+
+
+@pytest.mark.parametrize("field, value, reason", [
+    ("energy", np.linspace(0, 1, 10), "'energy' of the reference has 10 values but its spectra have 16 points"),
+    ("frame_index", np.arange(3), "'frame_index' of the reference has 3 values but its row axis has 6"),
+])
+def test_reference_side_coordinate_lengths_are_checked(monkeypatch, capsys, tmp_path, field, value, reason):
+    """Finding 7: the check existed, no test pinned it."""
+    n, d, c = arrays()
+    data, other = pair(tmp_path, n, d, c, declaration=estimate(acquisition="acq-A"),
+                       data={"acquisition_id": "acq-A", "frame_index": np.arange(6)},
+                       reference={"frame_index": np.arange(6), field: value})
+    assert reason in refuse_external(monkeypatch, capsys, data, other)
+
+
+@pytest.mark.parametrize("case", ["string angles on 2-D data", "string frame_index on a shared reference"])
+def test_a_non_numeric_coordinate_is_refused_even_where_its_axis_does_not_apply(monkeypatch, capsys,
+                                                                             tmp_path, case):
+    """Finding 8: an unvalidated dataset reached the digest and crashed it."""
+    n, d, c = arrays()
+    if case.startswith("string angles"):
+        path = write(tmp_path / "a.h5", n, d, c, declaration=TRUTH)
+        with h5py.File(path, "a") as f:
+            f.create_dataset("angles", data=np.array(["a", "b"], dtype=h5py.string_dtype()))
+        err = refuse(monkeypatch, capsys, "evaluate", "-d", str(path))
+        assert "'angles' of the evaluated file must be a one-dimensional numeric array" in err
+    else:
+        data, other = pair(tmp_path, n, d, c[:1])
+        with h5py.File(other, "a") as g:
+            g.create_dataset("frame_index", data=np.array(["x"], dtype=h5py.string_dtype()))
+        err = refuse_external(monkeypatch, capsys, data, other, "--shared-reference", *ROWS)
+        assert "'frame_index' of the reference must be a one-dimensional numeric array" in err
+
+
+def test_a_reference_carrying_both_axes_in_a_one_axis_layout_is_refused(monkeypatch, capsys, tmp_path):
+    """Finding 9: the rule applied to the evaluated file only."""
+    n, d, c = arrays3()
+    coords = np.array([1.0, 2.0, 3.0])
+    data, other = pair(tmp_path, n, d, c, data={"angles": coords}, reference={"angles": coords, "times": coords})
+    assert "the reference carries both 'angles' and 'times'" in refuse_external(
+        monkeypatch, capsys, data, other, *ROWS)
+
+
+def test_a_repeated_assert_alignment_flag_accumulates(monkeypatch, tmp_path):
+    """Finding 11: argparse kept only the last value."""
+    n, d, c = arrays()
+    data, other = pair(tmp_path, n, d, c)
+    with h5py.File(data, "a") as f:
+        del f["noisy"].attrs["intensity_units"], f["denoised"].attrs["intensity_units"]
+    ctx = context(external(monkeypatch, tmp_path, data, other, "--assert-alignment", "rows",
+                           "--assert-alignment", "units"))
+    assert ctx["alignment_asserted"] == ["units", "rows"]
+    assert al.parse_assertions(["rows", "units,energy"]) == {"rows", "units", "energy"}
 
 
 # ---------------------------------------------------- the check as a function
