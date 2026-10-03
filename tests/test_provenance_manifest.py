@@ -95,7 +95,7 @@ def test_the_manifest_has_every_field_and_reads_back_restricted(trained, method)
     m = loaded["provenance"]
     assert set(m) == {"schema", "created_utc", "software", "code", "command", "training_data",
                       "targets", "preprocessing", "result", "statuses"}
-    assert m["schema"] == "dnd-provenance-1" and m["command"]["method"] == method
+    assert m["schema"] == "dnd-provenance-2" and m["command"]["method"] == method
     assert prov.validate_manifest(m) is m
     assert m["result"]["epochs"] == 1 and isinstance(m["result"]["final_loss"], float)
     assert set(loaded["model_digest"]) == {"format", "sha256"}
@@ -442,8 +442,8 @@ def test_a_state_dict_entry_without_a_digest_is_refused_naming_it():
     ("manifest-only", "has 'provenance' without its pair"),
     ("digest-only", "has 'model_digest' without its pair"),
     ("unknown-schema", "unknown provenance schema 'dnd-provenance-9'"),
-    ("missing-field", "'result' fields do not match dnd-provenance-1: missing ['final_loss']"),
-    ("unknown-field", "'provenance' fields do not match dnd-provenance-1: unknown ['extra']"),
+    ("missing-field", "'result' fields do not match dnd-provenance-2: missing ['final_loss']"),
+    ("unknown-field", "'provenance' fields do not match dnd-provenance-2: unknown ['extra']"),
     ("wrong-type", "'training_data.frame_index_runs' must be null or sorted, disjoint"),
     ("bad-digest", "'model_digest' must be {'format': 'dnd-digest-1'"),
 ])
@@ -568,7 +568,8 @@ def test_evaluate_reports_the_model_identity(monkeypatch, tmp_path, trained, out
         "manifest_digest": hashlib.sha256(text.encode("utf-8")).hexdigest(),
         "method": "noise2clean",
         "training_data": {"digest": td["digest"], "acquisition_id": "acq-T",
-                          "intensity_units": "counts"},
+                          "intensity_units": "counts", "declared_angles": None,
+                          "declared_frame_index_basis": "unknown"},
         "software": {"dnndenoiser": ck["provenance"]["software"]["dnndenoiser"]},
         "code": ck["provenance"]["code"],
     }
@@ -580,9 +581,10 @@ FROZEN_MANIFEST_DIGEST = "97f06f396a709c3a29824e1cc794eeb98e2d1a262d7d455439d286
 
 
 def test_the_manifest_digest_of_a_fixed_record():
-    records = {"manifest": {"command": {"method": "noise2clean"},
+    records = {"manifest": {"schema": "dnd-provenance-2", "command": {"method": "noise2clean"},
                             "training_data": {"digest": None, "acquisition_id": None,
-                                              "intensity_units": None},
+                                              "intensity_units": None, "angles": None,
+                                              "frame_index_basis": "unknown"},
                             "software": {"dnndenoiser": "0"},
                             "code": {"commit": "unknown", "tree_clean": "unknown"}},
                "manifest_text": '{"x":"é"}', "model_digest": {}, "body": {}}
@@ -615,8 +617,8 @@ NESTED = [
     ("software.platform", "Darwin", "'software.platform' must be an object"),
     ("targets", {"kind": "synthesised_realisation", "noise_level": "x"}, "'targets.noise_level' must be a positive number"),
     ("targets", {"kind": ["clean"]}, "'targets.kind' must be one of"),
-    ("targets", {"kind": "clean", "window": 3}, "'targets' fields do not match dnd-provenance-1: unknown ['window']"),
-    ("targets", {"kind": "leave_one_out_window_mean"}, "'targets' fields do not match dnd-provenance-1: missing ['window']"),
+    ("targets", {"kind": "clean", "window": 3}, "'targets' fields do not match dnd-provenance-2: unknown ['window']"),
+    ("targets", {"kind": "leave_one_out_window_mean"}, "'targets' fields do not match dnd-provenance-2: missing ['window']"),
     ("code", {"commit": "a" * 40, "tree_clean": "unknown"}, "'code' must be a commit with a boolean tree_clean"),
     ("code", {"commit": "unknown", "tree_clean": True}, "'code' must be a commit with a boolean tree_clean"),
     ("training_data.frame_index_runs", [[5, 9], [0, 7]], "'training_data.frame_index_runs' must be null or sorted, disjoint"),
@@ -625,12 +627,12 @@ NESTED = [
     ("training_data.reference_declaration", 3, "'training_data.reference_declaration'"),
     ("training_data.digest", {"format": "dnd-digest-1", "sha256": "xyz"}, "'training_data.digest' must be"),
     # follow-up review of 28c7a57
-    ("command.effective.optimiser.bogus", 1, "'command.effective.optimiser' fields do not match dnd-provenance-1: unknown ['bogus']"),
+    ("command.effective.optimiser.bogus", 1, "'command.effective.optimiser' fields do not match dnd-provenance-2: unknown ['bogus']"),
     ("command.effective.optimiser.lr", [0.01], "'command.effective.optimiser.lr' must be a number"),
     ("command.effective.optimiser.betas", 0.9, "'command.effective.optimiser.betas' must be a list of two numbers"),
     ("command.effective.optimiser.eps", 0, "'command.effective.optimiser.eps' must be a positive number"),
     ("command.effective.optimiser.name", "SGD", "'command.effective.optimiser.name' must be one of"),
-    ("command.effective.scheduler", {"name": "StepLR"}, "'command.effective.scheduler' fields do not match dnd-provenance-1: missing"),
+    ("command.effective.scheduler", {"name": "StepLR"}, "'command.effective.scheduler' fields do not match dnd-provenance-2: missing"),
     ("command.effective.scheduler.step_size", 2.5, "'command.effective.scheduler.step_size' must be an integer >= 1"),
     ("command.effective.scheduler.name", "Plateau", "'command.effective.scheduler.name' must be one of"),
     ("command.effective.loss.delta", [], "'command.effective.loss.delta' must be a positive number"),

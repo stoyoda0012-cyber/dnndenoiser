@@ -156,7 +156,9 @@ not transfer to measured data.
   reference-free SNR for measured spectra.
 - **Spectrum-wise processing.** Angle-/time-resolved arrays are generated and
   handled, but denoising flattens all non-energy axes and processes each 1-D
-  spectrum independently — this is not a joint 3-D/4-D model.
+  spectrum independently — this is not a joint 3-D/4-D model. A frame stack with angle
+  channels trains one model whose targets stay inside each channel; the model itself is
+  still spectrum-wise.
 - **Synthetic noise is independent from one energy channel to the next.** The
   generator draws Poisson (or Gaussian-approximated) noise channel by channel. A
   measured detector can spread one count over several neighbouring energy
