@@ -205,16 +205,25 @@ def test_the_channel_axis_equals_the_workaround_where_nothing_ties():
 
 def test_on_ties_each_resolution_is_a_valid_one():
     """Evenly spaced indices, W = 1: an inner frame's two nearest others tie. The channel
-    axis and the workaround may resolve the tie differently; each must pick one of them."""
-    n = 8
-    f = frames3(n=n, a=2, e=4, seed=7).astype(np.float64)
+    axis and the workaround may resolve the tie differently; each must pick one of them.
+
+    Frame t of channel c holds the value 100 * c + t everywhere, so a target names the
+    frame it was taken from exactly, and a failure says which one was chosen."""
+    n, a = 8, 2
+    f = np.stack([np.full((n, 4), 100.0 * c) + np.arange(n)[:, None] for c in range(a)], axis=1)
     index = np.arange(n)
     stacked, indices = workaround(f, index, 3 * n)
-    for got in (channel_targets(f, index, 1),
-                np.stack([moving_average_targets(stacked, indices, 1)[c * n:(c + 1) * n]
-                          for c in range(2)], axis=1)):
-        for t in range(1, n - 1):
-            assert any(np.array_equal(got[t], f[s]) for s in (t - 1, t + 1))
+    via_workaround = moving_average_targets(stacked, indices, 1)
+    for name, got in (("channel axis", channel_targets(f, index, 1)),
+                      ("workaround", np.stack([via_workaround[c * n:(c + 1) * n]
+                                               for c in range(a)], axis=1))):
+        for c in range(a):
+            for t in range(1, n - 1):
+                chosen = got[t, c, 0] - 100.0 * c
+                assert np.all(got[t, c] == got[t, c, 0]), (name, c, t, got[t, c])
+                assert chosen in (t - 1, t + 1), (
+                    f"{name}: channel {c}, frame {t} took frame {chosen}; "
+                    f"numpy {np.__version__}")
 
 
 # ---------------------------------------------------------------- 4 to 7: through the CLI
