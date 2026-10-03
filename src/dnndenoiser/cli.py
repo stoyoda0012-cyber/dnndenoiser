@@ -1417,8 +1417,12 @@ def cmd_diagnose(args):
         energy = np.linspace(float(energy[0]), float(energy[-1]), n_features)
         print(f"  Resampled {stored.shape[-1]} -> {n_features} points, as infer does.")
 
+    # The dtype infer normalises in: float32 after resampling, otherwise the stored dtype
+    # promoted by the normalisation's float constants (float64 for integers and float64).
+    work_dtype = np.asarray(frames).dtype if resampled else np.result_type(stored.dtype, 0.0)
+
     def f(x):
-        flat = np.asarray(x, dtype=np.float32).reshape(-1, x.shape[-1])
+        flat = np.asarray(x).astype(work_dtype).reshape(-1, x.shape[-1])
         return _apply_model(model, flat, normalisation, device, args.batch_size).reshape(x.shape)
 
     try:
@@ -1476,6 +1480,7 @@ def cmd_diagnose(args):
     except ValueError as exc:
         fail(f"the report cannot be written as strict JSON: {exc}")
     output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(text, encoding='utf-8')
     print(f"\nReport saved: {output_path}")
     print("\nDone.")

@@ -152,6 +152,12 @@ def diagnose(f: Callable, frames, energy, frame_index,
              probes: Optional[Sequence[tuple]] = None) -> dict:
     """C, σ, and R and A for each probe, per channel. ``probes`` (``(E0, FWHM, k)``
     tuples) replaces the defaults of :func:`default_probes`."""
+    # An overflow is refused below with a message, not reported as a warning first.
+    with np.errstate(over="ignore", invalid="ignore"):
+        return _diagnose(f, frames, energy, frame_index, probes)
+
+
+def _diagnose(f, frames, energy, frame_index, probes):
     shape = np.shape(frames)
     x = _channels(frames)
     n, n_channels, length = x.shape
@@ -161,6 +167,8 @@ def diagnose(f: Callable, frames, energy, frame_index,
         raise DiagnoseError(f"energy has shape {np.shape(energy)}, frames have {length} points")
     if not np.all(np.isfinite(x)):
         raise DiagnoseError("the frames contain non-finite values")
+    if np.shape(frame_index) != (n,):
+        raise DiagnoseError(f"frame_index has shape {np.shape(frame_index)}; there are {n} frames")
 
     mean = x.mean(axis=0)
     denominators = ((x - mean) ** 2).sum(axis=(0, 2))
@@ -177,6 +185,9 @@ def diagnose(f: Callable, frames, energy, frame_index,
 
     y = _call(f, x, shape, "the frames")
     numerators = ((y - y.mean(axis=0)) ** 2).sum(axis=(0, 2))
+    if not np.all(np.isfinite(numerators)):
+        raise DiagnoseError("the contraction ratio is not finite (the output's variation "
+                            "overflows)")
     report = {
         "diagnose_output_version": OUTPUT_VERSION,
         "n_frames": int(n),

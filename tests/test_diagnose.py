@@ -140,6 +140,54 @@ def test_a_nonlinear_stub_pins_the_probe_amplitude():
     assert abs(np.median(at_2a) - np.median(per_frame)) > 1e-3
 
 
+def test_the_spread_is_the_quartiles_over_frames():
+    """Under f(z) = z**2 the per-frame R and A differ, so the quartiles are pinned."""
+    x = frames2(n=11, seed=15)
+    sigma = sigma_by_loop(x, np.arange(11))[0]
+    e0, fwhm, k = dx.default_probes(ENERGY)[2]
+    g = gauss(ENERGY, e0, fwhm)
+    a = k * sigma
+    change = [(xi + a * g) ** 2 - xi ** 2 for xi in x]
+    resp = [d @ g / (a * (g @ g)) for d in change]
+    area = [d.sum() / (a * g.sum()) for d in change]
+    p = probe(dx.diagnose(lambda z: z ** 2, x, ENERGY, np.arange(11)), 2)
+    assert p["response_iqr"] == [pytest.approx(np.quantile(resp, q), abs=1e-12) for q in (0.25, 0.75)]
+    assert p["area_iqr"] == [pytest.approx(np.quantile(area, q), abs=1e-12) for q in (0.25, 0.75)]
+    assert p["area_median"] == pytest.approx(np.median(area), abs=1e-12)
+    assert p["response_iqr"][0] < p["response_median"] < p["response_iqr"][1]
+
+
+def test_the_pooled_summary_is_over_every_frame_and_channel():
+    """An asymmetric pool (channel 0 squared, channel 1 halved), so a mean or a per-channel
+    summary differs from the pooled median and quartiles."""
+    rng = np.random.default_rng(16)
+    x = 1.0 + rng.normal(0, 0.05, (9, 2, L))
+
+    def f(z):
+        out = z.copy()
+        out[:, 0] = z[:, 0] ** 2
+        out[:, 1] = 0.5 * z[:, 1]
+        return out
+    sig = sigma_by_loop(x, np.arange(9))
+    e0, fwhm, k = dx.default_probes(ENERGY)[0]
+    g = gauss(ENERGY, e0, fwhm)
+    resp, area = [], []
+    for c in range(2):
+        a = k * sig[c]
+        for xi in x[:, c]:
+            d = (f(np.stack([xi + a * g] * 2)[None])[0, c] - f(np.stack([xi] * 2)[None])[0, c])
+            resp.append(d @ g / (a * (g @ g)))
+            area.append(d.sum() / (a * g.sum()))
+    pooled = dx.diagnose(f, x, ENERGY, np.arange(9))["probes"][0]["pooled"]
+    assert pooled["response_median"] == pytest.approx(np.median(resp), abs=1e-12)
+    assert pooled["response_iqr"] == [pytest.approx(np.quantile(resp, q), abs=1e-12)
+                                      for q in (0.25, 0.75)]
+    assert pooled["area_median"] == pytest.approx(np.median(area), abs=1e-12)
+    assert pooled["area_iqr"] == [pytest.approx(np.quantile(area, q), abs=1e-12)
+                                  for q in (0.25, 0.75)]
+    assert abs(np.mean(resp) - np.median(resp)) > 1e-3
+
+
 def test_f_is_called_once_on_the_frames_and_once_per_probe_with_their_shape():
     x = frames2(n=6)
     shapes = []
@@ -154,7 +202,7 @@ def test_f_is_called_once_on_the_frames_and_once_per_probe_with_their_shape():
 # ------------------------------------------------------------- 2. evaluate's claims (§5)
 
 
-def test_against_the_frame_mean_the_constant_scores_best_and_r_says_why(monkeypatch, tmp_path):
+def test_against_the_frame_mean_the_constant_scores_best(monkeypatch, tmp_path):
     x = frames2(n=8, e=64).astype(np.float32)
     mean = np.repeat(x.mean(0, keepdims=True), len(x), 0)
     S = band_smoother(64)
@@ -232,6 +280,8 @@ def test_the_cli_applies_normalisation_and_its_inverse(monkeypatch, tmp_path, ma
     xc = x32 - x32.mean(0)
     expected_c = ((xc * w) ** 2).sum() / (xc ** 2).sum()
     eps = np.finfo(np.float32).eps
+    # The network path is float32: each output point carries a few eps32 of relative
+    # rounding, so a ratio of sums over 256 points agrees to ~1e-5 relative (≈ 100 eps32).
     assert r["contraction_ratio"]["channels"][0] == pytest.approx(expected_c, rel=1e-5)
     sigma = r["sigma"][0]
     for i, (e0, fwhm, k) in enumerate(dx.default_probes(energy)):
@@ -239,6 +289,30 @@ def test_the_cli_applies_normalisation_and_its_inverse(monkeypatch, tmp_path, ma
         tol = 64 * eps * (span + np.abs(x32).max()) / abs(k * sigma)
         assert probe(r, i)["response_median"] == pytest.approx(w @ (g * g) / (g @ g), abs=tol)
         assert probe(r, i)["area_median"] == pytest.approx(w @ g / g.sum(), abs=tol)
+
+
+@pytest.mark.parametrize("dtype, n_points", [
+    (np.float32, 256), (np.float64, 256), (np.int32, 256), (np.float64, 300), (np.float32, 300)])
+def test_the_model_is_applied_bit_for_bit_as_infer_applies_it(monkeypatch, tmp_path, ma_model,
+                                                               dtype, n_points):
+    """Large values, where normalising in another dtype than infer's would show."""
+    model, _ = ma_model
+    x = (frames2(n=6, e=n_points, seed=20) * 1000 + 1e5).astype(dtype)
+    path = tmp_path / "s.h5"
+    write_frame_stack(path, x, np.linspace(280.0, 290.0, n_points))
+    run(monkeypatch, "infer", "-d", str(path), "-m", str(model), "-o", str(tmp_path / "o.h5"),
+        "--device", "cpu")
+    with h5py.File(tmp_path / "o.h5") as f:
+        denoised = f["denoised"][:].astype(np.float64)
+    captured = {}
+    real = dx.diagnose
+
+    def spy(f, frames, energy, frame_index, probes=None):
+        captured["y"] = np.asarray(f(np.asarray(frames, dtype=np.float64)))
+        return real(f, frames, energy, frame_index, probes=probes)
+    monkeypatch.setattr(dx, "diagnose", spy)
+    diagnose(monkeypatch, tmp_path, path, model)
+    assert np.array_equal(captured["y"], denoised)
 
 
 class Square(torch.nn.Module):
@@ -269,6 +343,9 @@ def test_the_cli_feeds_the_network_normalised_input(monkeypatch, tmp_path, ma_mo
     g = gauss(energy, e0, fwhm)
     a = k * r["sigma"][0]
     per_frame = [(through(xi + a * g) - through(xi)) @ g / (a * (g @ g)) for xi in x32]
+    # R is a difference of two float32 outputs over an amplitude of 3σ: rounding of order
+    # eps32·|y| per point, divided by a, allows ~1e-3 relative; dropping the normalisation
+    # changes R by far more (it is caught).
     assert probe(r, 2)["response_median"] == pytest.approx(np.median(per_frame), rel=1e-3)
 
 
@@ -280,6 +357,28 @@ def test_the_defaults_give_five_probes_and_no_average(monkeypatch, tmp_path, ma_
         [280.0 + q * 10.0 for q in (0.1, 0.3, 0.5, 0.7, 0.9)])
     assert all(p["fwhm"] == pytest.approx(0.3) for p in r["probes"])
     assert not any("mean" in k or "average" in k for p in r["probes"] for k in p)
+
+
+def test_the_report_records_device_and_order_basis(monkeypatch, tmp_path, ma_model):
+    model, _ = ma_model
+    path = stack(tmp_path / "s.h5", frames2(n=6, e=256, seed=19), order_basis="recorded")
+    r = diagnose(monkeypatch, tmp_path, path, model)
+    assert (r["device"], r["order_basis"]) == ("cpu", "recorded")
+    unknown = stack(tmp_path / "u.h5", frames2(n=6, e=256, seed=19))
+    assert diagnose(monkeypatch, tmp_path, unknown, model, name="u.json")["order_basis"] == "unknown"
+
+
+def test_batch_size_bounds_each_forward_call(monkeypatch, tmp_path, ma_model):
+    model, data = ma_model
+    seen = []
+
+    class Recording(torch.nn.Module):
+        def forward(self, z):
+            seen.append(z.shape[0])
+            return z
+    monkeypatch.setattr(cli, "_build_network", lambda checkpoint, config, device: Recording())
+    diagnose(monkeypatch, tmp_path, data, model, "--batch-size", "3")
+    assert seen and max(seen) == 3 and sum(seen) == 10 * 6     # 10 frames, 1 + 5 passes
 
 
 def test_two_runs_give_equal_reports(monkeypatch, tmp_path, ma_model):
@@ -301,6 +400,8 @@ def test_a_stack_off_the_network_grid_is_resampled_first(monkeypatch, tmp_path, 
     z[:, 0::2] = x
     z[:, 1::2] = (x[:, :-1] + x[:, 1:]) / 2
     r = diagnose(monkeypatch, tmp_path, stack(tmp_path / "s.h5", z), model)
+    # Resampling is a float32 matrix product whose weights at the original points are
+    # 1 and 0 only to float32 rounding; 1e-4 relative allows that and the float32 network.
     assert r["resampled"] == {"from_points": 511, "to_points": 256}
     assert r["sigma"][0] == pytest.approx(sigma_by_loop(x, np.arange(10))[0], rel=1e-4)
     xc = x - x.mean(0)
@@ -359,6 +460,14 @@ def test_slow_drift_does_not_inflate_sigma():
 def test_sigma_refuses_what_it_cannot_measure(frames, index, reason):
     with pytest.raises(dx.DiagnoseError, match=reason):
         dx.noise_scale(frames, index)
+
+
+def test_sigma_is_refused_below_a_floor_relative_to_the_frames():
+    rng = np.random.default_rng(17)
+    noise = rng.normal(0, 1, (6, L))
+    with pytest.raises(dx.DiagnoseError, match="no measurable noise"):
+        dx.noise_scale(1e3 + 1e-10 * noise, np.arange(6))      # σ ~ 1e-10 < 1e-12 · 1e3
+    assert dx.noise_scale(1e3 + 1e-8 * noise, np.arange(6))[0] > 1e-9
 
 
 def test_sigma_accepts_two_adjacent_pairs():
@@ -440,6 +549,42 @@ def test_a_probe_is_refused_with_its_reason(probe_, reason):
         dx.diagnose(lambda z: z, frames2(), ENERGY, np.arange(12), probes=[probe_])
 
 
+@pytest.mark.parametrize("e0, fwhm, refused", [
+    (280.45, 0.3, True), (280.65, 0.3, False),     # 2·FWHM = 0.6 from the low end
+    (281.0, 0.5, False), (289.0, 0.5, False),      # exactly 2·FWHM: not closer, accepted
+    (280.99, 0.5, True), (289.01, 0.5, True),
+])
+def test_the_end_rule_is_two_fwhm(e0, fwhm, refused):
+    def go():
+        return dx.diagnose(lambda z: z, frames2(), ENERGY, np.arange(12), probes=[(e0, fwhm, 3.0)])
+    if refused:
+        with pytest.raises(dx.DiagnoseError, match="closer than 2·FWHM"):
+            go()
+    else:
+        assert len(go()["probes"]) == 1
+
+
+def test_a_non_finite_response_is_refused():
+    calls = []
+
+    def f(z):
+        calls.append(1)
+        return z if len(calls) == 1 else z + 1e308        # finite output, overflowing sum
+    with pytest.raises(dx.DiagnoseError, match="response is not finite"):
+        dx.diagnose(f, frames2(), ENERGY, np.arange(12))
+
+
+def test_a_non_finite_contraction_ratio_is_refused():
+    with pytest.raises(dx.DiagnoseError, match="contraction ratio is not finite"):
+        dx.diagnose(lambda z: z * 1e300, frames2(), ENERGY, np.arange(12))
+
+
+@pytest.mark.parametrize("index", [np.arange(11), np.arange(13), np.arange(12).reshape(3, 4)])
+def test_a_frame_index_of_another_length_is_refused(index):
+    with pytest.raises(dx.DiagnoseError, match="frame_index has shape"):
+        dx.diagnose(lambda z: z, frames2(), ENERGY, index)
+
+
 def test_an_accepted_probe_replaces_the_defaults_and_a_dip_is_allowed():
     r = dx.diagnose(lambda z: z, frames2(), ENERGY, np.arange(12),
                     probes=[(285.0, 0.3, -2.0), (283.0, 0.5, 3.0)])
@@ -492,11 +637,19 @@ def test_the_cli_refuses_a_malformed_probe(monkeypatch, capsys, tmp_path, ma_mod
     assert "E0:FWHM:k" in err
 
 
-def test_the_cli_never_writes_onto_its_input(monkeypatch, capsys, tmp_path, ma_model):
+@pytest.mark.parametrize("target", ["data", "model"])
+def test_the_cli_never_writes_onto_its_input(monkeypatch, capsys, tmp_path, ma_model, target):
     model, data = ma_model
     err = refuse(monkeypatch, capsys, "diagnose", "-d", str(data), "-m", str(model),
-                 "-o", str(data))
+                 "-o", str({"data": data, "model": model}[target]))
     assert "never writes to its inputs" in err
+
+
+def test_the_cli_creates_the_report_directory(monkeypatch, tmp_path, ma_model):
+    model, data = ma_model
+    out = tmp_path / "new" / "dir" / "r.json"
+    run(monkeypatch, "diagnose", "-d", str(data), "-m", str(model), "-o", str(out))
+    assert load_strict(out)["n_frames"] == 10
 
 
 # ------------------------------------------------------------------------- 8. held out
@@ -524,26 +677,32 @@ def test_a_subset_of_the_training_frames_is_counted(monkeypatch, tmp_path, ma_mo
         "not_held_out", "established", 5)
 
 
-def test_new_frames_of_the_same_acquisition_are_disjoint(monkeypatch, tmp_path, ma_model):
+def test_new_frames_of_the_same_acquisition_are_disjoint(monkeypatch, capsys, tmp_path, ma_model):
     model, _ = ma_model
     new = stack(tmp_path / "new.h5", frames2(n=6, e=256, seed=13), frame_index=np.arange(10, 16),
                 acquisition_id="acq-T")
+    capsys.readouterr()
     r = diagnose(monkeypatch, tmp_path, new, model)
     assert (r["held_out_status"], r["held_out_basis"]) == ("disjoint_by_identifiers",
                                                            "established")
-    assert dx.TRAINING_FRAMES_NOTE not in r["interpretation"]
+    assert r["interpretation"] == dx.INTERPRETATION
+    assert dx.TRAINING_FRAMES_NOTE not in capsys.readouterr().out
+    assert "rule" not in r
 
 
-def test_without_a_manifest_the_status_is_unknown(monkeypatch, tmp_path, ma_model):
+def test_without_a_manifest_the_status_is_unknown(monkeypatch, capsys, tmp_path, ma_model):
     model, data = ma_model
     from dnndenoiser import provenance as prov
     ck = torch.load(model, map_location="cpu", weights_only=True)
     del ck[prov.CHECKPOINT_MANIFEST], ck[prov.CHECKPOINT_DIGEST]
     bare = tmp_path / "bare.pt"
     torch.save(ck, bare)
+    capsys.readouterr()
     r = diagnose(monkeypatch, tmp_path, data, bare)
     assert (r["held_out_status"], r["held_out_basis"], r["model"]) == ("unknown", "default",
                                                                        "unknown")
+    assert r["interpretation"] == dx.INTERPRETATION
+    assert dx.TRAINING_FRAMES_NOTE not in capsys.readouterr().out
 
 
 # ----------------------------------------------------------------------------- 9. words
@@ -565,12 +724,25 @@ def report_words(report):
 
 
 def printed_labels(lines):
-    return [line.split(":")[0] for line in lines
-            if line and not line.startswith("Note:") and ":" in line]
+    """Every printed line except Note: lines and the input paths, with numbers removed: the
+    labels are what remains."""
+    import re
+    return [re.sub(r"[-+]?\d[\d.e+-]*", " ", line) for line in lines
+            if line and not line.startswith(("Note:", "Data:", "Model:", "Report saved:"))]
 
 
 def test_no_key_or_printed_label_carries_a_forbidden_word(monkeypatch, capsys, tmp_path, ma_model):
     model, data = ma_model
+    three = tmp_path / "three.h5"
+    write_frame_stack(three, (1.0 + np.random.default_rng(18).normal(0, 0.05, (6, 2, 256))
+                              ).astype(np.float32), np.linspace(280.0, 290.0, 256),
+                      angles=np.array([10.0, 40.0]), angle_kind="emission", angle_units="deg")
+    capsys.readouterr()
+    r3 = diagnose(monkeypatch, tmp_path, three, model, name="r3.json")
+    lines3 = capsys.readouterr().out.splitlines()
+    assert any(line.strip().startswith("pooled") for line in lines3)
+    assert any("over channels" in line for line in lines3)
+    assert forbidden_in(report_words(r3), printed_labels(lines3)) == []
     capsys.readouterr()
     r = diagnose(monkeypatch, tmp_path, data, model)
     lines = capsys.readouterr().out.splitlines()
@@ -584,6 +756,15 @@ def test_no_key_or_printed_label_carries_a_forbidden_word(monkeypatch, capsys, t
 @pytest.mark.parametrize("planted", ["snr_estimate", "noise_reduction", "quality"])
 def test_the_word_check_catches_a_planted_key(planted):
     assert forbidden_in(report_words({"probes": [{planted: 1}]}), []) != []
+
+
+@pytest.mark.parametrize("planted", [
+    "  channel 0: response 0.91 [0.8, 0.95], area gain 1.0 [1, 1]",
+    "  pooled over frames and channels: quality 0.9 [0.8, 1]",
+    "Contraction ratio, per channel (noise reduction): 0.2",
+])
+def test_the_word_check_catches_a_planted_label(planted):
+    assert forbidden_in([], printed_labels([planted])) != []
 
 
 def test_evaluate_points_to_diagnose_exactly_with_the_same_frames_caveat(monkeypatch, capsys, tmp_path):

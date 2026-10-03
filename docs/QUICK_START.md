@@ -180,7 +180,9 @@ its inverse, dropout off), on `--device cpu` by default. Per channel it reports:
   every frame: amplitude `k·σ`, `σ` the frames' noise scale from differences of frames with
   adjacent `frame_index` values. `R` is the fraction of the probe that reaches the output,
   projected on the probe; attenuation, broadening and shift all reduce it, and `R = 1` is
-  what returning the input gives, so larger is not better. `A = 1` does not show that the
+  what returning the input gives, so larger is not better. It is not confined to [0, 1]: an
+  output that moves against the probe gives a negative value, one that amplifies it a value
+  above 1, and neither is clipped. `A = 1` does not show that the
   areas of real features are preserved. By default five probes (10 to 90 % of the way along
   the energy axis, FWHM 3 % of its span, `k = 3`), each reported separately; `--probe
   E0:FWHM:k` replaces them (a negative `k` is a dip; for a negative `E0` use the
@@ -314,7 +316,8 @@ reference also rewards an output that barely changes from frame to frame: a
 model that returns nearly the same spectrum for every frame sits close to the
 mean and scores well by SNR against it, however little it tells about any one
 frame. How the output varies across frames cannot tell such a model from a good
-denoiser either, since both vary little; `dnndenoiser diagnose` (below) adds a known
+denoiser either, since both vary little; `dnndenoiser diagnose` (its section is under
+`infer` / `evaluate` / `diagnose`) adds a known
 change to the input and reports how much of it reaches the output (the injection
 response). See
 [the preregistration](preregistration/P1-selfsupervised-moving-average.md) for
