@@ -292,12 +292,14 @@ def test_the_cli_applies_normalisation_and_its_inverse(monkeypatch, tmp_path, ma
 
 
 @pytest.mark.parametrize("dtype, n_points", [
-    (np.float32, 256), (np.float64, 256), (np.int32, 256), (np.float64, 300), (np.float32, 300)])
+    (np.float32, 256), (np.float64, 256), (np.int32, 256), (np.float64, 300), (np.float32, 300),
+    (np.float16, 256)])
 def test_the_model_is_applied_bit_for_bit_as_infer_applies_it(monkeypatch, tmp_path, ma_model,
                                                                dtype, n_points):
     """Large values, where normalising in another dtype than infer's would show."""
     model, _ = ma_model
-    x = (frames2(n=6, e=n_points, seed=20) * 1000 + 1e5).astype(dtype)
+    scale = (1e3, 1e4) if dtype == np.float16 else (1000, 1e5)     # float16 tops out at 65504
+    x = (frames2(n=6, e=n_points, seed=20) * scale[0] + scale[1]).astype(dtype)
     path = tmp_path / "s.h5"
     write_frame_stack(path, x, np.linspace(280.0, 290.0, n_points))
     run(monkeypatch, "infer", "-d", str(path), "-m", str(model), "-o", str(tmp_path / "o.h5"),
@@ -313,6 +315,25 @@ def test_the_model_is_applied_bit_for_bit_as_infer_applies_it(monkeypatch, tmp_p
     monkeypatch.setattr(dx, "diagnose", spy)
     diagnose(monkeypatch, tmp_path, path, model)
     assert np.array_equal(captured["y"], denoised)
+
+
+def test_a_probe_on_an_integer_stack_is_not_truncated(monkeypatch, tmp_path, ma_model):
+    """Small counts (σ near 0.5): the probe added to integer frames must stay fractional, as
+    infer would normalise them in float64."""
+    model, _ = ma_model
+    w = np.linspace(0.5, 1.5, 256)
+    stub_network(monkeypatch, w)
+    counts = np.random.default_rng(22).poisson(0.5, (12, 256)).astype(np.int32)
+    r = diagnose(monkeypatch, tmp_path, _int_stack(tmp_path / "i.h5", counts), model)
+    energy = np.linspace(280.0, 290.0, 256)
+    e0, fwhm, _k = dx.default_probes(energy)[2]
+    g = gauss(energy, e0, fwhm)
+    assert probe(r, 2)["response_median"] == pytest.approx(w @ (g * g) / (g @ g), abs=1e-4)
+
+
+def _int_stack(path, counts):
+    write_frame_stack(path, counts, np.linspace(280.0, 290.0, counts.shape[-1]))
+    return path
 
 
 class Square(torch.nn.Module):
@@ -579,10 +600,20 @@ def test_a_non_finite_contraction_ratio_is_refused():
         dx.diagnose(lambda z: z * 1e300, frames2(), ENERGY, np.arange(12))
 
 
+def test_an_overflowing_denominator_is_refused_not_reported_as_zero():
+    """Frames whose variation overflows while σ and the output stay finite: C would be
+    finite / inf = 0."""
+    x = 5e152 * np.random.default_rng(21).normal(0, 1, (12, L))
+    with pytest.raises(dx.DiagnoseError, match="frames' variation overflows"):
+        dx.diagnose(lambda z: z * 1e-10, x, ENERGY, np.arange(12))
+
+
 @pytest.mark.parametrize("index", [np.arange(11), np.arange(13), np.arange(12).reshape(3, 4)])
 def test_a_frame_index_of_another_length_is_refused(index):
     with pytest.raises(dx.DiagnoseError, match="frame_index has shape"):
         dx.diagnose(lambda z: z, frames2(), ENERGY, index)
+    with pytest.raises(dx.DiagnoseError, match="frame_index has shape"):
+        dx.noise_scale(frames2(), index)
 
 
 def test_an_accepted_probe_replaces_the_defaults_and_a_dip_is_allowed():

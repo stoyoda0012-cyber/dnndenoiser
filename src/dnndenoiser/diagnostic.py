@@ -62,6 +62,8 @@ def noise_scale(frames, frame_index) -> np.ndarray:
     of frames whose ``frame_index`` values differ by exactly 1 (ddof 0)."""
     x = _channels(frames)
     index = np.asarray(frame_index)
+    if index.shape != (x.shape[0],):
+        raise DiagnoseError(f"frame_index has shape {index.shape}; there are {x.shape[0]} frames")
     order = np.argsort(index, kind="stable")
     adjacent = np.flatnonzero(np.diff(index[order]) == 1)
     if adjacent.size < 2:
@@ -128,7 +130,9 @@ def probe_shape(energy, e0: float, fwhm: float) -> np.ndarray:
 
 
 def _call(f: Callable, x: np.ndarray, shape: tuple, what: str) -> np.ndarray:
-    y = np.asarray(f(x.reshape(shape)), dtype=np.float64)
+    # The model's own floating-point warnings are not silenced.
+    with np.errstate(all="warn"):
+        y = np.asarray(f(x.reshape(shape)), dtype=np.float64)
     if y.shape != shape:
         raise DiagnoseError(f"the model returned shape {y.shape} for {what} of shape {shape}")
     if not np.all(np.isfinite(y)):
@@ -167,11 +171,12 @@ def _diagnose(f, frames, energy, frame_index, probes):
         raise DiagnoseError(f"energy has shape {np.shape(energy)}, frames have {length} points")
     if not np.all(np.isfinite(x)):
         raise DiagnoseError("the frames contain non-finite values")
-    if np.shape(frame_index) != (n,):
-        raise DiagnoseError(f"frame_index has shape {np.shape(frame_index)}; there are {n} frames")
 
     mean = x.mean(axis=0)
     denominators = ((x - mean) ** 2).sum(axis=(0, 2))
+    if not np.all(np.isfinite(denominators)):
+        raise DiagnoseError("the contraction ratio is not finite (the frames' variation "
+                            "overflows)")
     for c in range(n_channels):
         # Tested on the frames themselves: a float mean of equal values need not equal
         # them, so the denominator of identical frames is not reliably zero.

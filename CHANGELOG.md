@@ -47,8 +47,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   a model, applied as `infer` applies it, it reports per channel the contraction ratio
   (frame-to-frame variation of the output over that of the input), and for Gaussian probes
   added to every frame the injection response (the output change projected on the probe,
-  as a fraction of it; not clipped to [0, 1]) and the area ratio, as medians and `[q25, q75]` over frames, with the held-out
-  status of the frames, the model's identity and a digest of the frames as stored. None
+  as a fraction of it; not clipped to [0, 1]) and the area ratio, as medians and
+  `[q25, q75]` over frames, with the held-out status of the frames, the model's identity
+  and a digest of the frames as stored. None
   of these is an accuracy, a noise reduction or an SNR, and none is a collapse verdict.
   Tests with evaluation-level negative controls (identity, constant, a linear smoother, a
   shrink matched to its contraction, a mirror) show that a frame-mean reference gives the
