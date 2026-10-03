@@ -43,6 +43,19 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   recognised as a subset; the same seed with another noise level is recognised as the
   same signals; its noise comes from the same random stream and is not independent of
   the training noise (another `--seed` gives held-out synthetic data).
+- **`dnndenoiser diagnose`: how the output depends on the input.** On a frame stack and
+  a model, applied as `infer` applies it, it reports per channel the contraction ratio
+  (frame-to-frame variation of the output over that of the input), and for Gaussian probes
+  added to every frame the injection response (the fraction of the probe reaching the
+  output) and the area ratio, as medians and `[q25, q75]` over frames, with the held-out
+  status of the frames, the model's identity and a digest of the frames as stored. None
+  of these is an accuracy, a noise reduction or an SNR, and none is a collapse verdict.
+  Tests with evaluation-level negative controls (identity, constant, a linear smoother, a
+  shrink matched to its contraction, a mirror) show that a frame-mean reference gives the
+  constant the best score and that the contraction ratio does not separate the smoother
+  from the shrink, while the injection response does. `evaluate` prints a pointer to
+  `diagnose` with its same-frames caveat (printed only; the JSON is unchanged). Design and
+  two independent audits: `docs/design/OUTPUT_CONTRACTION.md`.
 - **What `--seed` reproduces, stated and tested.** On the same machine and installed
   environment, with the same code, `--device cpu`, an integer seed and the same thread
   count, two training processes give the same `model_body_digest`; nothing is promised

@@ -153,7 +153,9 @@ not transfer to measured data.
   undeclared reference and says so).
   Against an estimate — including the mean of the evaluated frames — it reports
   discrepancies and says they are not errors against the signal; there is no
-  reference-free SNR for measured spectra.
+  reference-free SNR for measured spectra. `dnndenoiser diagnose` describes, on a frame
+  stack, how far the output follows a change added to its input; it is not an accuracy
+  measure either.
 - **Spectrum-wise processing.** Angle-/time-resolved arrays are generated and
   handled, but denoising flattens all non-energy axes and processes each 1-D
   spectrum independently — this is not a joint 3-D/4-D model. A frame stack with angle

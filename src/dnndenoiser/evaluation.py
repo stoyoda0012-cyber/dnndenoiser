@@ -32,6 +32,8 @@ ESTIMATE_CAVEAT = ("This measures agreement with a reference estimate. The refer
                    "is not an established error against the underlying signal.")
 SAME_FRAMES_CAVEAT = ("A model returning this mean for every frame has zero discrepancy from it "
                       "by construction. That agreement does not establish accuracy.")
+DIAGNOSE_POINTER = ("For a frame stack and its model, `dnndenoiser diagnose` shows whether the "
+                    "output follows a change added to the input (the injection response).")
 EXPECTATION_CONDITION = ("The difference of mean discrepancies equals the difference of errors "
                          "against the underlying signal in expectation exactly when the cross "
                          "term E<input - output, reference error> is zero. A sufficient "

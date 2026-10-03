@@ -1,7 +1,7 @@
 # Design: does the output follow its input? A diagnostic, not a verdict
 
-**Status: adopted 2026-10-03 (revision 2, after two independent audits); not yet
-implemented.** Step 5 of the improvement plan that follows a reproducibility assessment of a
+**Status: adopted 2026-10-03 (revision 2, after two independent audits); implemented (see
+the CHANGELOG).** Step 5 of the improvement plan that follows a reproducibility assessment of a
 published study. It adds a `diagnose` command that describes how a model's output depends on
 its input, and tests with evaluation-level negative controls. It adds no accuracy judgement,
 no noise-reduction figure and no threshold. Under `AGENTS.md` §8 it is audited before code is

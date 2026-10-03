@@ -83,7 +83,7 @@ Transformer families 0.001. Use at least 8k training samples; 32k is better.
 
 Multidimensional (angle/time) arrays are flattened and trained spectrum-wise.
 
-## `infer` / `evaluate`
+## `infer` / `evaluate` / `diagnose`
 
 ```bash
 dnndenoiser infer -d noisy.h5 -m model.pt -o denoised.h5 --batch-size 256
@@ -158,6 +158,43 @@ verified check is never confused with an asserted one. The output also carries a
 digest (`dnd-digest-1`) of the evaluated arrays and of the reference, each with its
 coordinates and stored declaration; a digest identifies what was compared, not where it
 came from.
+
+### `diagnose` — how the output depends on the input
+
+```bash
+dnndenoiser diagnose -d frames.h5 -m model.pt -o report.json
+dnndenoiser diagnose -d frames.h5 -m model.pt -o report.json --probe 285:0.6:3 --probe 287:0.6:-2
+```
+
+On a **frame stack** only (rows of a `noisy` file are different spectra by default;
+convert repeated acquisitions with `write_frame_stack`). The model is applied exactly as
+`infer` applies it (resampling to the network length, the checkpoint's normalisation and
+its inverse, dropout off), on `--device cpu` by default. Per channel it reports:
+
+- the **contraction ratio** `C`: the output's frame-to-frame variation over the input's.
+  `C = 1` for a model returning its input, `C = 0` for one returning a fixed spectrum. Its
+  denominator holds the noise *and* any real change across frames, and an oversmoothed or
+  wrong spectrum returned for every frame also gives 0. **It is not a noise reduction and
+  must not be read as one in dB**: that would be a reference-free SNR;
+- the **injection response** `R` and the **area ratio** `A`, for Gaussian probes added to
+  every frame: amplitude `k·σ`, `σ` the frames' noise scale from differences of frames with
+  adjacent `frame_index` values. `R` is the fraction of the probe that reaches the output,
+  projected on the probe; attenuation, broadening and shift all reduce it, and `R = 1` is
+  what returning the input gives, so larger is not better. `A = 1` does not show that the
+  areas of real features are preserved. By default five probes (10 to 90 % of the way along
+  the energy axis, FWHM 3 % of its span, `k = 3`), each reported separately; `--probe
+  E0:FWHM:k` replaces them (a negative `k` is a dip; for a negative `E0` use the
+  `=` form, `--probe=-5:0.6:3`).
+
+Medians and `[q25, q75]` are over frames; the spread is not an uncertainty. The report
+also carries the held-out status of the frames from the model's manifest, the model's
+identity and a digest of the frames as stored. None of these is an accuracy, a noise
+reduction or an SNR, and no threshold says a model has collapsed. **Observed, not
+established:** on a model's own stationary training stack, a moving-average model on toy
+data (one seed) responded very little to a probe away from the peaks and only partly on them; this
+may be the ordinary outcome of the method, so `diagnose` is not a collapse detector.
+Design and two independent audits:
+[docs/design/OUTPUT_CONTRACTION.md](design/OUTPUT_CONTRACTION.md).
 
 ## HDF5 schema
 
@@ -276,8 +313,10 @@ that way is not a held-out result and must not be reported as one. A mean
 reference also rewards an output that barely changes from frame to frame: a
 model that returns nearly the same spectrum for every frame sits close to the
 mean and scores well by SNR against it, however little it tells about any one
-frame. Look at how the output varies across frames before reading such a score.
-See
+frame. How the output varies across frames cannot tell such a model from a good
+denoiser either, since both vary little; `dnndenoiser diagnose` (below) adds a known
+change to the input and reports how much of it reaches the output (the injection
+response). See
 [the preregistration](preregistration/P1-selfsupervised-moving-average.md) for
 what the port does and does not establish.
 
