@@ -383,7 +383,8 @@ def cmd_train_moving_average(args, passed_flags):
 
     from dnndenoiser.training.selfsupervised import FIXED_SETTINGS
     checkpoint = {
-            "model_state_dict": model.state_dict(),
+            # CPU tensors whatever the device, so the file is device-neutral.
+            "model_state_dict": {k: v.detach().cpu() for k, v in model.state_dict().items()},
             "architecture": "ResNet-FCNN",
             "num_features": TARGET_LENGTH,
             "num_hidden_units": 100,
@@ -427,7 +428,8 @@ def _seal_checkpoint(checkpoint, args, device, training_data, *, targets, effect
             args=args, flags_passed=_flags_passed(sys.argv[1:], args._train_options),
             device=device, training_data=training_data, targets=targets,
             effective=effective, seeds=seeds, preprocessing=preprocessing,
-            epochs=epochs, final_loss=final_loss)
+            epochs=epochs, final_loss=final_loss,
+            torch_threads=getattr(args, "_torch_threads", None))
         prov.seal(checkpoint, manifest, checkpoint_model_config(checkpoint, args.output))
     except prov.MalformedProvenance as exc:
         print(f"Error: cannot record the provenance manifest: {exc}", file=sys.stderr)
@@ -436,6 +438,15 @@ def _seal_checkpoint(checkpoint, args, device, training_data, *, targets, effect
 
 def cmd_train(args):
     """Train denoising model."""
+    # First, before any data is read or any tensor or model is built: the thread count is
+    # one of the conditions of the reproducibility contract (docs/design/REPRODUCIBILITY.md).
+    import torch
+    if args.threads is not None:
+        if args.threads < 1:
+            print(f"Error: --threads must be at least 1, got {args.threads}", file=sys.stderr)
+            sys.exit(1)
+        torch.set_num_threads(args.threads)
+    args._torch_threads = torch.get_num_threads()
     if args.epochs < 1:
         # Zero epochs used to crash after "training", with no loss to save.
         print(f"Error: --epochs must be at least 1, got {args.epochs}", file=sys.stderr)
@@ -695,7 +706,8 @@ def cmd_train(args):
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     checkpoint = {
-        'model_state_dict': model.state_dict(),
+        # CPU tensors whatever the device, so the file is device-neutral.
+        'model_state_dict': {k: v.detach().cpu() for k, v in model.state_dict().items()},
         'architecture': args.arch,
         'n_features': n_features,
         'hidden_units': args.hidden_units,
@@ -1427,8 +1439,9 @@ Examples:
                                   'every method; it also seeds the batch order and, for '
                                   'noise2noise, the synthesized targets. Construction '
                                   'consumes the random stream, so the same seed gives the '
-                                  'same initial weights. It does not make training '
-                                  'reproducible on every device.')
+                                  'same initial weights. Same machine and environment, '
+                                  '--device cpu, the same --threads: the weights reproduce '
+                                  'bit for bit; anything else is not promised (QUICK_START).')
     train_parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     train_parser.add_argument('--lr-drop-period', type=int, default=10)
     train_parser.add_argument('--lr-drop-factor', type=float, default=0.1)
@@ -1442,6 +1455,10 @@ Examples:
     train_parser.add_argument('--hidden-units', type=int, default=100)
     train_parser.add_argument('--encoder-dim', type=int, default=64)
     train_parser.add_argument('--device', default='auto', choices=['auto', 'cpu', 'cuda', 'mps'])
+    train_parser.add_argument('--threads', type=int, default=None,
+                             help='torch CPU threads, set before anything else. The count '
+                                  'in force is recorded either way; it is a condition of the '
+                                  'reproducibility contract (QUICK_START)')
     train_parser.set_defaults(
         func=cmd_train,
         # Captured here rather than dug out of the subparser later: the

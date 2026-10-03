@@ -200,7 +200,7 @@ method being reproduced — so `--arch`, `--lr`, `--lr-drop-period`,
 `--grad-clip`, `--hidden-units`, `--encoder-dim` and `--noise-level` are
 **refused rather than ignored**, in whichever form they are written (`--lr 0.05`,
 `--lr=0.05`, or an abbreviation argparse would accept). `--epochs`,
-`--batch-size`, `--seed`, `--window` and `--device` still apply.
+`--batch-size`, `--seed`, `--window`, `--device` and `--threads` still apply.
 
 Stacks that are not 256 points are resampled — by `train`, and by `infer` in the
 same way, so the stack a model was trained on can be passed to it as it is:
@@ -325,6 +325,27 @@ same random stream, so Gaussian noise repeats rescaled, mixed noise stays highly
 correlated when only `--gaussian-std` changes, and Poisson noise at a nearby level can be
 strongly correlated. `disjoint_by_identifiers` says only that the arrays differ. Use
 another `--seed` for a held-out synthetic test set.
+
+### What `--seed` reproduces
+
+Two tiers ([docs/design/REPRODUCIBILITY.md](design/REPRODUCIBILITY.md)):
+
+- **Promised, bit for bit** — the same `model_body_digest` from two training processes —
+  on the same machine, in the same installed environment (Python and the same builds of
+  torch, NumPy and h5py), with the same code (one commit with a clean tree, or one installed
+  release), `--device cpu`, an integer `--seed`, the same thread count, and the same input
+  and arguments. `--device auto` picks MPS or CUDA where available, so pass `--device cpu`;
+  pass `--threads N` to fix the thread count (the Transformer and bi-LSTM change with it).
+- **Not promised** — anything else: another machine or environment, MPS or CUDA, another
+  thread count, other code, or no seed. Such runs may agree or differ; nothing is claimed.
+
+The manifest records the conditions it can (`software.torch_threads`, the device, the seed,
+the code, the input digest, the arguments) and a label, `reproducibility.tier`:
+`tier-1-eligible` for a cpu run with a seed and a tree that is not dirty, `tier-2`
+otherwise. It cannot record the machine or the builds behind a version string, so two
+manifests can show that two runs were *not* comparable, never that they were. `evaluate`
+reports `torch_threads` and the tier under `evaluation_context.model`. Checkpoints store
+their weights on the CPU whatever device trained them.
 
 ## Python API (minimal example)
 

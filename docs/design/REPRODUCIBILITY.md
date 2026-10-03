@@ -1,7 +1,7 @@
 # Design: what `--seed` promises, where, and the tests that can fail
 
-**Status: adopted 2026-10-03 (revision 2, after two independent audits); not yet
-implemented.** Step 4 of the improvement plan that follows a reproducibility assessment of a
+**Status: adopted 2026-10-03 (revision 2, after two independent audits); implemented (see
+the CHANGELOG).** Step 4 of the improvement plan that follows a reproducibility assessment of a
 published study. It states a reproducibility contract for training, records the conditions
 it depends on, adds a `--threads` option, and adds tests that would fail if the contract
 broke. It changes no metric and no training arithmetic; it is audited under `AGENTS.md` §8

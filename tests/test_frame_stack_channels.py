@@ -404,7 +404,7 @@ def test_evaluate_compares_the_angles_of_a_channel_stack(monkeypatch, capsys, tm
 def test_the_manifest_records_the_declarations_for_every_method(monkeypatch, tmp_path):
     ma = train(monkeypatch, stack3(tmp_path / "s.h5", order_basis="inferred"), tmp_path / "ma.pt",
                method="moving-average")["provenance"]
-    assert ma["schema"] == "dnd-provenance-2"
+    assert ma["schema"] == "dnd-provenance-3"
     assert ma["training_data"]["angles"] == {"kind": "emission", "units": "deg"}
     assert ma["training_data"]["frame_index_basis"] == "inferred"
     run(monkeypatch, "generate", "-o", str(tmp_path / "g.h5"), "-n", "4", "--n-energy", "32",
@@ -456,8 +456,15 @@ def test_out_of_vocabulary_declarations_are_refused_at_train(monkeypatch, capsys
             else "attribute 'angle_kind' must be one of") in err
 
 
-def as_version_1(manifest):
+def as_version_2(manifest):
     m = json.loads(json.dumps(manifest))
+    m["schema"] = "dnd-provenance-2"
+    del m["reproducibility"], m["software"]["torch_threads"], m["command"]["arguments"]["threads"]
+    return m
+
+
+def as_version_1(manifest):
+    m = as_version_2(manifest)
     m["schema"] = "dnd-provenance-1"
     del m["training_data"]["angles"], m["training_data"]["frame_index_basis"]
     return m
@@ -702,11 +709,12 @@ def test_any_declared_basis_without_a_frame_index_is_refused(monkeypatch, tmp_pa
         prov.validate_manifest(bad)
 
 
-@pytest.mark.parametrize("version", ["dnd-provenance-1", "dnd-provenance-2"])
+@pytest.mark.parametrize("version", ["dnd-provenance-1", "dnd-provenance-2", "dnd-provenance-3"])
 def test_key_errors_name_the_manifest_version(monkeypatch, tmp_path, version):
     m = train(monkeypatch, stack3(tmp_path / "s.h5"), tmp_path / "m.pt",
               method="moving-average")["provenance"]
-    base = as_version_1(m) if version == "dnd-provenance-1" else json.loads(json.dumps(m))
+    base = {"dnd-provenance-1": as_version_1, "dnd-provenance-2": as_version_2,
+            "dnd-provenance-3": lambda x: json.loads(json.dumps(x))}[version](m)
     for mutate in (lambda x: x["training_data"].update(extra=1),
                    lambda x: x["result"].update(extra=1),
                    lambda x: x["software"].pop("device"),

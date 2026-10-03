@@ -33,8 +33,15 @@ import numpy as np
 
 from dnndenoiser import digest as dg
 
-SCHEMA = "dnd-provenance-2"      # written by this version
+SCHEMA = "dnd-provenance-3"      # written by this version
+SCHEMA_V2 = "dnd-provenance-2"   # still read, exactly as stored
 SCHEMA_V1 = "dnd-provenance-1"   # still read, exactly as stored
+SCHEMAS = (SCHEMA_V1, SCHEMA_V2, SCHEMA)
+# Versions that carry the declared angle channels and order basis
+# (docs/design/FRAME_STACK_CHANNELS.md §5) and the reproducibility conditions
+# (docs/design/REPRODUCIBILITY.md §3).
+WITH_DECLARED_CHANNELS = (SCHEMA_V2, SCHEMA)
+WITH_REPRODUCIBILITY = (SCHEMA,)
 CHECKPOINT_MANIFEST = "provenance"
 CHECKPOINT_DIGEST = "model_digest"
 OUTPUT_MANIFEST = "model_provenance"          # dataset in an infer output
@@ -46,19 +53,23 @@ SIGNAL_IDENTITY = "signal_identity"           # attribute on clean (written by g
 # Options of `train` recorded in `command.arguments`, by argparse destination. A test
 # classifies every option of the parser, so one added later fails until it is placed in
 # one of these two lists.
-RECORDED_ARGUMENTS = (
+RECORDED_ARGUMENTS_V12 = (
     "arch", "method", "window", "noise_level", "epochs", "batch_size", "seed", "lr",
     "lr_drop_period", "lr_drop_factor", "scheduler", "warmup_epochs", "weight_decay",
     "grad_clip", "hidden_units", "encoder_dim", "device",
 )
+RECORDED_ARGUMENTS = RECORDED_ARGUMENTS_V12 + ("threads",)
 EXCLUDED_ARGUMENTS = ("data", "output")
 
 TRAINING_COMPONENTS = ("noisy", "frames", "clean", "energy", "angles", "times", "frame_index")
 
-MANIFEST_KEYS = {"schema", "created_utc", "software", "code", "command", "training_data",
-                 "targets", "preprocessing", "result", "statuses"}
-SOFTWARE_KEYS = {"dnndenoiser", "python", "numpy", "torch", "h5py", "torch_cuda",
-                 "platform", "device"}
+MANIFEST_KEYS_V12 = {"schema", "created_utc", "software", "code", "command", "training_data",
+                     "targets", "preprocessing", "result", "statuses"}
+MANIFEST_KEYS = MANIFEST_KEYS_V12 | {"reproducibility"}
+SOFTWARE_KEYS_V12 = {"dnndenoiser", "python", "numpy", "torch", "h5py", "torch_cuda",
+                     "platform", "device"}
+SOFTWARE_KEYS = SOFTWARE_KEYS_V12 | {"torch_threads"}
+TIERS = ("tier-1-eligible", "tier-2")
 CODE_KEYS = {"commit", "tree_clean"}
 COMMAND_KEYS = {"method", "arguments", "flags_passed", "effective", "seeds"}
 TRAINING_DATA_KEYS_V1 = {"digest", "array_digests", "layout", "rows_used", "intensity_units",
@@ -169,7 +180,7 @@ _ARGUMENT_TYPES = {
     "batch_size": "int", "seed": "int?", "lr": "num", "lr_drop_period": "int",
     "lr_drop_factor": "num", "scheduler": "str", "warmup_epochs": "int",
     "weight_decay": "num", "grad_clip": "num", "hidden_units": "int", "encoder_dim": "int",
-    "device": "str",
+    "device": "str", "threads": "int?",
 }
 _OPTIMISERS = {"Adam", "AdamW"}
 _SCHEDULERS = {
@@ -258,26 +269,38 @@ def _validate_declared_channels(td: dict) -> None:
              "'unknown' when the training file has no frame_index", td["frame_index_basis"])
 
 
+def contract_tier(device: str, seed, tree_clean) -> str:
+    """The reproducibility contract that applies (docs/design/REPRODUCIBILITY.md §2-§3):
+    device cpu, an integer seed and a tree that is not dirty make a run eligible for Tier 1.
+    It is a label from the recorded conditions, not a comparison result."""
+    eligible = device == "cpu" and type(seed) is int and tree_clean is not False
+    return "tier-1-eligible" if eligible else "tier-2"
+
+
 def validate_manifest(obj) -> dict:
     """Check every field's presence and type (design §2); return it unchanged if valid.
     Anything else -- a missing or unknown field, a wrong type at any depth -- is refused,
     naming the field."""
     from dnndenoiser import reference as ref
 
-    _keys(obj, MANIFEST_KEYS, "provenance")
-    _check_plain(obj, "")
-    if obj["schema"] not in (SCHEMA, SCHEMA_V1):
-        raise MalformedProvenance(f"unknown provenance schema {obj['schema']!r}; this "
-                                  f"version reads {SCHEMA} and {SCHEMA_V1}")
+    if not isinstance(obj, dict) or obj.get("schema") not in SCHEMAS:
+        got = obj.get("schema") if isinstance(obj, dict) else obj
+        raise MalformedProvenance(f"unknown provenance schema {got!r}; this version reads "
+                                  f"{', '.join(SCHEMAS)}")
     version = obj["schema"]
+    v3 = version in WITH_REPRODUCIBILITY
+    _keys(obj, MANIFEST_KEYS if v3 else MANIFEST_KEYS_V12, "provenance", version)
+    _check_plain(obj, "")
     _require(type(obj["created_utc"]) is str and bool(_ISO_UTC.fullmatch(obj["created_utc"])),
              "created_utc", "an ISO 8601 UTC time such as 2026-10-02T12:00:00Z",
              obj["created_utc"])
 
     sw = obj["software"]
-    _keys(sw, SOFTWARE_KEYS, "software", version)
+    _keys(sw, SOFTWARE_KEYS if v3 else SOFTWARE_KEYS_V12, "software", version)
     for k in ("dnndenoiser", "python", "numpy", "torch", "h5py", "device"):
         _str(sw[k], f"software.{k}")
+    if v3:
+        _int(sw["torch_threads"], "software.torch_threads", minimum=1)
     _str(sw["torch_cuda"], "software.torch_cuda", nullable=True)
     _keys(sw["platform"], {"system", "machine"}, "software.platform", version)
     for k in ("system", "machine"):
@@ -295,7 +318,8 @@ def validate_manifest(obj) -> dict:
     _keys(cmd, COMMAND_KEYS, "command", version)
     _require(cmd["method"] in _METHODS, "command.method", f"one of {list(_METHODS)}",
              cmd["method"])
-    _keys(cmd["arguments"], set(RECORDED_ARGUMENTS), "command.arguments", version)
+    _keys(cmd["arguments"], set(RECORDED_ARGUMENTS if v3 else RECORDED_ARGUMENTS_V12),
+          "command.arguments", version)
     for k, v in cmd["arguments"].items():
         _typed(v, _ARGUMENT_TYPES[k], f"command.arguments.{k}")
     _require(type(cmd["flags_passed"]) is list and all(
@@ -310,7 +334,7 @@ def validate_manifest(obj) -> dict:
              "command.seeds.targets", "null or a list of two integers", targets_seeds)
 
     td = obj["training_data"]
-    _keys(td, TRAINING_DATA_KEYS if obj["schema"] == SCHEMA else TRAINING_DATA_KEYS_V1,
+    _keys(td, TRAINING_DATA_KEYS if version in WITH_DECLARED_CHANNELS else TRAINING_DATA_KEYS_V1,
           "training_data", version)
     validate_digest_object(td["digest"], "training_data.digest")
     _require(type(td["array_digests"]) is dict
@@ -336,7 +360,7 @@ def validate_manifest(obj) -> dict:
         for r in runs) and all(runs[i][0] > runs[i - 1][1] + 1 for i in range(1, len(runs))))
     _require(ok, "training_data.frame_index_runs",
              "null or sorted, disjoint, non-adjacent [first, last] integer runs", runs)
-    if obj["schema"] == SCHEMA:
+    if version in WITH_DECLARED_CHANNELS:
         _validate_declared_channels(td)
     if td["reference_declaration"] is not None:
         try:
@@ -375,6 +399,13 @@ def validate_manifest(obj) -> dict:
     _require(type(obj["statuses"]) is dict and all(
         type(v) is str for v in obj["statuses"].values()),
         "statuses", "an object mapping field paths to strings", obj["statuses"])
+    if v3:
+        repro = obj["reproducibility"]
+        _keys(repro, {"tier"}, "reproducibility", version)
+        expected = contract_tier(sw["device"], cmd["seeds"]["torch"], code["tree_clean"])
+        _require(repro["tier"] == expected, "reproducibility.tier",
+                 f"{expected!r}, computed from software.device, command.seeds.torch and "
+                 "code.tree_clean", repro["tier"])
     return obj
 
 
@@ -506,7 +537,7 @@ def code_record(package_dir: Optional[Path] = None) -> dict:
     return {"commit": commit, "tree_clean": tracked == "" and untracked == ""}
 
 
-def software_record(device: str) -> dict:
+def software_record(device: str, torch_threads: Optional[int] = None) -> dict:
     import h5py
     import torch
 
@@ -520,6 +551,7 @@ def software_record(device: str) -> dict:
         "torch_cuda": None if torch.version.cuda is None else str(torch.version.cuda),
         "platform": {"system": str(platform.system()), "machine": str(platform.machine())},
         "device": str(device),
+        "torch_threads": int(torch.get_num_threads() if torch_threads is None else torch_threads),
     }
 
 
@@ -634,14 +666,17 @@ def training_data_record(path, input_name: str) -> dict:
 
 def build_manifest(*, args, flags_passed, device, training_data: dict, targets: dict,
                    effective: dict, seeds: dict, preprocessing: dict, epochs: int,
-                   final_loss) -> dict:
+                   final_loss, torch_threads: Optional[int] = None) -> dict:
     statuses: dict = {}
+    code = code_record()
     manifest = {
         "schema": SCHEMA,
         "created_utc": datetime.now(timezone.utc).replace(microsecond=0)
                                .strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "software": software_record(device),
-        "code": code_record(),
+        "software": software_record(device, torch_threads),
+        "code": code,
+        "reproducibility": {"tier": contract_tier(str(device), seeds.get("torch"),
+                                                  code["tree_clean"])},
         "command": {"method": args.method, "arguments": arguments_record(args),
                     "flags_passed": sorted(flags_passed), "effective": effective,
                     "seeds": seeds},
@@ -754,11 +789,14 @@ def model_identity(records: Optional[dict]):
         "code": dict(m["code"]),
     }
     # Declarations, not checked; a version-1 manifest did not record them.
-    v2 = m["schema"] == SCHEMA
+    v2 = m["schema"] in WITH_DECLARED_CHANNELS
     identity["training_data"]["declared_angles"] = (m["training_data"]["angles"] if v2
                                                    else "not recorded")
     identity["training_data"]["declared_frame_index_basis"] = (
         m["training_data"]["frame_index_basis"] if v2 else "not recorded")
+    v3 = m["schema"] in WITH_REPRODUCIBILITY
+    identity["torch_threads"] = m["software"]["torch_threads"] if v3 else "not recorded"
+    identity["tier"] = m["reproducibility"]["tier"] if v3 else "not recorded"
     return identity
 
 
