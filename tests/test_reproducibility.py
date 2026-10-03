@@ -140,17 +140,28 @@ def test_negative_controls_each_change_the_digest(tmp_path, data):
 # ---------------------------------------------------------------------------------- 3
 
 
+def threads_in_force(env):
+    """What torch reports in a plain child under ``env`` -- the count the environment
+    actually gives (torch may cap it, e.g. at the machine's cores)."""
+    proc = subprocess.run([sys.executable, "-c", "import torch; print(torch.get_num_threads())"],
+                          env=env, capture_output=True, text=True, encoding="utf-8")
+    return int(proc.stdout.strip())
+
+
 @pytest.mark.parametrize("argv, env, expected", [
     (["--threads", "1"], {}, 1),
     (["--threads", "2"], {}, 2),
-    ([], {"OMP_NUM_THREADS": 3}, 3),
+    ([], {"OMP_NUM_THREADS": 3}, None),
     (["--threads", "1"], {"MKL_NUM_THREADS": 4}, 1),
 ], ids=["threads-1", "threads-2", "omp-3", "threads-over-mkl"])
 @pytest.mark.parametrize("method", ["noise2clean", "moving-average"])
 def test_the_recorded_thread_count_is_the_one_in_force(tmp_path, data, argv, env, expected, method):
     stack = data["sup"] if method == "noise2clean" else data["flat"]
+    environment = child_env(**env)
+    if expected is None:              # set by the environment: whatever torch makes of it
+        expected = threads_in_force(environment)
     ck = child_train(tmp_path, "t", stack, "--method", method, "--seed", "1", *argv,
-                     env=child_env(**env))
+                     env=environment)
     assert ck["provenance"]["software"]["torch_threads"] == expected
 
 
