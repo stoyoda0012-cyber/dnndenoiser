@@ -43,6 +43,16 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   recognised as a subset; the same seed with another noise level is recognised as the
   same signals; its noise comes from the same random stream and is not independent of
   the training noise (another `--seed` gives held-out synthetic data).
+- **What `--seed` reproduces, stated and tested.** On the same machine and installed
+  environment, with the same code, `--device cpu`, an integer seed and the same thread
+  count, two training processes give the same `model_body_digest`; nothing is promised
+  otherwise. `train --threads N` fixes the thread count, which the manifest now records
+  (`dnd-provenance-3`, with a `reproducibility.tier` label the validator recomputes from the
+  recorded conditions; versions 1 and 2 are still read). Cross-process tests run on every
+  CI platform, each for its own machine, with negative controls (another seed, another
+  input value, another learning rate must change the weights). Checkpoints store CPU
+  tensors whatever device trained them. Design and two independent audits:
+  `docs/design/REPRODUCIBILITY.md`.
 - **Frame stacks with angle channels.** `frames` may be `(n_frames, n_angles, energy)`,
   with an `angles` dataset naming the channels (finite, non-repeated, in the order of the
   axis; `angle_kind` and `angle_units` required). `moving-average` builds every target
