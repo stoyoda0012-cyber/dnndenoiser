@@ -335,7 +335,8 @@ Two tiers ([docs/design/REPRODUCIBILITY.md](design/REPRODUCIBILITY.md)):
   torch, NumPy and h5py), with the same code (one commit with a clean tree, or one installed
   release), `--device cpu`, an integer `--seed`, the same thread count, and the same input
   and arguments. `--device auto` picks MPS or CUDA where available, so pass `--device cpu`;
-  pass `--threads N` to fix the thread count (the Transformer and bi-LSTM change with it).
+  pass `--threads N` to fix the thread count (on the development machine the Transformer's
+  and bi-LSTM's weights changed with it).
 - **Not promised** — anything else: another machine or environment, MPS or CUDA, another
   thread count, other code, or no seed. Such runs may agree or differ; nothing is claimed.
 

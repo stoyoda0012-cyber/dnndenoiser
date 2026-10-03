@@ -1439,9 +1439,10 @@ Examples:
                                   'every method; it also seeds the batch order and, for '
                                   'noise2noise, the synthesized targets. Construction '
                                   'consumes the random stream, so the same seed gives the '
-                                  'same initial weights. Same machine and environment, '
-                                  '--device cpu, the same --threads: the weights reproduce '
-                                  'bit for bit; anything else is not promised (QUICK_START).')
+                                  'same initial weights. On the same machine, environment and '
+                                  'code, with --device cpu, the same thread count, input and '
+                                  'arguments, the weights reproduce bit for bit; anything '
+                                  'else is not promised (QUICK_START).')
     train_parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     train_parser.add_argument('--lr-drop-period', type=int, default=10)
     train_parser.add_argument('--lr-drop-factor', type=float, default=0.1)

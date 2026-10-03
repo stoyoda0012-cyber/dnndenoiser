@@ -19,6 +19,7 @@ import numpy as np
 import pytest
 import torch
 
+import dnndenoiser
 from dnndenoiser import provenance as prov
 from dnndenoiser.data.frame_stack import write_frame_stack
 
@@ -26,11 +27,24 @@ CHILD = ("import sys; from dnndenoiser.cli import main; "
          "sys.argv = ['dnndenoiser'] + sys.argv[1:]; main()")
 
 
+# The children must run the code under test, not whatever dnndenoiser the environment
+# resolves (an editable install of another checkout, say).
+PACKAGE_ROOT = str(Path(dnndenoiser.__file__).resolve().parents[1])
+
+
 def child_env(**extra):
     env = {k: v for k, v in os.environ.items()
            if k not in ("OMP_NUM_THREADS", "MKL_NUM_THREADS")}
+    env["PYTHONPATH"] = os.pathsep.join([PACKAGE_ROOT] + [p for p in env.get("PYTHONPATH", "")
+                                                        .split(os.pathsep) if p])
     env.update({k: str(v) for k, v in extra.items()})
     return env
+
+
+def test_the_children_import_the_code_under_test():
+    proc = subprocess.run([sys.executable, "-c", "import dnndenoiser; print(dnndenoiser.__file__)"],
+                          env=child_env(), capture_output=True, text=True, encoding="utf-8")
+    assert Path(proc.stdout.strip()).resolve() == Path(dnndenoiser.__file__).resolve()
 
 
 def child_train(tmp_path, name, data, *argv, env=None):
@@ -147,17 +161,14 @@ def test_the_thread_count_is_in_force_when_training_starts(monkeypatch, tmp_path
     from tests.test_evaluate_reference import run
     seen = {}
     before = torch.get_num_threads()
-    real_ss, real_opt = ss.train_selfsupervised, torch.optim.Adam
+    real_file = h5py.File
 
-    def spy_ss(*a, **k):
-        seen["threads"] = torch.get_num_threads()
-        return real_ss(*a, **k)
-
-    def spy_adam(*a, **k):                  # returns a real Adam: the record stays "Adam"
-        seen["threads"] = torch.get_num_threads()
-        return real_opt(*a, **k)
-    monkeypatch.setattr(ss, "train_selfsupervised", spy_ss)
-    monkeypatch.setattr(torch.optim, "Adam", spy_adam)
+    class SpyFile(real_file):              # the first read of the training data
+        def __init__(self, *a, **k):
+            seen.setdefault("threads", torch.get_num_threads())
+            super().__init__(*a, **k)
+    monkeypatch.setattr(h5py, "File", SpyFile)
+    del ss
     target = 1 if before != 1 else 2
     try:
         run(monkeypatch, "train", "-d", str(data["sup" if method == "noise2clean" else "flat"]),
@@ -165,7 +176,7 @@ def test_the_thread_count_is_in_force_when_training_starts(monkeypatch, tmp_path
             "--device", "cpu", "--threads", str(target))
     finally:
         torch.set_num_threads(before)
-    assert seen["threads"] == target
+    assert seen["threads"] == target           # in force before any data was read
 
 
 @pytest.mark.parametrize("value", ["0", "-1"])
@@ -196,6 +207,61 @@ def manifest(tmp_path_factory, data):
                        "--threads", "1")["provenance"]
 
 
+def test_an_under_claimed_label_is_refused(manifest):
+    good = json.loads(json.dumps(manifest))
+    good["code"] = {"commit": "0" * 40, "tree_clean": True}
+    good["reproducibility"]["tier"] = "tier-2"
+    with pytest.raises(prov.MalformedProvenance, match="'reproducibility.tier' must be 'tier-1-eligible'"):
+        prov.validate_manifest(good)
+    good["reproducibility"]["tier"] = "tier-3"
+    with pytest.raises(prov.MalformedProvenance, match="'reproducibility.tier' must be one of"):
+        prov.validate_manifest(good)
+
+
+@pytest.mark.parametrize("field, value, reason", [
+    ("software.torch_threads", 0, "'software.torch_threads' must be an integer >= 1"),
+    ("command.arguments.threads", -5, "'command.arguments.threads' must be an integer >= 1"),
+])
+def test_thread_counts_below_one_are_refused_in_a_manifest(manifest, field, value, reason):
+    bad = json.loads(json.dumps(manifest))
+    head, key = field.rsplit(".", 1)
+    node = bad
+    for part in head.split("."):
+        node = node[part]
+    node[key] = value
+    with pytest.raises(prov.MalformedProvenance, match=reason):
+        prov.validate_manifest(bad)
+
+
+def test_the_label_uses_the_resolved_device(monkeypatch, manifest):
+    from types import SimpleNamespace
+    monkeypatch.setattr(prov, "code_record", lambda: {"commit": "0" * 40, "tree_clean": True})
+    args = SimpleNamespace(**{k: manifest["command"]["arguments"][k] for k in prov.RECORDED_ARGUMENTS})
+    args.device = "auto"
+    m = prov.build_manifest(
+        args=args, flags_passed=[], device="cpu", training_data=manifest["training_data"],
+        targets=manifest["targets"], effective=manifest["command"]["effective"],
+        seeds=manifest["command"]["seeds"], preprocessing=manifest["preprocessing"],
+        epochs=1, final_loss=0.1, torch_threads=1)
+    assert m["software"]["device"] == "cpu"
+    assert m["reproducibility"]["tier"] == "tier-1-eligible"
+    m2 = prov.build_manifest(
+        args=SimpleNamespace(**{**vars(args), "device": "cpu"}), flags_passed=[], device="mps",
+        training_data=manifest["training_data"], targets=manifest["targets"],
+        effective=manifest["command"]["effective"], seeds=manifest["command"]["seeds"],
+        preprocessing=manifest["preprocessing"], epochs=1, final_loss=0.1, torch_threads=1)
+    assert m2["reproducibility"]["tier"] == "tier-2"
+
+
+def test_version_1_and_2_nested_key_errors_name_their_version(manifest):
+    from tests.test_frame_stack_channels import as_version_1, as_version_2
+    for convert, version in ((as_version_1, "dnd-provenance-1"), (as_version_2, "dnd-provenance-2")):
+        bad = convert(manifest)
+        bad["command"]["effective"]["optimiser"]["extra"] = 1
+        with pytest.raises(prov.MalformedProvenance, match=f"fields do not match {version}"):
+            prov.validate_manifest(bad)
+
+
 @pytest.mark.parametrize("change", ["device-mps", "no-seed", "dirty-tree"])
 def test_a_label_that_disagrees_with_its_fields_is_refused(manifest, change):
     bad = json.loads(json.dumps(manifest))
@@ -224,19 +290,25 @@ def test_an_unseeded_run_is_tier_2(tmp_path, data):
 
 
 @pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS unavailable (local only)")
-def test_a_checkpoint_trained_on_mps_stores_cpu_tensors(monkeypatch, tmp_path, data):
+@pytest.mark.parametrize("method", ["noise2clean", "moving-average"])
+def test_a_checkpoint_trained_on_mps_stores_cpu_tensors(monkeypatch, tmp_path, data, method):
+    """The model is captured when it is built, and its weights read on MPS after training,
+    independently of the code that moves them to the CPU for saving."""
     import hashlib
+    from dnndenoiser.models import network
     from tests.test_evaluate_reference import run
-    captured = {}
-    real = torch.save
+    models = []
+    real_init = network.DenoisingNetwork.__init__
 
-    def spy(obj, path, *a, **k):
-        captured["weights"] = {key: v.detach().to("cpu").clone()
-                               for key, v in obj["model_state_dict"].items()}
-        return real(obj, path, *a, **k)
-    monkeypatch.setattr(torch, "save", spy)
-    run(monkeypatch, "train", "-d", str(data["sup"]), "-o", str(tmp_path / "m.pt"),
+    def spy_init(self, *a, **k):
+        real_init(self, *a, **k)
+        models.append(self)
+    monkeypatch.setattr(network.DenoisingNetwork, "__init__", spy_init)
+    stack = data["sup"] if method == "noise2clean" else data["flat"]
+    run(monkeypatch, "train", "-d", str(stack), "-o", str(tmp_path / "m.pt"), "--method", method,
         "--epochs", "1", "--device", "mps", "--seed", "1")
+    trained = models[-1].state_dict()
+    assert any(v.device.type == "mps" for v in trained.values())
     loaded = torch.load(tmp_path / "m.pt", weights_only=True)    # no map_location
     assert all(v.device.type == "cpu" for v in loaded["model_state_dict"].values())
 
@@ -244,9 +316,9 @@ def test_a_checkpoint_trained_on_mps_stores_cpu_tensors(monkeypatch, tmp_path, d
         h = hashlib.sha256()
         for key in sorted(sd):
             h.update(key.encode())
-            h.update(sd[key].numpy().tobytes())
+            h.update(sd[key].detach().to("cpu").numpy().tobytes())
         return h.hexdigest()
-    assert digest(loaded["model_state_dict"]) == digest(captured["weights"])
+    assert digest(loaded["model_state_dict"]) == digest(trained)
 
 
 # ---------------------------------------------------------------------------------- 6

@@ -205,9 +205,9 @@ def _typed(value, kind: str, path: str, minimum=None) -> None:
             _require(value >= minimum, path, f"a number >= {minimum}", value)
 
 
-def _validate_effective(eff, method: str) -> None:
+def _validate_effective(eff, method: str, version: str = SCHEMA) -> None:
     keys = _EFFECTIVE_KEYS | ({"window"} if method == "moving-average" else set())
-    _keys(eff, keys, "command.effective")
+    _keys(eff, keys, "command.effective", version)
     _str(eff["architecture"], "command.effective.architecture")
     for k in ("num_features", "num_hidden_units", "encoder_output_dim", "epochs", "batch_size"):
         _int(eff[k], f"command.effective.{k}", minimum=1)
@@ -216,7 +216,7 @@ def _validate_effective(eff, method: str) -> None:
     _num(eff["grad_clip"], "command.effective.grad_clip")
 
     opt, path = eff["optimiser"], "command.effective.optimiser"
-    _keys(opt, {"name", "lr", "weight_decay", "betas", "eps"}, path)
+    _keys(opt, {"name", "lr", "weight_decay", "betas", "eps"}, path, version)
     _require(opt["name"] in _OPTIMISERS, f"{path}.name", f"one of {sorted(_OPTIMISERS)}",
              opt["name"])
     _typed(opt["lr"], "num", f"{path}.lr", minimum=0)
@@ -233,18 +233,18 @@ def _validate_effective(eff, method: str) -> None:
                  f"one of {sorted(_SCHEDULERS)} (or the scheduler null)",
                  sched.get("name") if type(sched) is dict else sched)
         spec = _SCHEDULERS[sched["name"]]
-        _keys(sched, {"name", *spec}, path)
+        _keys(sched, {"name", *spec}, path, version)
         for k, (kind, minimum) in spec.items():
             _typed(sched[k], kind, f"{path}.{k}", minimum=minimum)
 
     loss, path = eff["loss"], "command.effective.loss"
-    _keys(loss, {"name", "delta"}, path)
+    _keys(loss, {"name", "delta"}, path, version)
     _require(loss["name"] == "HuberLoss", f"{path}.name", "'HuberLoss'", loss["name"])
     _require(_is_number(loss["delta"]) and loss["delta"] > 0, f"{path}.delta",
              "a positive number", loss["delta"])
 
 
-def _validate_declared_channels(td: dict) -> None:
+def _validate_declared_channels(td: dict, version: str = SCHEMA) -> None:
     """Version 2's two fields, by their value rules."""
     from dnndenoiser.data import frame_stack as fs
     angles = td["angles"]
@@ -255,7 +255,7 @@ def _validate_declared_channels(td: dict) -> None:
     else:
         _require(has_layout, "training_data.angles",
                  "null when the training file has no angles dataset", angles)
-        _keys(angles, {"kind", "units"}, "training_data.angles")
+        _keys(angles, {"kind", "units"}, "training_data.angles", version)
         for key, check in (("kind", fs.validate_angle_kind), ("units", fs.validate_angle_units)):
             if angles[key] is not None:
                 try:
@@ -321,11 +321,12 @@ def validate_manifest(obj) -> dict:
     _keys(cmd["arguments"], set(RECORDED_ARGUMENTS if v3 else RECORDED_ARGUMENTS_V12),
           "command.arguments", version)
     for k, v in cmd["arguments"].items():
-        _typed(v, _ARGUMENT_TYPES[k], f"command.arguments.{k}")
+        _typed(v, _ARGUMENT_TYPES[k], f"command.arguments.{k}",
+               minimum=1 if k == "threads" else None)
     _require(type(cmd["flags_passed"]) is list and all(
         type(f) is str and f.startswith("-") for f in cmd["flags_passed"]),
         "command.flags_passed", "a list of option names", cmd["flags_passed"])
-    _validate_effective(cmd["effective"], cmd["method"])
+    _validate_effective(cmd["effective"], cmd["method"], version)
     _keys(cmd["seeds"], {"torch", "targets"}, "command.seeds", version)
     _int(cmd["seeds"]["torch"], "command.seeds.torch", nullable=True)
     targets_seeds = cmd["seeds"]["targets"]
@@ -361,7 +362,7 @@ def validate_manifest(obj) -> dict:
     _require(ok, "training_data.frame_index_runs",
              "null or sorted, disjoint, non-adjacent [first, last] integer runs", runs)
     if version in WITH_DECLARED_CHANNELS:
-        _validate_declared_channels(td)
+        _validate_declared_channels(td, version)
     if td["reference_declaration"] is not None:
         try:
             ref.validate_origin(td["reference_declaration"])
@@ -383,11 +384,11 @@ def validate_manifest(obj) -> dict:
     pre = obj["preprocessing"]
     _keys(pre, PREPROCESSING_KEYS, "preprocessing", version)
     if pre["resampling"] is not None:
-        _keys(pre["resampling"], {"from_points", "to_points"}, "preprocessing.resampling")
+        _keys(pre["resampling"], {"from_points", "to_points"}, "preprocessing.resampling", version)
         for k in ("from_points", "to_points"):
             _int(pre["resampling"][k], f"preprocessing.resampling.{k}", minimum=1)
     if pre["normalisation"] is not None:
-        _keys(pre["normalisation"], {"kind", "min", "max"}, "preprocessing.normalisation")
+        _keys(pre["normalisation"], {"kind", "min", "max"}, "preprocessing.normalisation", version)
         _str(pre["normalisation"]["kind"], "preprocessing.normalisation.kind")
         for k in ("min", "max"):
             _num(pre["normalisation"][k], f"preprocessing.normalisation.{k}")
@@ -402,6 +403,8 @@ def validate_manifest(obj) -> dict:
     if v3:
         repro = obj["reproducibility"]
         _keys(repro, {"tier"}, "reproducibility", version)
+        _require(repro["tier"] in TIERS, "reproducibility.tier", f"one of {list(TIERS)}",
+                 repro["tier"])
         expected = contract_tier(sw["device"], cmd["seeds"]["torch"], code["tree_clean"])
         _require(repro["tier"] == expected, "reproducibility.tier",
                  f"{expected!r}, computed from software.device, command.seeds.torch and "
