@@ -734,12 +734,64 @@ def cmd_train(args):
     print("Done.")
 
 
+def _build_network(checkpoint, config, device):
+    """The checkpoint's network on ``device``, in eval mode (dropout off). Shared by
+    ``infer`` and ``diagnose``; tests replace it to substitute a known network."""
+    from dnndenoiser.models.network import DenoisingNetwork
+
+    model = DenoisingNetwork(
+        num_features=config['num_features'],
+        num_hidden_units=config['num_hidden_units'],
+        layer_type=config['architecture'],
+        encoder_output_dim=config['encoder_output_dim']
+    )
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model = model.to(device)
+    model.eval()
+    return model
+
+
+def _check_normalisation(normalisation):
+    if normalisation is not None and normalisation['max'] - normalisation['min'] <= 0:
+        print(f"Error: the checkpoint's normalisation is degenerate "
+              f"(min={normalisation['min']:.6g}, max={normalisation['max']:.6g})",
+              file=sys.stderr)
+        sys.exit(1)
+
+
+def _apply_model(model, flat, normalisation, device, batch_size):
+    """Rows ``(n, L)`` through the model: the checkpoint's normalisation, the network one
+    batch at a time, the inverse normalisation. Returns float32 in the input's units."""
+    import numpy as np
+    import torch
+
+    if normalisation is not None:
+        span = normalisation['max'] - normalisation['min']
+        flat = (flat - normalisation['min']) / span
+    with torch.no_grad():
+        # Keep the full input on host; move one batch at a time so
+        # --batch-size bounds device (VRAM) usage for large datasets
+        input_tensor = torch.tensor(flat, dtype=torch.float32)
+        outputs = []
+        for i in range(0, len(input_tensor), batch_size):
+            batch = input_tensor[i:i+batch_size].to(device)
+            output = model(batch)
+            if isinstance(output, tuple):
+                output = output[0]
+            outputs.append(output.cpu().numpy())
+        out = np.concatenate(outputs, axis=0)
+    if normalisation is not None:
+        # Back to the input's units. Without this the file would hold numbers in
+        # a normalised space it does not name, next to a `noisy` dataset in
+        # counts, and nothing would say they are not comparable.
+        out = out * span + normalisation['min']
+    return out
+
+
 def cmd_infer(args):
     """Run inference (denoising)."""
-    import torch
     import numpy as np
     import h5py
-    from dnndenoiser.models.network import DenoisingNetwork
 
     print("=== Inference ===")
     print(f"Data: {args.data}")
@@ -752,8 +804,6 @@ def cmd_infer(args):
     config = checkpoint_model_config(checkpoint, args.model)
     arch = config['architecture']
     n_features = config['num_features']
-    hidden_units = config['num_hidden_units']
-    encoder_dim = config['encoder_output_dim']
 
     # The normalisation the model was trained under, if it recorded one. Without
     # applying it the model is fed data on a scale it never saw, and its output
@@ -769,16 +819,7 @@ def cmd_infer(args):
     device = _resolve_device(args.device)
     print(f"Device: {device}")
 
-    # Build model directly
-    model = DenoisingNetwork(
-        num_features=n_features,
-        num_hidden_units=hidden_units,
-        layer_type=arch,
-        encoder_output_dim=encoder_dim
-    )
-    model.load_state_dict(checkpoint['model_state_dict'])
-    model = model.to(device)
-    model.eval()
+    model = _build_network(checkpoint, config, device)
 
     # The manifest is carried only if it still describes these weights and this
     # configuration; a checkpoint written before manifests has none.
@@ -893,14 +934,8 @@ def cmd_infer(args):
     else:
         noisy_flat = noisy
 
+    _check_normalisation(normalisation)
     if normalisation is not None:
-        span = normalisation['max'] - normalisation['min']
-        if span <= 0:
-            print(f"Error: the checkpoint's normalisation is degenerate "
-                  f"(min={normalisation['min']:.6g}, max={normalisation['max']:.6g})",
-                  file=sys.stderr)
-            sys.exit(1)
-        noisy_flat = (noisy_flat - normalisation['min']) / span
         print("  Applied the checkpoint's normalisation to the input.")
         print("  The constants are the training stack's, not this file's: if "
               "these spectra sit on a different scale, the model is being fed "
@@ -908,29 +943,8 @@ def cmd_infer(args):
 
     # Inference
     print("\nRunning inference...")
-    with torch.no_grad():
-        # Keep the full input on host; move one batch at a time so
-        # --batch-size bounds device (VRAM) usage for large datasets
-        input_tensor = torch.tensor(noisy_flat, dtype=torch.float32)
-
-        batch_size = args.batch_size
-        outputs = []
-
-        for i in range(0, len(input_tensor), batch_size):
-            batch = input_tensor[i:i+batch_size].to(device)
-            output = model(batch)
-            if isinstance(output, tuple):
-                output = output[0]
-            outputs.append(output.cpu().numpy())
-
-        denoised_flat = np.concatenate(outputs, axis=0)
-
+    denoised_flat = _apply_model(model, noisy_flat, normalisation, device, args.batch_size)
     if normalisation is not None:
-        # Back to the input's units. Without this the file would hold numbers in
-        # a normalised space it does not name, next to a `noisy` dataset in
-        # counts, and nothing would say they are not comparable.
-        span = normalisation['max'] - normalisation['min']
-        denoised_flat = denoised_flat * span + normalisation['min']
         print("  Inverted the normalisation, so the output is in the input's units.")
 
     # Reshape back
@@ -1315,6 +1329,9 @@ def cmd_evaluate(args):
     print(al.report_line(alignment))
     for note in context['caveats']:
         print(f"\nNote: {note}")
+    if ev.SAME_FRAMES_CAVEAT in context['caveats']:
+        # Printed only; the JSON caveats are the contract's (design step 5 §6).
+        print(f"\nNote: {ev.DIAGNOSE_POINTER}")
 
     if args.output:
         payload = dict(metrics)
@@ -1329,6 +1346,143 @@ def cmd_evaluate(args):
         output_path.write_text(text, encoding='utf-8')
         print(f"\nMetrics saved: {output_path}")
 
+    print("\nDone.")
+
+
+def cmd_diagnose(args):
+    """Describe how a model's output depends on its input, on a frame stack.
+
+    See docs/design/OUTPUT_CONTRACTION.md (adopted 2026-10-03). Nothing here is an
+    accuracy, a noise reduction or an SNR.
+    """
+    import json
+    import h5py
+    import numpy as np
+    from dnndenoiser import __version__
+    from dnndenoiser import diagnostic as dx
+    from dnndenoiser import provenance as prov
+    from dnndenoiser import reference as ref
+    from dnndenoiser.data import frame_stack as fs
+
+    def fail(message):
+        print(f"Error: {message}", file=sys.stderr)
+        sys.exit(1)
+
+    print("=== Diagnostic: how the output depends on the input ===")
+    print(f"Data: {args.data}")
+    print(f"Model: {args.model}")
+    for role, path in (("the input file", args.data), ("the model", args.model)):
+        if _same_file(args.output, path):
+            fail(f"-o {args.output} is {role}; diagnose never writes to its inputs")
+    try:
+        probes = None if not args.probe else [dx.parse_probe(t) for t in args.probe]
+    except dx.DiagnoseError as exc:
+        fail(str(exc))
+
+    with h5py.File(args.data, 'r') as f:
+        if fs.FRAMES not in f:
+            fail(f"{args.data} is not a frame stack (no '{fs.FRAMES}' dataset). diagnose "
+                 "needs repeated frames of one acquisition; rows of a 'noisy' file are, by "
+                 "default, different spectra. Convert repeated acquisitions with "
+                 "dnndenoiser.data.frame_stack.write_frame_stack.")
+        raw_acquisition = f[fs.FRAMES].attrs.get(ref.ACQUISITION_ATTR)
+    try:
+        stack = fs.read_frame_stack(args.data)
+        acquisition_id = prov._attr_text(raw_acquisition, ref.ACQUISITION_ATTR)
+    except (KeyError, ValueError) as exc:     # MalformedProvenance is a ValueError
+        fail(str(exc).strip("'\""))
+    stored = stack.frames
+
+    checkpoint = load_checkpoint(args.model, trust=args.trust_checkpoint)
+    config = checkpoint_model_config(checkpoint, args.model)
+    try:
+        model_records = prov.verify_checkpoint(checkpoint, config)
+    except prov.MalformedProvenance as exc:
+        fail(str(exc))
+    if model_records is not None:
+        model_records = {**model_records, 'manifest': prov.checkpoint_records(checkpoint)[0]}
+    normalisation = checkpoint.get('normalisation')
+    _check_normalisation(normalisation)
+    device = _resolve_device(args.device)
+    model = _build_network(checkpoint, config, device)
+
+    # On the network grid, exactly as infer resamples; the digest and the held-out check
+    # below use the frames as stored.
+    n_features = int(config['num_features'])
+    frames, energy, resampled = stored, np.asarray(stack.energy, dtype=np.float64), None
+    if stored.shape[-1] != n_features:
+        from dnndenoiser.training.selfsupervised import resample
+        resampled = {"from_points": int(stored.shape[-1]), "to_points": n_features}
+        frames = resample(stored, n_features)
+        energy = np.linspace(float(energy[0]), float(energy[-1]), n_features)
+        print(f"  Resampled {stored.shape[-1]} -> {n_features} points, as infer does.")
+
+    # The dtype infer normalises in: float32 after resampling, otherwise the stored dtype
+    # promoted by the normalisation's float constants (float64 for integers and float64).
+    work_dtype = np.asarray(frames).dtype if resampled else np.result_type(stored.dtype, 0.0)
+
+    def f(x):
+        flat = np.asarray(x).astype(work_dtype).reshape(-1, x.shape[-1])
+        return _apply_model(model, flat, normalisation, device, args.batch_size).reshape(x.shape)
+
+    try:
+        report = dx.diagnose(f, frames, energy, stack.frame_index, probes=probes)
+    except dx.DiagnoseError as exc:
+        fail(str(exc))
+
+    training = {'held_out_status': 'unknown', 'held_out_basis': 'default',
+                'rows_in_training': None, 'same_acquisition_rows_unidentified': False}
+    if model_records is not None:
+        training = prov.held_out(model_records['manifest'], noisy=stored, input_array_digest=None,
+                                 acquisition_id=acquisition_id, frame_index=stack.frame_index)
+        training.pop('rule', None)
+    interpretation = dx.INTERPRETATION
+    if training['held_out_status'] == 'not_held_out':
+        interpretation = f"{interpretation} {dx.TRAINING_FRAMES_NOTE}"
+    report.update({
+        'dnndenoiser_version': __version__,
+        'resampled': resampled,
+        'device': device,
+        'order_basis': stack.order_basis,
+        **training,
+        'model': prov.model_identity(model_records),
+        'input_digest': prov.matching_digest(stored),
+        'interpretation': interpretation,
+    })
+
+    ratio = report['contraction_ratio']
+    print(f"\nFrames: {report['n_frames']}, channels: {report['n_channels']} "
+          f"(frame order basis: {stack.order_basis}; device: {device})")
+    print(f"Contraction ratio, per channel: "
+          f"{', '.join(format(v, '.4g') for v in ratio['channels'])}")
+    if report['n_channels'] > 1:
+        print(f"Contraction ratio, over channels (weighted by variation): "
+              f"{ratio['overall']:.4g}")
+    print(f"Probe scale sigma, per channel: {', '.join(format(v, '.4g') for v in report['sigma'])}")
+    for p in report['probes']:
+        print(f"Probe E0={p['E0']:.6g} FWHM={p['fwhm']:.4g} k={p['k']:.4g}:")
+        for c, ch in enumerate(p['channels']):
+            print(f"  channel {c}: response {ch['response_median']:.4g} "
+                  f"[{ch['response_iqr'][0]:.4g}, {ch['response_iqr'][1]:.4g}], "
+                  f"area ratio {ch['area_median']:.4g} "
+                  f"[{ch['area_iqr'][0]:.4g}, {ch['area_iqr'][1]:.4g}]")
+        if p['pooled'] is not None:
+            q = p['pooled']
+            print(f"  pooled over frames and channels: response {q['response_median']:.4g} "
+                  f"[{q['response_iqr'][0]:.4g}, {q['response_iqr'][1]:.4g}]")
+    print(f"Held-out status: {training['held_out_status']} ({training['held_out_basis']})")
+    print(f"\nNote: {dx.INTERPRETATION}")
+    if training['held_out_status'] == 'not_held_out':
+        print(f"\nNote: {dx.TRAINING_FRAMES_NOTE}")
+
+    try:
+        text = json.dumps(report, indent=2, allow_nan=False)
+    except ValueError as exc:
+        fail(f"the report cannot be written as strict JSON: {exc}")
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(text, encoding='utf-8')
+    print(f"\nReport saved: {output_path}")
     print("\nDone.")
 
 
@@ -1356,6 +1510,9 @@ Examples:
 
   # Evaluate results
   dnndenoiser evaluate -d denoised.h5
+
+  # How the output depends on the input, on a frame stack
+  dnndenoiser diagnose -d frames.h5 -m model.pt -o report.json
 """
     )
 
@@ -1516,6 +1673,28 @@ Examples:
                              help='Pre-change keys and arithmetic, for undeclared references only')
     eval_parser.add_argument('-o', '--output', help='Output JSON with metrics')
     eval_parser.set_defaults(func=cmd_evaluate)
+
+    # === diagnose ===
+    diag_parser = subparsers.add_parser(
+        'diagnose', help='Describe how the output depends on the input, on a frame stack '
+                         '(not an accuracy, noise reduction or SNR)')
+    diag_parser.add_argument('-d', '--data', required=True, help='Frame stack HDF5')
+    diag_parser.add_argument('-m', '--model', required=True, help='Model file (.pt)')
+    diag_parser.add_argument('-o', '--output', required=True, help='Output JSON report')
+    diag_parser.add_argument('--probe', action='append', metavar='E0:FWHM:k',
+                             help='A Gaussian probe: position and FWHM in energy units, '
+                                  'amplitude k times the noise scale (negative k is a dip). '
+                                  'Repeatable; replaces the five default probes. For a '
+                                  'negative E0 use the = form, --probe=-5:0.6:3')
+    diag_parser.add_argument('--batch-size', type=int, default=256)
+    diag_parser.add_argument('--device', default='cpu', choices=['auto', 'cpu', 'cuda', 'mps'],
+                             help='Default cpu; on another device the two passes may differ '
+                                  'by device nondeterminism')
+    diag_parser.add_argument(
+        '--trust-checkpoint', action='store_true',
+        help='Load the checkpoint with the full unpickler, which RUNS CODE from the file. '
+             'Use it only on files you produced or otherwise trust.')
+    diag_parser.set_defaults(func=cmd_diagnose)
 
     # Parse args
     return parser
