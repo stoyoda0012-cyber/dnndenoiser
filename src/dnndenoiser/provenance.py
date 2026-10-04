@@ -59,7 +59,20 @@ RECORDED_ARGUMENTS_V12 = (
     "grad_clip", "hidden_units", "encoder_dim", "device",
 )
 RECORDED_ARGUMENTS = RECORDED_ARGUMENTS_V12 + ("threads",)
-EXCLUDED_ARGUMENTS = ("data", "output")
+# `seeds` (a batch, docs/design/MULTI_SEED.md §2) is not recorded: each member records the
+# `seed` of its single run.
+EXCLUDED_ARGUMENTS = ("data", "output", "seeds")
+# Manifest fields that may differ between members of one ensemble (docs/design/MULTI_SEED.md
+# §3 rule 3); every other field must be equal. As typed, `device` and `threads` are excluded;
+# their resolved values in `software` are compared. `reproducibility` is derived: the validator
+# recomputes its tier from `software.device` and `code.tree_clean` (compared here) and the seed
+# (checked by rule 4), so comparing it would only name the derived field instead of the cause.
+# Only the tier is excluded, so a key added to `reproducibility` later is compared.
+ENSEMBLE_EXCLUDED = (
+    "created_utc", "command.arguments.seed", "command.seeds", "command.flags_passed",
+    "command.arguments.device", "command.arguments.threads", "result.final_loss", "statuses",
+    "reproducibility.tier",
+)
 
 TRAINING_COMPONENTS = ("noisy", "frames", "clean", "energy", "angles", "times", "frame_index")
 
@@ -88,6 +101,15 @@ _HEX64 = re.compile(r"[0-9a-f]{64}")
 
 class MalformedProvenance(ValueError):
     """A provenance record that is present but not valid, or records that disagree."""
+
+
+class IncompatibleMembers(ValueError):
+    """Models that cannot be combined into one ensemble; ``rule`` is the rule of
+    docs/design/MULTI_SEED.md §3 that refused them."""
+
+    def __init__(self, rule: int, message: str):
+        super().__init__(f"rule {rule}, {message}")
+        self.rule = rule
 
 
 # ------------------------------------------------------------------------ serialisation
@@ -738,7 +760,26 @@ def verify_checkpoint(checkpoint: dict, resolved: dict) -> Optional[dict]:
 def read_output_records(handle) -> Optional[dict]:
     """The model records of an ``infer`` output, verified with each other; ``None`` when
     all three are absent."""
-    denoised = handle["denoised"].attrs
+    return _read_records(handle, handle["denoised"].attrs)
+
+
+def read_member_records(group) -> dict:
+    """One ensemble member's records (``members/<i>`` of an ensemble ``infer`` output),
+    verified exactly as a single output's are; all three are required."""
+    records = _read_records(group, group.attrs)
+    if records is None:
+        raise MalformedProvenance(f"the member group {group.name} holds no model records")
+    seed = group.attrs.get("seed")
+    if (not isinstance(seed, (int, np.integer)) or isinstance(seed, (bool, np.bool_))
+            or int(seed) != records["manifest"]["command"]["seeds"]["torch"]):
+        raise MalformedProvenance(f"the member group {group.name}'s seed attribute {seed} is not "
+                                  "the seed its manifest records")
+    return records
+
+
+def _read_records(handle, denoised) -> Optional[dict]:
+    """The records with the manifest dataset in ``handle`` and the two digests among the
+    attributes ``denoised``."""
     present = {OUTPUT_MANIFEST: OUTPUT_MANIFEST in handle,
                OUTPUT_DIGEST: OUTPUT_DIGEST in denoised,
                OUTPUT_BODY_DIGEST: OUTPUT_BODY_DIGEST in denoised}
@@ -911,3 +952,93 @@ def generator_versions_differ(manifest: dict, evaluated_declaration: dict) -> bo
             "origin") != "synthetic_truth":
         return False
     return trained.get("generator") != evaluated_declaration.get("generator")
+
+
+# ------------------------------------------------------------------------ ensembles
+
+
+def _without(manifest: dict, paths) -> dict:
+    out = json.loads(canonical(manifest))
+    for path in paths:
+        *head, last = path.split(".")
+        node = out
+        for key in head:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, dict):
+            node.pop(last, None)
+    return out
+
+
+def _first_difference(a, b, path: str = ""):
+    """The first differing field, in sorted key order: ``(path, a_value, b_value)``."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        for key in sorted(set(a) | set(b)):
+            sub = f"{path}.{key}" if path else key
+            if key not in a or key not in b:
+                return sub, a.get(key, "<absent>"), b.get(key, "<absent>")
+            found = _first_difference(a[key], b[key], sub)
+            if found:
+                return found
+        return None
+    # Type-strict: 1, 1.0 and true are different values in the stored JSON.
+    return None if canonical({"v": a}) == canonical({"v": b}) else (path or "<manifest>", a, b)
+
+
+def check_ensemble(members) -> list:
+    """docs/design/MULTI_SEED.md §3: refuse models that cannot be combined, by the first rule
+    that fails, in order; return the notes that apply. ``members`` is a list of
+    ``(label, records)``, ``records`` as ``verify_checkpoint`` returns them with the manifest
+    added, or ``None``."""
+    for label, records in members:
+        if records is None:
+            raise IncompatibleMembers(1, f"every member needs a verified provenance manifest: "
+                                         f"{label} has none, so its training condition is "
+                                         "unknown")
+    for label, records in members:
+        if records["manifest"]["schema"] != SCHEMA:
+            raise IncompatibleMembers(2, f"every member needs schema {SCHEMA}, which records "
+                                         f"the thread count: {label} has "
+                                         f"{records['manifest']['schema']}")
+    first_label, first = members[0]
+    reference = _without(first["manifest"], ENSEMBLE_EXCLUDED)
+    for label, records in members[1:]:
+        found = _first_difference(reference, _without(records["manifest"], ENSEMBLE_EXCLUDED))
+        if found:
+            path, va, vb = found
+            raise IncompatibleMembers(3, f"the members must differ only in the seed: field {path} "
+                                         f"differs: {first_label} has {json.dumps(va)}, {label} "
+                                         f"has {json.dumps(vb)}")
+    seen: dict = {}
+    for label, records in members:
+        seed = records["manifest"]["command"]["seeds"]["torch"]
+        if type(seed) is not int:
+            raise IncompatibleMembers(4, f"every member needs an integer seed: {label} was "
+                                         "trained without --seed")
+        if seed in seen:
+            raise IncompatibleMembers(4, f"seed {seed} is repeated: {seen[seed]} and {label}")
+        seen[seed] = label
+    bodies: dict = {}
+    for label, records in members:
+        digest = records["body"]["sha256"]
+        if digest in bodies:
+            raise IncompatibleMembers(5, f"{bodies[digest]} and {label} hold the same model "
+                                         "(equal model_body_digest); a duplicate is not an "
+                                         "independent member")
+        bodies[digest] = label
+    from dnndenoiser import ensemble as ens
+    notes = []
+    code = first["manifest"]["code"]
+    if code["tree_clean"] is False:
+        notes.append(ens.TREE_NOTE)
+    elif code["commit"] == "unknown":
+        notes.append(ens.UNKNOWN_CODE_NOTE)
+    for label, records in members:
+        statuses = records["manifest"]["statuses"]
+        if statuses:
+            seed = records["manifest"]["command"]["seeds"]["torch"]
+            notes.append(ens.status_note(seed, label, statuses))
+    # Owner's decision, 2026-10-04: keyed on the devices, not on the tier (a dirty tree is
+    # Tier 2 on the CPU, and has its own note). Inference off the CPU is added by infer.
+    if any(r["manifest"]["software"]["device"] != "cpu" for _, r in members):
+        notes.append(ens.EXECUTION_NOTE)
+    return notes
