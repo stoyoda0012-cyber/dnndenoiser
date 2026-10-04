@@ -96,6 +96,7 @@ def files(tmp_path_factory):
 CASES = [
     ("sup", ("--method", "noise2clean", "--arch", "FCNN", "--threads", "1"), (3, 5)),
     ("sup", ("--method", "noise2noise", "--noise-level", "100", "--threads", "1"), (3, 5)),
+    ("sup", ("--method", "noise2noise", "--noise-level", "100", "--threads", "1"), (5, 3)),
     ("stack", ("--method", "moving-average", "--threads", "1"), (5, 3)),
     ("stack3", ("--method", "moving-average", "--threads", "1"), (3, 5)),
     ("sup", ("--method", "noise2clean", "--arch", "Transformer", "--threads", "2"), (5, 3)),
@@ -220,6 +221,36 @@ def test_a_member_failing_mid_batch_keeps_and_lists_the_earlier_ones(monkeypatch
                  "--seeds", "3", "5", "8")
     assert (tmp_path / "m.seed3.pt").exists() and not (tmp_path / "m.seed8.pt").exists()
     assert "seed 5" in err and "m.seed3.pt" in err
+
+
+def test_any_member_failure_names_the_member_and_the_written_ones(monkeypatch, capsys, tmp_path,
+                                                                  files):
+    real = cli._train_member
+
+    def failing(args):
+        if args.seed == 5:
+            raise RuntimeError("planted: out of memory")
+        return real(args)
+    monkeypatch.setattr(cli, "_train_member", failing)
+    with pytest.raises(RuntimeError, match="planted"):
+        run(monkeypatch, "train", "-d", str(files["sup"]), "-o", str(tmp_path / "m.pt"),
+            "--epochs", "1", "--device", "cpu", "--seeds", "3", "5")
+    err = capsys.readouterr().err
+    assert "seed 5" in err and "m.seed3.pt" in err
+
+
+def test_unreadable_training_data_is_refused_before_training(monkeypatch, capsys, tmp_path,
+                                                             no_training):
+    path = tmp_path / "nan.h5"
+    noisy = np.ones((4, 16), dtype=np.float32)
+    noisy[0, 0] = np.nan
+    with h5py.File(path, "w") as f:
+        f.create_dataset("noisy", data=noisy)
+        f.create_dataset("clean", data=np.ones((4, 16), dtype=np.float32))
+        f.create_dataset("energy", data=np.arange(16.0))
+    err = refuse(monkeypatch, capsys, "train", "-d", str(path), "-o", str(tmp_path / "m.pt"),
+                 "--seeds", "3", "5")
+    assert "non-finite" in err and no_training == []
 
 
 # ---------------------------------------------------------------- 4. what a seed varies
@@ -395,6 +426,27 @@ def test_null_or_repeated_seeds_are_refused_by_rule_4(monkeypatch, capsys, tmp_p
     assert "rule 4" in err and reason in err
 
 
+def test_a_seeded_and_an_unseeded_member_are_refused_for_the_seed(monkeypatch, capsys, tmp_path,
+                                                                  files, ckpts):
+    """The derived tier differs too; the message names the cause, not the tier."""
+    err = refused_rule(monkeypatch, capsys, files["sup"], [ckpts["a"], ckpts["unseeded1"]],
+                       tmp_path)
+    assert "rule 4" in err and "trained without --seed" in err and "tier" not in err
+
+
+def test_rule_3_compares_every_member_not_only_the_first_pair(monkeypatch, capsys, tmp_path,
+                                                              files, ckpts):
+    err = refused_rule(monkeypatch, capsys, files["sup"],
+                       [ckpts["a"], ckpts["b"], ckpts["other_lr"]], tmp_path)
+    assert "rule 3" in err and "command.arguments.lr" in err
+
+
+def test_values_are_compared_with_their_type():
+    assert prov._first_difference({"x": 1}, {"x": 1.0}) == ("x", 1, 1.0)
+    assert prov._first_difference({"x": 1}, {"x": True}) == ("x", 1, True)
+    assert prov._first_difference({"x": [1, 2]}, {"x": [1, 2]}) is None
+
+
 def test_a_copy_with_another_recorded_seed_is_refused_by_rule_5(monkeypatch, capsys, tmp_path,
                                                                 files, ckpts):
     def mutate(m):
@@ -450,7 +502,7 @@ def test_every_manifest_field_is_compared_or_excluded():
     assert prov.ENSEMBLE_EXCLUDED == (
         "created_utc", "command.arguments.seed", "command.seeds", "command.flags_passed",
         "command.arguments.device", "command.arguments.threads", "result.final_loss",
-        "statuses")
+        "statuses", "reproducibility")
 
 
 # ------------------------------------------------------------------------ 6. arithmetic
@@ -571,7 +623,35 @@ def test_a_planted_scalar_summary_is_caught(monkeypatch, tmp_path, files, ckpts)
     with h5py.File(out, "a") as f:
         f.create_dataset("between_run_std_max", data=1.0)
         f.attrs["spread_mean"] = 0.1
-    assert sorted(ens.unexpected_contents(out)) == ["@spread_mean", "between_run_std_max"]
+        f[ens.SPREAD].attrs["max_over_points"] = 0.2
+        f["members"]["0"].attrs["note"] = "x"
+        f["members"].attrs["k"] = 2
+    assert sorted(ens.unexpected_contents(out)) == [
+        "@spread_mean", "between_run_std_fixed_input@max_over_points", "between_run_std_max",
+        "members/0@note", "members@k"]
+
+
+def test_swapped_member_groups_are_detected(monkeypatch, tmp_path, files, ckpts):
+    out = infer_many(monkeypatch, files["sup"], [ckpts["a"], ckpts["b"]], tmp_path / "o.h5")
+    with h5py.File(out) as f:
+        assert [r["manifest"]["command"]["seeds"]["torch"] for r in ens.read_members(f)] == [3, 5]
+    with h5py.File(out, "a") as f:
+        f["members"].move("0", "tmp")
+        f["members"].move("1", "0")
+        f["members"].move("tmp", "1")
+    with h5py.File(out) as f:
+        with pytest.raises(prov.MalformedProvenance, match="members_seeds says"):
+            ens.read_members(f)
+
+
+def test_a_seed_attribute_that_disagrees_with_the_manifest_is_detected(monkeypatch, tmp_path,
+                                                                       files, ckpts):
+    out = infer_many(monkeypatch, files["sup"], [ckpts["a"], ckpts["b"]], tmp_path / "o.h5")
+    with h5py.File(out, "a") as f:
+        f["members"]["0"].attrs["seed"] = 99
+    with h5py.File(out) as f:
+        with pytest.raises(prov.MalformedProvenance, match="seed attribute"):
+            prov.read_member_records(f["members"]["0"])
 
 
 @pytest.mark.parametrize("tamper", ["manifest", "swap"])
@@ -633,10 +713,45 @@ def test_notes_appear_exactly_when_they_apply(monkeypatch, tmp_path, files, ckpt
         out = infer_many(monkeypatch, files["sup"], pair, tmp_path / f"{name}.h5")
         with h5py.File(out) as f:
             notes = json.loads(f.attrs["ensemble_notes"])
-        tier2 = name == "dirty"
         assert (ens.TREE_NOTE in notes) == (expected == ens.TREE_NOTE)
         assert (ens.UNKNOWN_CODE_NOTE in notes) == (expected == ens.UNKNOWN_CODE_NOTE)
-        assert (ens.EXECUTION_NOTE in notes) == tier2
+        # A dirty tree on the CPU is Tier 2 but has no execution variability of its own
+        # (owner's decision, 2026-10-04: the note follows the devices).
+        assert ens.EXECUTION_NOTE not in notes
+
+
+def on_mps(m):
+    m["software"]["device"] = "mps"
+    m["reproducibility"]["tier"] = "tier-2"
+
+
+def test_the_execution_note_follows_the_training_device(monkeypatch, tmp_path, files, ckpts):
+    pair = [resealed(tmp_path, ckpts[k], f"mps{k}", on_mps) for k in ("a", "b")]
+    out = infer_many(monkeypatch, files["sup"], pair, tmp_path / "o.h5")
+    with h5py.File(out) as f:
+        assert ens.EXECUTION_NOTE in json.loads(f.attrs["ensemble_notes"])
+
+
+def test_the_execution_note_follows_the_inference_device(monkeypatch, tmp_path, files, ckpts):
+    real = cli._apply_model
+    monkeypatch.setattr(cli, "_resolve_device", lambda requested: "mps")
+    monkeypatch.setattr(cli, "_build_network", _build_on_cpu)       # the weights stay on the CPU
+    monkeypatch.setattr(cli, "_apply_model",
+                        lambda model, flat, norm, device, bs: real(model, flat, norm, "cpu", bs))
+    out = infer_many(monkeypatch, files["sup"], [ckpts["a"], ckpts["b"]], tmp_path / "o.h5")
+    with h5py.File(out) as f:
+        assert ens.EXECUTION_NOTE in json.loads(f.attrs["ensemble_notes"])
+        assert f.attrs["inference_device"] == "mps"
+
+
+def _build_on_cpu(checkpoint, config, device):
+    from dnndenoiser.models.network import DenoisingNetwork
+    model = DenoisingNetwork(num_features=config["num_features"],
+                             num_hidden_units=config["num_hidden_units"],
+                             layer_type=config["architecture"],
+                             encoder_output_dim=config["encoder_output_dim"])
+    model.load_state_dict(checkpoint["model_state_dict"])
+    return model.eval()
 
 
 def test_one_model_writes_the_single_layout(monkeypatch, tmp_path, files, ckpts):

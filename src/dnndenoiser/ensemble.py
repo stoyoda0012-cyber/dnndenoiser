@@ -63,27 +63,81 @@ def evaluate_message(path) -> str:
 
 
 def combine(outputs: list) -> tuple:
-    """Mean and ddof-1 standard deviation over members, in float64, stored as float32."""
-    stack = np.stack([np.asarray(o, dtype=np.float64) for o in outputs])
-    return (stack.mean(axis=0).astype(np.float32),
-            stack.std(axis=0, ddof=1).astype(np.float32))
+    """Mean and ddof-1 standard deviation over members, accumulated in float64 one member at a
+    time (two passes, no stacked copy), stored as float32."""
+    k = len(outputs)
+    total = np.zeros(np.shape(outputs[0]), dtype=np.float64)
+    for o in outputs:
+        total += np.asarray(o, dtype=np.float64)
+    mean = total / k
+    squares = np.zeros_like(mean)
+    for o in outputs:
+        squares += (np.asarray(o, dtype=np.float64) - mean) ** 2
+    return mean.astype(np.float32), np.sqrt(squares / (k - 1)).astype(np.float32)
+
+
+def read_members(handle) -> list:
+    """Every member's records, verified, in member order; each subgroup's seed must be its
+    manifest's and the root's ``members_seeds`` entry at that position, so members that were
+    swapped or renamed are refused."""
+    from dnndenoiser import provenance as prov
+
+    seeds = [int(s) for s in handle.attrs["members_seeds"]]
+    group = handle[MEMBERS_GROUP]
+    if sorted(group) != sorted(str(i) for i in range(len(seeds))):
+        raise prov.MalformedProvenance(f"'{MEMBERS_GROUP}' holds {sorted(group)}, not one "
+                                       f"subgroup per member of {seeds}")
+    records = []
+    for i, seed in enumerate(seeds):
+        r = prov.read_member_records(group[str(i)])
+        if r["manifest"]["command"]["seeds"]["torch"] != seed:
+            raise prov.MalformedProvenance(f"member {i} records seed "
+                                           f"{r['manifest']['command']['seeds']['torch']}; "
+                                           f"members_seeds says {seed}")
+        records.append(r)
+    return records
 
 
 def encode_notes(notes: list) -> str:
     return json.dumps(list(notes))
 
 
+_CARRIED = {"intensity_units", "acquisition_id"}
+_ATTRS = {
+    "noisy": _CARRIED | {"input_array_digest"},
+    MEMBERS: _CARRIED, MEAN: _CARRIED, SPREAD: _CARRIED,
+    "clean": {"reference_schema_version", "reference_origin", "reference_lineage",
+              "signal_identity"},
+    "energy": set(), "times": set(),
+    "angles": {"angle_kind", "angle_units"},
+    "frame_index": {"order_basis"},
+    MEMBERS_GROUP: set(),
+}
+
+
 def unexpected_contents(path) -> list:
-    """Datasets and root attributes of an ensemble output that the design does not list;
-    root attributes are prefixed with '@'."""
+    """Datasets, groups and attributes of an ensemble output that the design does not list:
+    names of unexpected objects, and ``<object>@<attribute>`` (``@<attribute>`` at the root)
+    for unexpected attributes."""
     import h5py
 
-    allowed = set(CARRIED_DATASETS) | {MEMBERS, MEAN, SPREAD}
-    member = re.compile(rf"{MEMBERS_GROUP}/\d+/model_provenance")
+    member = re.compile(rf"{MEMBERS_GROUP}/\d+")
     found = []
+
+    def visit(name, obj):
+        if name in _ATTRS:
+            allowed = _ATTRS[name]
+        elif member.fullmatch(name) and isinstance(obj, h5py.Group):
+            allowed = {"model_digest", "model_body_digest", "seed"}
+        elif (member.fullmatch(name.rsplit("/", 1)[0]) and name.endswith("/model_provenance")
+              and isinstance(obj, h5py.Dataset)):
+            allowed = set()
+        else:
+            found.append(name)
+            return
+        found.extend(f"{name}@{key}" for key in obj.attrs if key not in allowed)
+
     with h5py.File(path, "r") as f:
-        f.visititems(lambda name, obj: found.append(name)
-                     if isinstance(obj, h5py.Dataset)
-                     and name not in allowed and not member.fullmatch(name) else None)
+        f.visititems(visit)
         found += [f"@{key}" for key in f.attrs if key not in ROOT_ATTRS]
     return found

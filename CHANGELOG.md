@@ -54,7 +54,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   per-member command. The spread is not a measurement uncertainty, a confidence interval or a
   bound on the difference from the signal, and several seeds are not evidence that a
   conclusion is settled. `--see` no longer abbreviates `--seed`; `diagnose` still takes one
-  `-m`. Design and two independent audits: `docs/design/MULTI_SEED.md`.
+  `-m`, and now refuses a second one (it used to keep the last silently). Design and two independent audits: `docs/design/MULTI_SEED.md`.
 - **`dnndenoiser diagnose`: how the output depends on the input.** On a frame stack and
   a model, applied as `infer` applies it, it reports per channel the contraction ratio
   (frame-to-frame variation of the output over that of the input), and for Gaussian probes

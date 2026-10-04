@@ -415,7 +415,8 @@ on the seed.
 `infer` with several `-m` combines models only if they differ in nothing but the seed: each
 must carry a verified version-3 manifest, and the manifests must be equal except the creation
 time, the seed, the options as typed (`--device` and `--threads` as typed; their resolved
-values are compared), the final loss and its status. Seeds must be distinct integers and the
+values are compared), the final loss and its status, and the reproducibility label (derived
+from fields that are compared, and from the seed). Seeds must be distinct integers and the
 models distinct. Each model is applied as `infer` applies one model. The output has no
 `denoised`; it holds:
 
@@ -435,7 +436,7 @@ models distinct. Each model is applied as `infer` applies one model. The output 
 Notes are added when the members' code had uncommitted changes or is known only by its version
 string, when a member recorded a non-finite final loss (it is kept and named, not dropped),
 and when the spread includes execution variability (inference off the CPU, or members trained
-on MPS or CUDA). A member whose output is non-finite stops the run and nothing is written; if
+on MPS or CUDA). Memory: one model at a time, plus the K outputs. A member whose output is non-finite stops the run and nothing is written; if
 you then combine the others, report the excluded member with the result. `evaluate` refuses an
 ensemble file: evaluate each member's own `infer` output and compare members paired by seed.
 Design and two independent audits:

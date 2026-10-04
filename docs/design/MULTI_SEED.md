@@ -291,6 +291,34 @@ length, the same resampling of the input).
   attributes; early refusals extended; at least two seeds; the `-m`, `--see` and memory
   consequences; the message after a refused member asks that an exclusion be reported.
 
+## Implementation notes (2026-10-04)
+
+Decided while implementing, after the independent review of the implementation:
+
+- (a) **`reproducibility` joins the exclusion list of rule 3.** It is derived: the validator
+  recomputes its tier from `software.device` and `code.tree_clean`, which rule 3 compares, and
+  from the seed, which rule 4 checks. Compared, it was found first and named instead of the
+  cause (a seeded and an unseeded member were refused as "reproducibility.tier differs"
+  rather than by rule 4). The members' equality outside the list is otherwise unchanged.
+- (b) **The execution-variability note follows the devices** (owner's decision, 2026-10-04):
+  it is written when a member was trained on a device other than the CPU or inference ran
+  off the CPU. A tree that is not clean makes a CPU run Tier 2 but adds no execution
+  variability; it has its own note. §3's wording "members trained in Tier 2 (MPS, CUDA)" is
+  read this way.
+- (c) **Memory.** One network and one set of weights are held at a time (each checkpoint's
+  weights are released after its member is applied); the K outputs are held, and the mean
+  and spread are accumulated in float64 member by member, with no stacked copy.
+- (d) **Single-model `infer` output is byte-identical to before**, checked against the
+  previous release's code on a supervised file and a resampled frame stack; the committed
+  golden test pins its content on every platform.
+- (e) Rule 3 compares values with their type (1, 1.0 and true differ), as they are stored.
+- (f) An ensemble file's member records are read with `ensemble.read_members`, which also
+  refuses member subgroups whose seed does not match their manifest or the root's
+  `members_seeds` at that position.
+- (g) Test 9 pins the recorded argument names and their order and the recorded flags of a
+  single run; it does not compare with a manifest written before the change, whose `code`
+  necessarily differs.
+
 ## Confirmation
 
 **2026-10-04 — the owner adopted this design, revision 2, as a whole**, after two

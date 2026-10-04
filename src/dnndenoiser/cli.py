@@ -564,6 +564,13 @@ def _train_seed_batch(args):
                 fail(f"the member with seed {s} failed; the batch stopped. Members written: "
                      f"{done}")
             raise
+        except BaseException:
+            # Any other failure (out of memory, an interrupt) still names the member and the
+            # members already written, then propagates as it was.
+            done = ', '.join(written) if written else 'none'
+            print(f"Error: the member with seed {s} failed; the batch stopped. Members "
+                  f"written: {done}", file=sys.stderr)
+            raise
         written.append(str(paths[s]))
     print(f"\nBatch done: {len(written)} members: {', '.join(written)}")
     return 0
@@ -1009,9 +1016,11 @@ def _read_infer_input(path, n_features):
         lineage_record=lineage_record)
 
 
-def _write_infer_input(f, inp, outputs):
+def _write_infer_input(f, inp, outputs, write_records=None):
     """The input, its coordinates and declarations, as every ``infer`` output holds them;
-    the carried attributes go on ``noisy`` and on each dataset named in ``outputs``."""
+    the carried attributes go on ``noisy`` and on each dataset named in ``outputs``.
+    ``write_records(f)`` runs where the single output's model records were always written
+    (after ``noisy``, before the coordinates), so the file's layout is as before."""
     from types import SimpleNamespace
     from dnndenoiser import provenance as prov
     from dnndenoiser import reference as ref
@@ -1023,6 +1032,8 @@ def _write_infer_input(f, inp, outputs):
         for key, value in inp.carried.items():
             f[name].attrs[key] = value
     f['noisy'].attrs[prov.INPUT_ARRAY_DIGEST] = prov.canonical(inp.input_array_digest)
+    if write_records is not None:
+        write_records(f)
     # Coordinates keep their values and dtype; only a resampled energy axis changes.
     f.create_dataset('energy', data=inp.energy)
     if inp.clean is not None:
@@ -1127,15 +1138,17 @@ def cmd_infer(args):
 
     with h5py.File(output_path, 'w') as f:
         f.create_dataset('denoised', data=denoised, dtype='float32')
-        _write_infer_input(f, inp, ('denoised',))
-        if model_records is not None:
-            # Exactly the canonical serialisation, as a dataset (no size limit).
-            f.create_dataset(prov.OUTPUT_MANIFEST, data=model_records['manifest_text'],
-                             dtype=h5py.string_dtype('utf-8'))
-            f['denoised'].attrs[prov.OUTPUT_DIGEST] = prov.canonical(
-                model_records['model_digest'])
-            f['denoised'].attrs[prov.OUTPUT_BODY_DIGEST] = prov.canonical(
-                model_records['body'])
+
+        def write_records(f):
+            if model_records is not None:
+                # Exactly the canonical serialisation, as a dataset (no size limit).
+                f.create_dataset(prov.OUTPUT_MANIFEST, data=model_records['manifest_text'],
+                                 dtype=h5py.string_dtype('utf-8'))
+                f['denoised'].attrs[prov.OUTPUT_DIGEST] = prov.canonical(
+                    model_records['model_digest'])
+                f['denoised'].attrs[prov.OUTPUT_BODY_DIGEST] = prov.canonical(
+                    model_records['body'])
+        _write_infer_input(f, inp, ('denoised',), write_records)
 
     print(f"Saved: {output_path}")
     print("Done.")
@@ -1190,12 +1203,14 @@ def _infer_ensemble(args):
 
     print("\nRunning inference, one member at a time...")
     outputs = []
-    for (path, checkpoint, config, _records), seed in zip(members, seeds):
+    for i, ((path, checkpoint, config, records), seed) in enumerate(zip(members, seeds)):
         normalisation = checkpoint.get('normalisation')
         _check_normalisation(normalisation)
         model = _build_network(checkpoint, config, device)
         out = _apply_model(model, flat, normalisation, device, args.batch_size).reshape(shape)
+        # One network and one set of weights at a time; the K outputs are kept.
         del model
+        members[i] = (path, None, config, records)
         if not np.all(np.isfinite(out)):
             fail(ens.non_finite_message(seed, path))
         outputs.append(out.astype(np.float32))
@@ -1205,7 +1220,9 @@ def _infer_ensemble(args):
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with h5py.File(output_path, 'w') as f:
-        f.create_dataset(ens.MEMBERS, data=np.stack(outputs), dtype='float32')
+        stored = f.create_dataset(ens.MEMBERS, shape=(len(outputs), *shape), dtype='float32')
+        for i, out in enumerate(outputs):
+            stored[i] = out
         f.create_dataset(ens.MEAN, data=mean, dtype='float32')
         f.create_dataset(ens.SPREAD, data=spread, dtype='float32')
         _write_infer_input(f, inp, (ens.MEMBERS, ens.MEAN, ens.SPREAD))
@@ -1836,10 +1853,12 @@ Examples:
                             help='Train one model per seed, one after another, each '
                                  'exactly the run of --seed S, written to '
                                  '<name>.seed<S>.pt beside -o (which must end in .pt). '
-                                 'At least two seeds; K seeds cost K trainings. What a seed '
-                                 'varies depends on the method (QUICK_START). Several '
-                                 'seeds show variation between runs; they are not evidence '
-                                 'that a conclusion is settled')
+                                 'At least two seeds; K seeds cost K trainings. Do not '
+                                 'change the checkout while it runs (each member records the '
+                                 'code when saved). A seed sets initialisation, batch order '
+                                 'and dropout, and for noise2noise the synthesised target. '
+                                 'Several seeds show variation between runs; they are not '
+                                 'evidence that a conclusion is settled')
     seed_group.add_argument('--seed', type=int, default=None,
                              help='Seed passed to torch before the model is built, for '
                                   'every method; it also seeds the batch order and, for '

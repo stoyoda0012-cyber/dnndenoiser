@@ -64,10 +64,13 @@ RECORDED_ARGUMENTS = RECORDED_ARGUMENTS_V12 + ("threads",)
 EXCLUDED_ARGUMENTS = ("data", "output", "seeds")
 # Manifest fields that may differ between members of one ensemble (docs/design/MULTI_SEED.md
 # §3 rule 3); every other field must be equal. As typed, `device` and `threads` are excluded;
-# their resolved values in `software` are compared.
+# their resolved values in `software` are compared. `reproducibility` is derived: the validator
+# recomputes its tier from `software.device` and `code.tree_clean` (compared here) and the seed
+# (checked by rule 4), so comparing it would only name the derived field instead of the cause.
 ENSEMBLE_EXCLUDED = (
     "created_utc", "command.arguments.seed", "command.seeds", "command.flags_passed",
     "command.arguments.device", "command.arguments.threads", "result.final_loss", "statuses",
+    "reproducibility",
 )
 
 TRAINING_COMPONENTS = ("noisy", "frames", "clean", "energy", "angles", "times", "frame_index")
@@ -765,6 +768,10 @@ def read_member_records(group) -> dict:
     records = _read_records(group, group.attrs)
     if records is None:
         raise MalformedProvenance(f"the member group {group.name} holds no model records")
+    seed = group.attrs.get("seed")
+    if seed is None or int(seed) != records["manifest"]["command"]["seeds"]["torch"]:
+        raise MalformedProvenance(f"the member group {group.name}'s seed attribute {seed} is not "
+                                  "the seed its manifest records")
     return records
 
 
@@ -971,7 +978,8 @@ def _first_difference(a, b, path: str = ""):
             if found:
                 return found
         return None
-    return None if a == b else (path or "<manifest>", a, b)
+    # Type-strict: 1, 1.0 and true are different values in the stored JSON.
+    return None if canonical({"v": a}) == canonical({"v": b}) else (path or "<manifest>", a, b)
 
 
 def check_ensemble(members) -> list:
@@ -1027,6 +1035,8 @@ def check_ensemble(members) -> list:
         if statuses:
             seed = records["manifest"]["command"]["seeds"]["torch"]
             notes.append(ens.status_note(seed, label, statuses))
-    if any(r["manifest"]["reproducibility"]["tier"] != "tier-1-eligible" for _, r in members):
+    # Owner's decision, 2026-10-04: keyed on the devices, not on the tier (a dirty tree is
+    # Tier 2 on the CPU, and has its own note). Inference off the CPU is added by infer.
+    if any(r["manifest"]["software"]["device"] != "cpu" for _, r in members):
         notes.append(ens.EXECUTION_NOTE)
     return notes
