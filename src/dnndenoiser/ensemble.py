@@ -39,7 +39,7 @@ TREE_NOTE = ("The members were trained from a checkout with uncommitted changes,
 UNKNOWN_CODE_NOTE = ("The members' code is recorded only by its version string, so the records "
                      "cannot show that the installed code was the same.")
 EXECUTION_NOTE = ("The spread includes execution variability: inference ran on a device other "
-                  "than the CPU, or members were trained outside Tier 1 (MPS, CUDA).")
+                  "than the CPU, or members were trained on a device other than the CPU.")
 
 
 def status_note(seed: int, label: str, statuses: dict) -> str:
@@ -82,7 +82,19 @@ def read_members(handle) -> list:
     swapped or renamed are refused."""
     from dnndenoiser import provenance as prov
 
-    seeds = [int(s) for s in handle.attrs["members_seeds"]]
+    for key in ("members_seeds", "ensemble_k"):
+        if key not in handle.attrs:
+            raise prov.MalformedProvenance(f"an ensemble output needs the root attribute '{key}'")
+    raw = np.asarray(handle.attrs["members_seeds"])
+    if raw.ndim != 1 or raw.dtype.kind not in "iu":
+        raise prov.MalformedProvenance(f"members_seeds must be a 1-D integer array, got {raw!r}")
+    seeds = [int(s) for s in raw]
+    k = handle.attrs["ensemble_k"]
+    if not isinstance(k, (int, np.integer)) or int(k) != len(seeds):
+        raise prov.MalformedProvenance(f"ensemble_k {k!r} is not the number of members_seeds "
+                                       f"({len(seeds)})")
+    if MEMBERS_GROUP not in handle:
+        raise prov.MalformedProvenance(f"an ensemble output needs the group '{MEMBERS_GROUP}'")
     group = handle[MEMBERS_GROUP]
     if sorted(group) != sorted(str(i) for i in range(len(seeds))):
         raise prov.MalformedProvenance(f"'{MEMBERS_GROUP}' holds {sorted(group)}, not one "

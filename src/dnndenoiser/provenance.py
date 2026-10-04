@@ -67,10 +67,11 @@ EXCLUDED_ARGUMENTS = ("data", "output", "seeds")
 # their resolved values in `software` are compared. `reproducibility` is derived: the validator
 # recomputes its tier from `software.device` and `code.tree_clean` (compared here) and the seed
 # (checked by rule 4), so comparing it would only name the derived field instead of the cause.
+# Only the tier is excluded, so a key added to `reproducibility` later is compared.
 ENSEMBLE_EXCLUDED = (
     "created_utc", "command.arguments.seed", "command.seeds", "command.flags_passed",
     "command.arguments.device", "command.arguments.threads", "result.final_loss", "statuses",
-    "reproducibility",
+    "reproducibility.tier",
 )
 
 TRAINING_COMPONENTS = ("noisy", "frames", "clean", "energy", "angles", "times", "frame_index")
@@ -769,7 +770,8 @@ def read_member_records(group) -> dict:
     if records is None:
         raise MalformedProvenance(f"the member group {group.name} holds no model records")
     seed = group.attrs.get("seed")
-    if seed is None or int(seed) != records["manifest"]["command"]["seeds"]["torch"]:
+    if (not isinstance(seed, (int, np.integer)) or isinstance(seed, (bool, np.bool_))
+            or int(seed) != records["manifest"]["command"]["seeds"]["torch"]):
         raise MalformedProvenance(f"the member group {group.name}'s seed attribute {seed} is not "
                                   "the seed its manifest records")
     return records

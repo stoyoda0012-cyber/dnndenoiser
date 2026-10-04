@@ -1183,7 +1183,10 @@ def _infer_ensemble(args):
             fail(f"{path}: {exc}")
         if records is not None:
             records = {**records, 'manifest': prov.checkpoint_records(checkpoint)[0]}
-        members.append((path, checkpoint, config, records))
+        # The weights are not kept: each member is loaded again when it is applied, so one
+        # set of weights is in memory at a time.
+        members.append((path, None, config, records))
+        del checkpoint
     try:
         notes = prov.check_ensemble([(path, records) for path, _c, _g, records in members])
     except prov.IncompatibleMembers as exc:
@@ -1203,14 +1206,21 @@ def _infer_ensemble(args):
 
     print("\nRunning inference, one member at a time...")
     outputs = []
-    for i, ((path, checkpoint, config, records), seed) in enumerate(zip(members, seeds)):
+    for (path, _none, config, records), seed in zip(members, seeds):
+        checkpoint = load_checkpoint(path, trust=args.trust_checkpoint)
+        # The file must still hold the model that was checked: the same verified records.
+        try:
+            again = prov.verify_checkpoint(checkpoint, checkpoint_model_config(checkpoint, path))
+        except prov.MalformedProvenance as exc:
+            fail(f"{path}: {exc}")
+        if again is None or again['model_digest'] != records['model_digest']:
+            fail(f"{path} changed after it was checked; nothing was combined or written")
         normalisation = checkpoint.get('normalisation')
         _check_normalisation(normalisation)
         model = _build_network(checkpoint, config, device)
         out = _apply_model(model, flat, normalisation, device, args.batch_size).reshape(shape)
         # One network and one set of weights at a time; the K outputs are kept.
-        del model
-        members[i] = (path, None, config, records)
+        del model, checkpoint
         if not np.all(np.isfinite(out)):
             fail(ens.non_finite_message(seed, path))
         outputs.append(out.astype(np.float32))

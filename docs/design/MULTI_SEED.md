@@ -295,29 +295,35 @@ length, the same resampling of the input).
 
 Decided while implementing, after the independent review of the implementation:
 
-- (a) **`reproducibility` joins the exclusion list of rule 3.** It is derived: the validator
+- (a) **`reproducibility.tier` joins the exclusion list of rule 3.** It is derived: the validator
   recomputes its tier from `software.device` and `code.tree_clean`, which rule 3 compares, and
   from the seed, which rule 4 checks. Compared, it was found first and named instead of the
   cause (a seeded and an unseeded member were refused as "reproducibility.tier differs"
-  rather than by rule 4). The members' equality outside the list is otherwise unchanged.
+  rather than by rule 4). Which sets of members are accepted is unchanged: two members that
+  pass rules 3 and 4 always have equal tiers. Only the tier is excluded, so a key added to
+  `reproducibility` later is compared.
 - (b) **The execution-variability note follows the devices** (owner's decision, 2026-10-04):
   it is written when a member was trained on a device other than the CPU or inference ran
   off the CPU. A tree that is not clean makes a CPU run Tier 2 but adds no execution
   variability; it has its own note. §3's wording "members trained in Tier 2 (MPS, CUDA)" is
   read this way.
-- (c) **Memory.** One network and one set of weights are held at a time (each checkpoint's
-  weights are released after its member is applied); the K outputs are held, and the mean
-  and spread are accumulated in float64 member by member, with no stacked copy.
-- (d) **Single-model `infer` output is byte-identical to before**, checked against the
-  previous release's code on a supervised file and a resampled frame stack; the committed
-  golden test pins its content on every platform.
+- (c) **Memory.** One network and one set of weights are held at a time: after the
+  compatibility check only each member's records are kept, and each checkpoint is loaded
+  again when its member is applied, and refused unless its verified `model_digest` is the one
+  checked. The K outputs are held, with two float64 arrays of the input's size for the mean
+  and spread, accumulated member by member with no stacked copy.
+- (d) **Single-model `infer` output is byte-identical to before**, checked by hand against
+  main at 1882ba6 (2-D with `clean`, a 3-D frame stack, a resampled input, each with and
+  without a manifest); the committed golden test pins its content on every platform, not its
+  byte layout.
 - (e) Rule 3 compares values with their type (1, 1.0 and true differ), as they are stored.
 - (f) An ensemble file's member records are read with `ensemble.read_members`, which also
   refuses member subgroups whose seed does not match their manifest or the root's
   `members_seeds` at that position.
 - (g) Test 9 pins the recorded argument names and their order and the recorded flags of a
-  single run; it does not compare with a manifest written before the change, whose `code`
-  necessarily differs.
+  single run; it does not compare with a committed manifest written before the change,
+  because its `software` record (versions, platform) differs between the machines that run
+  the tests.
 
 ## Confirmation
 

@@ -393,8 +393,9 @@ def test_method_arguments_are_compared(monkeypatch, capsys, tmp_path, files, ckp
 ])
 def test_a_recorded_difference_is_refused_by_rule_3(monkeypatch, capsys, tmp_path, files, ckpts,
                                                     name, mutate, field):
-    if name == "unknown" and load(ckpts["a"])[prov.CHECKPOINT_MANIFEST]["code"]["commit"] == "unknown":
-        pytest.skip("the checkout's commit is unknown here")
+    if (name in ("unknown", "commit", "dirty")
+            and load(ckpts["a"])[prov.CHECKPOINT_MANIFEST]["code"]["commit"] == "unknown"):
+        pytest.skip("the commit is unknown here (not a git checkout), so code cannot differ in it")
     partner = resealed(tmp_path, ckpts["b"], name, mutate)
     err = refused_rule(monkeypatch, capsys, files["sup"], [ckpts["a"], partner], tmp_path)
     assert "rule 3" in err and field in err
@@ -502,7 +503,7 @@ def test_every_manifest_field_is_compared_or_excluded():
     assert prov.ENSEMBLE_EXCLUDED == (
         "created_utc", "command.arguments.seed", "command.seeds", "command.flags_passed",
         "command.arguments.device", "command.arguments.threads", "result.final_loss",
-        "statuses", "reproducibility")
+        "statuses", "reproducibility.tier")
 
 
 # ------------------------------------------------------------------------ 6. arithmetic
@@ -556,6 +557,47 @@ def test_the_spread_has_ddof_one(monkeypatch, tmp_path, files, trio):
     assert np.all(members[0] == 1.0) and np.all(members[1] == 3.0)
 
 
+def test_the_spread_is_computed_about_the_mean_at_a_large_offset(monkeypatch, tmp_path, files,
+                                                                 trio):
+    """Members 21810380, 21810382, 21810382 (exact in float32, two units apart near 2**24.4):
+    the spread about the mean is exactly sqrt(4/3); the sum of squares minus K times the
+    squared mean, accumulated the same way in float64, gives another float32 value."""
+    values = {1: 21810380.0, 2: 21810382.0, 3: 21810382.0}
+    assert all(np.float32(v) == v for v in values.values())
+    expected = np.float32(np.sqrt(4.0 / 3.0))          # deviations -4/3, 2/3, 2/3; ddof 1
+    total = np.zeros(1)
+    squares = np.zeros(1)
+    for v in values.values():
+        total += v
+        squares += v * v
+    shortcut = np.float32(np.sqrt((squares - 3 * (total / 3) ** 2) / 2)[0])
+    assert shortcut != expected                        # the fixture does separate the two
+    stub_by_seed(monkeypatch, values)
+    out = infer_many(monkeypatch, files["sup"], trio, tmp_path / "o.h5")
+    with h5py.File(out) as f:
+        assert np.all(f["between_run_std_fixed_input"][()] == expected)
+        assert np.all(f["ensemble_mean_estimate"][()] == np.float32(65431144.0 / 3.0))
+
+
+def test_a_checkpoint_changed_after_the_check_is_refused(monkeypatch, capsys, tmp_path, files,
+                                                         ckpts):
+    """Each member is loaded again to be applied; a file that no longer holds the checked
+    model stops the run."""
+    real = cli.load_checkpoint
+    loads = {}
+
+    def swapping(path, trust=False):
+        loads[str(path)] = loads.get(str(path), 0) + 1
+        if str(path) == str(ckpts["b"]) and loads[str(path)] == 2:
+            return real(ckpts["other_lr"], trust)
+        return real(path, trust)
+    monkeypatch.setattr(cli, "load_checkpoint", swapping)
+    err = refuse(monkeypatch, capsys, "infer", "-d", str(files["sup"]), "-o", str(tmp_path / "o.h5"),
+                 "--device", "cpu", "-m", str(ckpts["a"]), "-m", str(ckpts["b"]))
+    assert "changed after it was checked" in err and not (tmp_path / "o.h5").exists()
+    assert loads == {str(ckpts["a"]): 2, str(ckpts["b"]): 2}
+
+
 class Double(torch.nn.Module):
     def forward(self, z):
         return 2 * z
@@ -606,10 +648,12 @@ def test_the_file_holds_exactly_what_the_design_lists(monkeypatch, tmp_path, fil
         assert int(f.attrs["ensemble_k"]) == 2 and f.attrs["inference_device"] == "cpu"
         assert "denoised" not in f
         for name in ("denoised_members", "ensemble_mean_estimate", "between_run_std_fixed_input"):
+            assert set(f[name].attrs) == {"intensity_units", "acquisition_id"}
             assert f[name].attrs["intensity_units"] == "counts"
             assert f[name].attrs["acquisition_id"] == "acq-M"
             assert f[name].dtype == np.float32
-        assert "input_array_digest" in f["noisy"].attrs
+        assert set(f["noisy"].attrs) == {"intensity_units", "acquisition_id", "input_array_digest"}
+        assert set(f["members"].attrs) == set()
         for i, s in enumerate((5, 3)):
             g = f["members"][str(i)]
             assert set(g.attrs) == {"model_digest", "model_body_digest", "seed"}
@@ -641,6 +685,23 @@ def test_swapped_member_groups_are_detected(monkeypatch, tmp_path, files, ckpts)
         f["members"].move("tmp", "1")
     with h5py.File(out) as f:
         with pytest.raises(prov.MalformedProvenance, match="members_seeds says"):
+            ens.read_members(f)
+
+
+@pytest.mark.parametrize("change, match", [
+    (lambda f: f["members"]["0"].attrs.__setitem__("seed", 3.0), "seed attribute"),
+    (lambda f: f["members"]["0"].attrs.__setitem__("seed", True), "seed attribute"),
+    (lambda f: f["members"]["0"].attrs.__setitem__("seed", "3"), "seed attribute"),
+    (lambda f: f.attrs.__delitem__("members_seeds"), "needs the root attribute 'members_seeds'"),
+    (lambda f: f.attrs.__setitem__("members_seeds", np.array([3.0, 5.0])), "1-D integer array"),
+    (lambda f: f.attrs.__setitem__("ensemble_k", 3), "not the number of members_seeds"),
+])
+def test_ensemble_records_are_read_strictly(monkeypatch, tmp_path, files, ckpts, change, match):
+    out = infer_many(monkeypatch, files["sup"], [ckpts["a"], ckpts["b"]], tmp_path / "o.h5")
+    with h5py.File(out, "a") as f:
+        change(f)
+    with h5py.File(out) as f:
+        with pytest.raises(prov.MalformedProvenance, match=match):
             ens.read_members(f)
 
 
