@@ -301,7 +301,7 @@ Decided while implementing, after the independent review of the implementation:
   cause (a seeded and an unseeded member were refused as "reproducibility.tier differs"
   rather than by rule 4). Which sets of members are accepted is unchanged: two members that
   pass rules 3 and 4 always have equal tiers. Only the tier is excluded, so a key added to
-  `reproducibility` later is compared.
+  `reproducibility` later is compared. The owner confirmed this note on 2026-10-04.
 - (b) **The execution-variability note follows the devices** (owner's decision, 2026-10-04):
   it is written when a member was trained on a device other than the CPU or inference ran
   off the CPU. A tree that is not clean makes a CPU run Tier 2 but adds no execution
