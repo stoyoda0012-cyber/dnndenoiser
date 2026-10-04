@@ -1,7 +1,7 @@
 # Design: training several seeds, and combining their outputs
 
-**Status: adopted 2026-10-04 (revision 2, after two independent audits); not yet
-implemented.** Step 6, the last, of the improvement plan that follows a reproducibility
+**Status: adopted 2026-10-04 (revision 2, after two independent audits); implemented (see
+the CHANGELOG).** Step 6, the last, of the improvement plan that follows a reproducibility
 assessment of a published study. It adds a way to train one model per seed in one command,
 and a way to apply several such models to the same input and keep every output with an
 ensemble mean and a between-run spread. Under `AGENTS.md` §8 it is audited before code is

@@ -285,20 +285,7 @@ def _flags_passed(argv, known_options):
     return passed
 
 
-def cmd_train_moving_average(args, passed_flags):
-    """Self-supervised training from a frame stack, with no clean reference.
-
-    Each frame's target is the mean of its ``--window`` temporally nearest
-    *other* frames. Acceptance criteria:
-    ``docs/preregistration/P1-selfsupervised-moving-average.md``.
-    """
-    import numpy as np
-    import torch
-
-    from dnndenoiser.data.frame_stack import read_frame_stack
-    from dnndenoiser.training import selfsupervised as ss
-    from dnndenoiser.training.selfsupervised import TARGET_LENGTH, channel_targets, resample
-
+def _refuse_moving_average_flags(args, passed_flags):
     refused = [flag for flag in _MOVING_AVERAGE_FIXED if flag in passed_flags]
     if refused:
         flags = ', '.join(refused)
@@ -314,6 +301,23 @@ def cmd_train_moving_average(args, passed_flags):
     if args.window < 1:
         print(f"Error: --window must be at least 1, got {args.window}", file=sys.stderr)
         sys.exit(1)
+
+
+def cmd_train_moving_average(args, passed_flags):
+    """Self-supervised training from a frame stack, with no clean reference.
+
+    Each frame's target is the mean of its ``--window`` temporally nearest
+    *other* frames. Acceptance criteria:
+    ``docs/preregistration/P1-selfsupervised-moving-average.md``.
+    """
+    import numpy as np
+    import torch
+
+    from dnndenoiser.data.frame_stack import read_frame_stack
+    from dnndenoiser.training import selfsupervised as ss
+    from dnndenoiser.training.selfsupervised import TARGET_LENGTH, channel_targets, resample
+
+    _refuse_moving_average_flags(args, passed_flags)
 
     print("\nLoading frame stack...")
     try:
@@ -418,6 +422,13 @@ def cmd_train_moving_average(args, passed_flags):
     return 0
 
 
+def _passed_flags(args):
+    """The options given, as a single run records them: a batch member's are set by the
+    batch (``--seed`` in place of ``--seeds``), so its manifest is that of the single run."""
+    flags = getattr(args, "_flags", None)
+    return flags if flags is not None else _flags_passed(sys.argv[1:], args._train_options)
+
+
 def _seal_checkpoint(checkpoint, args, device, training_data, *, targets, effective,
                      seeds, preprocessing, epochs, final_loss):
     """Write the provenance manifest and model_digest into a checkpoint about to be
@@ -425,7 +436,7 @@ def _seal_checkpoint(checkpoint, args, device, training_data, *, targets, effect
     from dnndenoiser import provenance as prov
     try:
         manifest = prov.build_manifest(
-            args=args, flags_passed=_flags_passed(sys.argv[1:], args._train_options),
+            args=args, flags_passed=_passed_flags(args),
             device=device, training_data=training_data, targets=targets,
             effective=effective, seeds=seeds, preprocessing=preprocessing,
             epochs=epochs, final_loss=final_loss,
@@ -434,6 +445,128 @@ def _seal_checkpoint(checkpoint, args, device, training_data, *, targets, effect
     except prov.MalformedProvenance as exc:
         print(f"Error: cannot record the provenance manifest: {exc}", file=sys.stderr)
         sys.exit(1)
+
+
+def _noise2noise_pair_level(args):
+    """``--noise-level`` checked and converted for noise2noise, or refused."""
+    import numpy as np
+    from dnndenoiser.training.methods import POISSON_NOISE_FLOOR
+
+    if args.noise_level is None:
+        print("Error: --method noise2noise needs --noise-level. The synthesized "
+              "target has to sit in the same noise regime as the input, and the "
+              "data file does not record how it was generated — pass the value "
+              "used for 'generate --poisson-level'.", file=sys.stderr)
+        sys.exit(1)
+    if not np.isfinite(args.noise_level) or args.noise_level <= 0:
+        print(f"Error: --noise-level must be a finite positive number, "
+              f"got {args.noise_level}", file=sys.stderr)
+        sys.exit(1)
+    pair_level = poisson_level_to_pair_level(args.noise_level)
+    if pair_level <= POISSON_NOISE_FLOOR:
+        floor = float(np.sqrt(POISSON_NOISE_FLOOR * 10000.0))
+        print(f"Error: --noise-level must be greater than {floor:g}; below that no "
+              f"noise is added at all and the target would be the clean spectrum, "
+              f"which is noise2clean training under another name", file=sys.stderr)
+        sys.exit(1)
+    return pair_level
+
+
+def _train_member(args):
+    """One member of a seed batch: exactly the single run of ``train --seed args.seed``.
+    A seam: tests replace it to observe or stop the batch."""
+    return cmd_train(args)
+
+
+def _preflight_batch(args, flags):
+    """Everything of a batch that does not depend on the seed, checked before the first
+    member trains (docs/design/MULTI_SEED.md §2)."""
+    import h5py
+    from dnndenoiser import provenance as prov
+
+    try:
+        prov.arguments_record(args)
+    except prov.MalformedProvenance as exc:
+        print(f"Error: cannot record the provenance manifest: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if args.method == 'moving-average':
+        from dnndenoiser.data.frame_stack import read_frame_stack
+        _refuse_moving_average_flags(args, flags)
+        try:
+            read_frame_stack(args.data)
+        except (KeyError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        input_name = 'frames'
+    else:
+        with h5py.File(args.data, 'r') as f:
+            has_noisy, has_clean = 'noisy' in f, 'clean' in f
+        if not has_noisy:
+            print(f"Error: {args.data} has no 'noisy' dataset", file=sys.stderr)
+            sys.exit(1)
+        if args.method == 'noise2noise':
+            _noise2noise_pair_level(args)
+        if not has_clean:
+            print(f"Error: {args.method} requires clean data but none found in {args.data}",
+                  file=sys.stderr)
+            sys.exit(1)
+        input_name = 'noisy'
+    try:
+        prov.training_data_record(args.data, input_name)
+    except prov.MalformedProvenance as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _train_seed_batch(args):
+    """``train --seeds``: one ordinary checkpoint per seed, each the single run of its seed
+    (docs/design/MULTI_SEED.md §2)."""
+    import copy
+
+    def fail(message):
+        print(f"Error: {message}", file=sys.stderr)
+        sys.exit(1)
+
+    seeds = list(args.seeds)
+    if len(seeds) < 2:
+        fail("--seeds needs at least two seeds; for one, use --seed")
+    if len(set(seeds)) != len(seeds):
+        fail(f"--seeds has a repeated seed ({seeds}); a repeated seed is a duplicate model")
+    if any(s < 0 for s in seeds):
+        fail(f"--seeds must be non-negative integers, got {seeds}")
+    output = Path(args.output)
+    if output.suffix != '.pt':
+        fail(f"-o {args.output} must end in .pt; member s is written to "
+             "<name>.seed<s>.pt beside it")
+    paths = {s: output.with_name(f"{output.stem}.seed{s}.pt") for s in seeds}
+    existing = [str(p) for p in paths.values() if p.exists()]
+    if existing:
+        fail(f"member file(s) already exist: {', '.join(existing)}; nothing was trained")
+    flags = (_flags_passed(sys.argv[1:], args._train_options) - {'--seeds'}) | {'--seed'}
+    _preflight_batch(args, flags)
+    device = _resolve_device(args.device)
+    print(f"=== Seed batch: {len(seeds)} members, seeds {seeds}, one after another ===")
+    print(f"  Cost: {len(seeds)} trainings. Do not change the checkout while it runs: each "
+          "member records the code when it is saved.")
+    if device != 'cpu':
+        print(f"  Device {device}: every member is Tier 2 (QUICK_START, reproducibility).")
+
+    written = []
+    for s in seeds:
+        member = copy.copy(args)
+        member.seed, member.seeds, member.output, member._flags = s, None, str(paths[s]), flags
+        print(f"\n=== Member seed {s} -> {paths[s]} ===")
+        try:
+            _train_member(member)
+        except SystemExit as exc:
+            if exc.code not in (0, None):
+                done = ', '.join(written) if written else 'none'
+                fail(f"the member with seed {s} failed; the batch stopped. Members written: "
+                     f"{done}")
+            raise
+        written.append(str(paths[s]))
+    print(f"\nBatch done: {len(written)} members: {', '.join(written)}")
+    return 0
 
 
 def cmd_train(args):
@@ -451,20 +584,20 @@ def cmd_train(args):
         # Zero epochs used to crash after "training", with no loss to save.
         print(f"Error: --epochs must be at least 1, got {args.epochs}", file=sys.stderr)
         sys.exit(1)
+    if getattr(args, 'seeds', None) is not None:
+        return _train_seed_batch(args)
     if args.method == 'moving-average':
         # A different data layout and fixed hyperparameters: routed to its own
         # command rather than threaded through the generic loop, so the knobs
         # that do not apply cannot silently apply.
-        return cmd_train_moving_average(
-            args, _flags_passed(sys.argv[1:], args._train_options)
-        )
+        return cmd_train_moving_average(args, _passed_flags(args))
 
     import torch
     import numpy as np
     import h5py
     from dnndenoiser.models.network import DenoisingNetwork
     from dnndenoiser.training.methods import (
-        POISSON_NOISE_FLOOR, TrainingMethodType, create_training_method,
+        TrainingMethodType, create_training_method,
     )
 
     print("=== Model Training ===")
@@ -549,23 +682,7 @@ def cmd_train(args):
         # The level is stated rather than inferred: the target realization has to
         # sit in the same noise regime as the input, and the data file does not
         # record how it was generated.
-        if args.noise_level is None:
-            print("Error: --method noise2noise needs --noise-level. The synthesized "
-                  "target has to sit in the same noise regime as the input, and the "
-                  "data file does not record how it was generated — pass the value "
-                  "used for 'generate --poisson-level'.", file=sys.stderr)
-            sys.exit(1)
-        if not np.isfinite(args.noise_level) or args.noise_level <= 0:
-            print(f"Error: --noise-level must be a finite positive number, "
-                  f"got {args.noise_level}", file=sys.stderr)
-            sys.exit(1)
-        pair_level = poisson_level_to_pair_level(args.noise_level)
-        if pair_level <= POISSON_NOISE_FLOOR:
-            floor = float(np.sqrt(POISSON_NOISE_FLOOR * 10000.0))
-            print(f"Error: --noise-level must be greater than {floor:g}; below that no "
-                  f"noise is added at all and the target would be the clean spectrum, "
-                  f"which is noise2clean training under another name", file=sys.stderr)
-            sys.exit(1)
+        pair_level = _noise2noise_pair_level(args)
         if not np.isfinite(clean).all():
             print("Error: the clean spectra contain non-finite values, which cannot be "
                   "turned into Poisson rates", file=sys.stderr)
@@ -788,58 +905,17 @@ def _apply_model(model, flat, normalisation, device, batch_size):
     return out
 
 
-def cmd_infer(args):
-    """Run inference (denoising)."""
+def _read_infer_input(path, n_features):
+    """The input of ``infer`` as read, then resampled to the network length if it is not
+    already: the arrays, the attributes carried with them, and their declarations."""
     import numpy as np
     import h5py
-
-    print("=== Inference ===")
-    print(f"Data: {args.data}")
-    print(f"Model: {args.model}")
-
-    # Load model checkpoint
-    print("\nLoading model...")
-    checkpoint = load_checkpoint(args.model, trust=args.trust_checkpoint)
-
-    config = checkpoint_model_config(checkpoint, args.model)
-    arch = config['architecture']
-    n_features = config['num_features']
-
-    # The normalisation the model was trained under, if it recorded one. Without
-    # applying it the model is fed data on a scale it never saw, and its output
-    # is written in a space the file does not name -- wrong twice, silently.
-    normalisation = checkpoint.get('normalisation')
-
-    print(f"  Architecture: {arch}")
-    print(f"  Features: {n_features}")
-    if normalisation is not None:
-        print(f"  Normalisation: {normalisation.get('kind', 'unknown')}, "
-              f"min={normalisation['min']:.6g} max={normalisation['max']:.6g}")
-
-    device = _resolve_device(args.device)
-    print(f"Device: {device}")
-
-    model = _build_network(checkpoint, config, device)
-
-    # The manifest is carried only if it still describes these weights and this
-    # configuration; a checkpoint written before manifests has none.
-    from dnndenoiser import provenance as prov
-    try:
-        model_records = prov.verify_checkpoint(checkpoint, config)
-    except prov.MalformedProvenance as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
-    if model_records is None:
-        print("  Provenance: none (a checkpoint written before manifests)")
-    else:
-        print(f"  Provenance: verified, model_digest "
-              f"{model_records['model_digest']['sha256'][:16]}...")
-
-    # Load data
     from types import SimpleNamespace
+    from dnndenoiser import provenance as prov
     from dnndenoiser import reference as ref
+
     print("\nLoading data...")
-    with h5py.File(args.data, 'r') as f:
+    with h5py.File(path, 'r') as f:
         if 'noisy' in f:
             input_name = 'noisy'
         elif 'frames' in f:
@@ -858,7 +934,7 @@ def cmd_infer(args):
             carried = {k: f[input_name].attrs[k] for k in (ref.UNITS_ATTR, ref.ACQUISITION_ATTR)
                        if k in f[input_name].attrs}
         else:
-            print(f"Error: {args.data} has neither a 'noisy' dataset nor a frame stack's "
+            print(f"Error: {path} has neither a 'noisy' dataset nor a frame stack's "
                   "'frames'", file=sys.stderr)
             sys.exit(1)
         energy = f['energy'][:]
@@ -925,8 +1001,101 @@ def cmd_infer(args):
         grid_dtype = energy.dtype if np.issubdtype(energy.dtype, np.floating) else np.float64
         energy = np.linspace(float(energy[0]), float(energy[-1]), n_features).astype(grid_dtype)
 
+    print(f"  Input shape: {noisy.shape}")
+    return SimpleNamespace(
+        noisy=noisy, input_array_digest=input_array_digest, carried=carried, energy=energy,
+        clean=clean, clean_attrs=clean_attrs, signal_identity=signal_identity, angles=angles,
+        angle_attrs=angle_attrs, times=times, frame_index=frame_index, order_basis=order_basis,
+        lineage_record=lineage_record)
+
+
+def _write_infer_input(f, inp, outputs):
+    """The input, its coordinates and declarations, as every ``infer`` output holds them;
+    the carried attributes go on ``noisy`` and on each dataset named in ``outputs``."""
+    from types import SimpleNamespace
+    from dnndenoiser import provenance as prov
+    from dnndenoiser import reference as ref
+    from dnndenoiser.data import frame_stack as fs
+
+    f.create_dataset('noisy', data=inp.noisy, dtype='float32')
+    # The inverse normalisation returns the input's units, so the output carries them.
+    for name in ('noisy', *outputs):
+        for key, value in inp.carried.items():
+            f[name].attrs[key] = value
+    f['noisy'].attrs[prov.INPUT_ARRAY_DIGEST] = prov.canonical(inp.input_array_digest)
+    # Coordinates keep their values and dtype; only a resampled energy axis changes.
+    f.create_dataset('energy', data=inp.energy)
+    if inp.clean is not None:
+        f.create_dataset('clean', data=inp.clean, dtype='float32')
+        ref.copy_declaration(SimpleNamespace(attrs=inp.clean_attrs), f['clean'],
+                             append=inp.lineage_record)
+        if inp.signal_identity is not None:
+            f['clean'].attrs[prov.SIGNAL_IDENTITY] = inp.signal_identity
+    if inp.angles is not None:
+        f.create_dataset('angles', data=inp.angles)
+        for key, value in inp.angle_attrs.items():
+            f['angles'].attrs[key] = value
+    if inp.times is not None:
+        f.create_dataset('times', data=inp.times)
+    if inp.frame_index is not None:
+        f.create_dataset('frame_index', data=inp.frame_index)
+        if inp.order_basis is not None:
+            f['frame_index'].attrs[fs.ORDER_BASIS] = inp.order_basis
+
+
+def cmd_infer(args):
+    """Run inference (denoising); with several ``-m``, an ensemble
+    (docs/design/MULTI_SEED.md §3)."""
+    if len(args.model) > 1:
+        return _infer_ensemble(args)
+    import h5py
+
+    model_path = args.model[0]
+    print("=== Inference ===")
+    print(f"Data: {args.data}")
+    print(f"Model: {model_path}")
+
+    # Load model checkpoint
+    print("\nLoading model...")
+    checkpoint = load_checkpoint(model_path, trust=args.trust_checkpoint)
+
+    config = checkpoint_model_config(checkpoint, model_path)
+    arch = config['architecture']
+    n_features = config['num_features']
+
+    # The normalisation the model was trained under, if it recorded one. Without
+    # applying it the model is fed data on a scale it never saw, and its output
+    # is written in a space the file does not name -- wrong twice, silently.
+    normalisation = checkpoint.get('normalisation')
+
+    print(f"  Architecture: {arch}")
+    print(f"  Features: {n_features}")
+    if normalisation is not None:
+        print(f"  Normalisation: {normalisation.get('kind', 'unknown')}, "
+              f"min={normalisation['min']:.6g} max={normalisation['max']:.6g}")
+
+    device = _resolve_device(args.device)
+    print(f"Device: {device}")
+
+    model = _build_network(checkpoint, config, device)
+
+    # The manifest is carried only if it still describes these weights and this
+    # configuration; a checkpoint written before manifests has none.
+    from dnndenoiser import provenance as prov
+    try:
+        model_records = prov.verify_checkpoint(checkpoint, config)
+    except prov.MalformedProvenance as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if model_records is None:
+        print("  Provenance: none (a checkpoint written before manifests)")
+    else:
+        print(f"  Provenance: verified, model_digest "
+              f"{model_records['model_digest']['sha256'][:16]}...")
+
+    inp = _read_infer_input(args.data, n_features)
+    noisy = inp.noisy
     original_shape = noisy.shape
-    print(f"  Input shape: {original_shape}")
 
     # Flatten if needed
     if noisy.ndim > 2:
@@ -958,12 +1127,7 @@ def cmd_infer(args):
 
     with h5py.File(output_path, 'w') as f:
         f.create_dataset('denoised', data=denoised, dtype='float32')
-        f.create_dataset('noisy', data=noisy.reshape(original_shape), dtype='float32')
-        # The inverse normalisation returns the input's units, so the output carries them.
-        for name in ('noisy', 'denoised'):
-            for key, value in carried.items():
-                f[name].attrs[key] = value
-        f['noisy'].attrs[prov.INPUT_ARRAY_DIGEST] = prov.canonical(input_array_digest)
+        _write_infer_input(f, inp, ('denoised',))
         if model_records is not None:
             # Exactly the canonical serialisation, as a dataset (no size limit).
             f.create_dataset(prov.OUTPUT_MANIFEST, data=model_records['manifest_text'],
@@ -972,26 +1136,96 @@ def cmd_infer(args):
                 model_records['model_digest'])
             f['denoised'].attrs[prov.OUTPUT_BODY_DIGEST] = prov.canonical(
                 model_records['body'])
-        # Coordinates keep their values and dtype; only a resampled energy axis changes.
-        f.create_dataset('energy', data=energy)
-        if clean is not None:
-            f.create_dataset('clean', data=clean, dtype='float32')
-            ref.copy_declaration(SimpleNamespace(attrs=clean_attrs), f['clean'],
-                                 append=lineage_record)
-            if signal_identity is not None:
-                f['clean'].attrs[prov.SIGNAL_IDENTITY] = signal_identity
-        if angles is not None:
-            f.create_dataset('angles', data=angles)
-            for key, value in angle_attrs.items():
-                f['angles'].attrs[key] = value
-        if times is not None:
-            f.create_dataset('times', data=times)
-        if frame_index is not None:
-            f.create_dataset('frame_index', data=frame_index)
-            if order_basis is not None:
-                f['frame_index'].attrs[fs.ORDER_BASIS] = order_basis
 
     print(f"Saved: {output_path}")
+    print("Done.")
+
+
+def _infer_ensemble(args):
+    """Several models that differ only in their seed, applied to one input: every member's
+    output, the ensemble mean estimate and the between-run spread
+    (docs/design/MULTI_SEED.md §3)."""
+    import numpy as np
+    import h5py
+    from dnndenoiser import ensemble as ens
+    from dnndenoiser import provenance as prov
+
+    def fail(message):
+        print(f"Error: {message}", file=sys.stderr)
+        sys.exit(1)
+
+    print("=== Inference: an ensemble of models that differ only in their seed ===")
+    print(f"Data: {args.data}")
+    for i, path in enumerate(args.model):
+        print(f"  Model {i}: {path}")
+
+    print("\nLoading models...")
+    members = []
+    for path in args.model:
+        checkpoint = load_checkpoint(path, trust=args.trust_checkpoint)
+        config = checkpoint_model_config(checkpoint, path)
+        try:
+            records = prov.verify_checkpoint(checkpoint, config)
+        except prov.MalformedProvenance as exc:
+            fail(f"{path}: {exc}")
+        if records is not None:
+            records = {**records, 'manifest': prov.checkpoint_records(checkpoint)[0]}
+        members.append((path, checkpoint, config, records))
+    try:
+        notes = prov.check_ensemble([(path, records) for path, _c, _g, records in members])
+    except prov.IncompatibleMembers as exc:
+        fail(f"these models cannot be combined ({exc})")
+    seeds = [records['manifest']['command']['seeds']['torch'] for *_r, records in members]
+    print(f"  {len(members)} members, seeds {seeds}")
+
+    device = _resolve_device(args.device)
+    print(f"Device: {device}")
+    if device != 'cpu' and ens.EXECUTION_NOTE not in notes:
+        notes.append(ens.EXECUTION_NOTE)
+
+    n_features = int(members[0][2]['num_features'])
+    inp = _read_infer_input(args.data, n_features)
+    shape = inp.noisy.shape
+    flat = inp.noisy.reshape(-1, shape[-1]) if inp.noisy.ndim > 2 else inp.noisy
+
+    print("\nRunning inference, one member at a time...")
+    outputs = []
+    for (path, checkpoint, config, _records), seed in zip(members, seeds):
+        normalisation = checkpoint.get('normalisation')
+        _check_normalisation(normalisation)
+        model = _build_network(checkpoint, config, device)
+        out = _apply_model(model, flat, normalisation, device, args.batch_size).reshape(shape)
+        del model
+        if not np.all(np.isfinite(out)):
+            fail(ens.non_finite_message(seed, path))
+        outputs.append(out.astype(np.float32))
+        print(f"  seed {seed}: done")
+    mean, spread = ens.combine(outputs)
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with h5py.File(output_path, 'w') as f:
+        f.create_dataset(ens.MEMBERS, data=np.stack(outputs), dtype='float32')
+        f.create_dataset(ens.MEAN, data=mean, dtype='float32')
+        f.create_dataset(ens.SPREAD, data=spread, dtype='float32')
+        _write_infer_input(f, inp, (ens.MEMBERS, ens.MEAN, ens.SPREAD))
+        group = f.create_group(ens.MEMBERS_GROUP)
+        for i, ((_p, _c, _g, records), seed) in enumerate(zip(members, seeds)):
+            g = group.create_group(str(i))
+            g.create_dataset(prov.OUTPUT_MANIFEST, data=records['manifest_text'],
+                             dtype=h5py.string_dtype('utf-8'))
+            g.attrs[prov.OUTPUT_DIGEST] = prov.canonical(records['model_digest'])
+            g.attrs[prov.OUTPUT_BODY_DIGEST] = prov.canonical(records['body'])
+            g.attrs['seed'] = int(seed)
+        f.attrs['ensemble_k'] = len(members)
+        f.attrs['members_seeds'] = np.asarray(seeds, dtype=np.int64)
+        f.attrs['inference_device'] = str(device)
+        f.attrs['ensemble_notes'] = ens.encode_notes(notes)
+
+    print(f"\nOutputs: {ens.MEMBERS} (every member), {ens.MEAN}, {ens.SPREAD}")
+    for sentence in ens.FIXED_SENTENCES + tuple(notes):
+        print(f"\nNote: {sentence}")
+    print(f"\nSaved: {output_path}")
     print("Done.")
 
 
@@ -1109,6 +1343,9 @@ def cmd_evaluate(args):
 
     with h5py.File(args.data, 'r') as f:
         if 'denoised' not in f:
+            from dnndenoiser import ensemble as ens
+            if ens.MEMBERS in f:
+                fail(ens.evaluate_message(args.data))
             fail("no 'denoised' dataset found in the input file")
         denoised = f['denoised'][:]
         noisy = f['noisy'][:]
@@ -1368,10 +1605,13 @@ def cmd_diagnose(args):
         print(f"Error: {message}", file=sys.stderr)
         sys.exit(1)
 
+    if len(args.model) > 1:
+        fail("diagnose takes one model; apply and diagnose each member of an ensemble alone")
+    model_path = args.model[0]
     print("=== Diagnostic: how the output depends on the input ===")
     print(f"Data: {args.data}")
-    print(f"Model: {args.model}")
-    for role, path in (("the input file", args.data), ("the model", args.model)):
+    print(f"Model: {model_path}")
+    for role, path in (("the input file", args.data), ("the model", model_path)):
         if _same_file(args.output, path):
             fail(f"-o {args.output} is {role}; diagnose never writes to its inputs")
     try:
@@ -1393,8 +1633,8 @@ def cmd_diagnose(args):
         fail(str(exc).strip("'\""))
     stored = stack.frames
 
-    checkpoint = load_checkpoint(args.model, trust=args.trust_checkpoint)
-    config = checkpoint_model_config(checkpoint, args.model)
+    checkpoint = load_checkpoint(model_path, trust=args.trust_checkpoint)
+    config = checkpoint_model_config(checkpoint, model_path)
     try:
         model_records = prov.verify_checkpoint(checkpoint, config)
     except prov.MalformedProvenance as exc:
@@ -1591,7 +1831,16 @@ Examples:
                                   'the data file does not record it. Ignored by noise2clean.')
     train_parser.add_argument('--epochs', type=int, default=30)
     train_parser.add_argument('--batch-size', type=int, default=32)
-    train_parser.add_argument('--seed', type=int, default=None,
+    seed_group = train_parser.add_mutually_exclusive_group()
+    seed_group.add_argument('--seeds', type=int, nargs='+', default=None, metavar='S',
+                            help='Train one model per seed, one after another, each '
+                                 'exactly the run of --seed S, written to '
+                                 '<name>.seed<S>.pt beside -o (which must end in .pt). '
+                                 'At least two seeds; K seeds cost K trainings. What a seed '
+                                 'varies depends on the method (QUICK_START). Several '
+                                 'seeds show variation between runs; they are not evidence '
+                                 'that a conclusion is settled')
+    seed_group.add_argument('--seed', type=int, default=None,
                              help='Seed passed to torch before the model is built, for '
                                   'every method; it also seeds the batch order and, for '
                                   'noise2noise, the synthesized targets. Construction '
@@ -1628,7 +1877,11 @@ Examples:
     # === infer ===
     infer_parser = subparsers.add_parser('infer', help='Run inference (denoising)')
     infer_parser.add_argument('-d', '--data', required=True, help='Input data HDF5')
-    infer_parser.add_argument('-m', '--model', required=True, help='Model file (.pt)')
+    infer_parser.add_argument('-m', '--model', required=True, action='append',
+                              help='Model file (.pt). Repeat it to combine models that '
+                                   'differ only in their seed: every output is kept, with '
+                                   'an ensemble mean estimate and the spread between runs '
+                                   '(QUICK_START)')
     infer_parser.add_argument('-o', '--output', required=True, help='Output HDF5')
     infer_parser.add_argument('--batch-size', type=int, default=256)
     infer_parser.add_argument('--device', default='auto', choices=['auto', 'cpu', 'cuda', 'mps'])
@@ -1679,7 +1932,8 @@ Examples:
         'diagnose', help='Describe how the output depends on the input, on a frame stack '
                          '(not an accuracy, noise reduction or SNR)')
     diag_parser.add_argument('-d', '--data', required=True, help='Frame stack HDF5')
-    diag_parser.add_argument('-m', '--model', required=True, help='Model file (.pt)')
+    diag_parser.add_argument('-m', '--model', required=True, action='append',
+                             help='Model file (.pt); one model')
     diag_parser.add_argument('-o', '--output', required=True, help='Output JSON report')
     diag_parser.add_argument('--probe', action='append', metavar='E0:FWHM:k',
                              help='A Gaussian probe: position and FWHM in energy units, '

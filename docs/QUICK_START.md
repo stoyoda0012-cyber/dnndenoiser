@@ -390,6 +390,57 @@ manifests can show that two runs were *not* comparable, never that they were. `e
 reports `torch_threads` and the tier under `evaluation_context.model`. Checkpoints store
 their weights on the CPU whatever device trained them.
 
+### Several seeds, and combining their outputs
+
+```bash
+dnndenoiser train -d train.h5 -o model.pt --device cpu --seeds 0 1 2
+dnndenoiser infer -d test.h5 -m model.seed0.pt -m model.seed1.pt -m model.seed2.pt -o ens.h5
+```
+
+`--seeds` (at least two, instead of `--seed`) trains one model per seed, one after another,
+and writes `model.seed0.pt`, `model.seed1.pt`, … beside `-o`, which must end in `.pt`; an
+existing member file is refused before anything trains. Each member is exactly the run of
+`train --seed s`, with the same manifest (only the creation time differs). K seeds cost K
+trainings. Do not change the checkout while a batch runs: each member records the code when it
+is saved, and members recorded with different code cannot be combined. `0 1 2` is a cheap
+exploratory start, not evidence that a conclusion is settled; a comparison between conditions
+needs its seed set fixed before it is run, and is made paired by seed, downstream.
+
+What a seed varies depends on the method: weight initialisation, batch order and dropout
+masks (ResNet-FCNN, ResNet-1DCNN, Transformer, and moving-average's fixed ResNet-FCNN) for
+every method, and for noise2noise also the synthesised training target (drawn from a
+generator seeded `s + 1000`). moving-average's targets come from the frames and do not depend
+on the seed.
+
+`infer` with several `-m` combines models only if they differ in nothing but the seed: each
+must carry a verified version-3 manifest, and the manifests must be equal except the creation
+time, the seed, the options as typed (`--device` and `--threads` as typed; their resolved
+values are compared), the final loss and its status. Seeds must be distinct integers and the
+models distinct. Each model is applied as `infer` applies one model. The output has no
+`denoised`; it holds:
+
+- `denoised_members` — every member's output, in the order given (shape `(K, …)`);
+- `ensemble_mean_estimate` — their mean: a model estimate like any member's output. It can hide
+  one member's failure, and it is not shown to be closer to the signal than any member;
+- `between_run_std_fixed_input` — how much these runs differ on this input (standard
+  deviation over members, ddof 1). **It is not a measurement uncertainty, a confidence
+  interval or a bound on the difference from the signal**, and it is not divided by √K. It does
+  not reflect a bias the models share — they can agree closely and all be wrong, inside or
+  outside the training distribution — and it includes no variation from other training data
+  or acquisitions. With K of 2 or 3 it is itself a poor estimate. No single-number summary of
+  it is written;
+- `members/<i>`: each member's manifest and digests, which verify as a single output's do;
+  root attributes `ensemble_k`, `members_seeds`, `inference_device` and `ensemble_notes`.
+
+Notes are added when the members' code had uncommitted changes or is known only by its version
+string, when a member recorded a non-finite final loss (it is kept and named, not dropped),
+and when the spread includes execution variability (inference off the CPU, or members trained
+on MPS or CUDA). A member whose output is non-finite stops the run and nothing is written; if
+you then combine the others, report the excluded member with the result. `evaluate` refuses an
+ensemble file: evaluate each member's own `infer` output and compare members paired by seed.
+Design and two independent audits:
+[docs/design/MULTI_SEED.md](design/MULTI_SEED.md).
+
 ## Python API (minimal example)
 
 ```python

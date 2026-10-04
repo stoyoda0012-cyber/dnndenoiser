@@ -155,7 +155,9 @@ not transfer to measured data.
   discrepancies and says they are not errors against the signal; there is no
   reference-free SNR for measured spectra. `dnndenoiser diagnose` describes, on a frame
   stack, how far the output follows a change added to its input; it is not an accuracy
-  measure either.
+  measure either. Models trained with several seeds (`train --seeds`) and combined by
+  `infer` show how much runs differ on one input; that spread is not an uncertainty of the
+  spectrum.
 - **Spectrum-wise processing.** Angle-/time-resolved arrays are generated and
   handled, but denoising flattens all non-energy axes and processes each 1-D
   spectrum independently — this is not a joint 3-D/4-D model. A frame stack with angle

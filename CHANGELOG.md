@@ -43,6 +43,18 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   recognised as a subset; the same seed with another noise level is recognised as the
   same signals; its noise comes from the same random stream and is not independent of
   the training noise (another `--seed` gives held-out synthetic data).
+- **Several seeds, and combining their outputs.** `train --seeds 0 1 2` trains one model per
+  seed, one after another, into `<name>.seed<s>.pt`; each member is exactly the run of
+  `train --seed s`, with the same manifest except its creation time (tested across
+  processes). `infer` takes `-m` repeatedly: models that differ only in their seed (every
+  manifest field equal except a fixed list: creation time, seed, options as typed, final loss
+  and status) are each applied as one model is, and the output keeps every member's output
+  with an `ensemble_mean_estimate` and a `between_run_std_fixed_input` (ddof 1), each member's
+  verified records, and notes; it has no `denoised`, and `evaluate` refuses it with the
+  per-member command. The spread is not a measurement uncertainty, a confidence interval or a
+  bound on the difference from the signal, and several seeds are not evidence that a
+  conclusion is settled. `--see` no longer abbreviates `--seed`; `diagnose` still takes one
+  `-m`. Design and two independent audits: `docs/design/MULTI_SEED.md`.
 - **`dnndenoiser diagnose`: how the output depends on the input.** On a frame stack and
   a model, applied as `infer` applies it, it reports per channel the contraction ratio
   (frame-to-frame variation of the output over that of the input), and for Gaussian probes
