@@ -182,12 +182,15 @@ not transfer to measured data.
 
 DNNDenoiser is the **generic XPS denoiser, standalone**. It contains no
 depth-profiling or peak-fitting code. The AR-XPS/HAXPES application and the
-published-paper reproductions were carved out into a sibling repo.
+published-paper reproductions were carved out into a sibling repo,
+[depthprofiler](https://github.com/stoyoda0012-cyber/depthprofiler)
+(package `deppro`, archived on Zenodo as
+[10.5281/zenodo.23877023](https://doi.org/10.5281/zenodo.23877023)).
 
 | Repo | Role | Depends on |
 |------|------|-----------|
 | **DNNDenoiser** (this) | Generic denoiser: networks, training (N2C/N2N), synthetic data | — (self-contained) |
-| A separate depth-profiling project | Classical depth-profiling solver; consumes denoised spectra | this package |
+| [depthprofiler](https://github.com/stoyoda0012-cyber/depthprofiler) (`deppro`) | Depth-profile reconstruction from AR-XPS/HAXPES intensities; consumes denoised spectra | this package (optional, for HAXPES frame denoising) |
 
 The import boundary above is what keeps that split honest: a consumer may
 depend on this package, and this package depends on no consumer.
