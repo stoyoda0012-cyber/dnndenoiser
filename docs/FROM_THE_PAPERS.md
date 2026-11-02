@@ -114,9 +114,21 @@ to discover it by trying. Per the SIA Data Availability Statement, these were
 - the trained network weights;
 - the raw single-frame HAXPES measurement data (~60 GB).
 
-They are available from the corresponding author on reasonable request. So
-**you cannot reproduce the papers' figures end to end from public artifacts
-alone**, and this repository does not change that. What you can do is train the
+They are available from the corresponding author on reasonable request.
+
+The first of these has since been published on its own: the depth inversion is
+`deppro`, released as v0.1.0 on 2026-11-02 in the
+[depthprofiler](https://github.com/stoyoda0012-cyber/depthprofiler) repository
+and archived on Zenodo
+([10.5281/zenodo.23877023](https://doi.org/10.5281/zenodo.23877023)). It is not
+part of the deposit. Its
+[`docs/REPRODUCTION_JVST_SIA.md`](https://github.com/stoyoda0012-cyber/depthprofiler/blob/main/docs/REPRODUCTION_JVST_SIA.md)
+says figure by figure what can be recomputed from public material: a check of
+the deposit's stored results, not a re-run from the raw frames.
+
+The weights and the raw data are still unpublished. So **you cannot reproduce
+the papers' figures end to end from public artifacts alone**, and neither this
+repository nor `deppro` changes that. What you can do is train the
 same method on your own measurements.
 
 The paper also states that those weights load unmodified into the released
