@@ -48,6 +48,11 @@ dnndenoiser = "dnndenoiser.cli:main"
 where = ["src"]
 include = ["dnndenoiser*"]
 
+# The AI-agent user guide is read from the installed package (`python -m
+# dnndenoiser.guides`), so the wheel must carry it.
+[tool.setuptools.package-data]
+"dnndenoiser.guides" = ["*.md"]
+
 # The lock (`uv.lock`) pins the environment benchmark records are made in -- not what
 # users get: `pip install dnndenoiser` reads only [project].dependencies, which are
 # lower bounds, and never sees this table. The versions match the `environment` of the

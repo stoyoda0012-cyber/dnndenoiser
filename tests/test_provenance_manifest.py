@@ -10,6 +10,7 @@ from __future__ import annotations
 import getpass
 import hashlib
 import json
+import shutil
 import socket
 import subprocess
 from pathlib import Path
@@ -25,6 +26,10 @@ from dnndenoiser.cli import build_parser
 from dnndenoiser.data.frame_stack import write_frame_stack
 from tests.test_evaluate_alignment import _array, _digest, _json
 from tests.test_evaluate_reference import TRUTH, arrays, evaluate, refuse, run, write
+
+#: The commit records are read with git, and these tests build repositories with it. A
+#: user who downloaded the source as an archive may not have git at all.
+needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -235,6 +240,7 @@ def test_no_run_produced_value_names_a_path_a_host_or_a_user(trained, tmp_path):
     assert str(data) in leaks(planted, needles)
 
 
+@needs_git
 def test_the_commit_is_recorded_for_this_checkout_only(tmp_path):
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, encoding="utf-8")
     if head.returncode != 0:
@@ -746,6 +752,7 @@ def make_checkout(root, track=True):
     return pkg
 
 
+@needs_git
 def test_tree_clean_follows_tracked_changes_and_untracked_package_files(tmp_path):
     pkg = make_checkout(tmp_path / "co")
     root = tmp_path / "co"
@@ -763,6 +770,7 @@ def test_tree_clean_follows_tracked_changes_and_untracked_package_files(tmp_path
     assert prov.code_record(pkg)["tree_clean"] is False          # staged only
 
 
+@needs_git
 def test_an_untracked_package_in_a_checkout_has_no_commit(tmp_path):
     pkg = make_checkout(tmp_path / "co", track=False)
     assert prov.code_record(pkg) == {"commit": "unknown", "tree_clean": "unknown"}

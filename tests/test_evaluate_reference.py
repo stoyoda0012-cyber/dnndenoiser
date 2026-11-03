@@ -655,7 +655,10 @@ def test_evaluate_never_writes_to_its_input(monkeypatch, capsys, tmp_path, alias
     target = {"same": path, "dot-path": tmp_path / "." / "in.h5",
               "symlink": tmp_path / "link.h5", "hardlink": tmp_path / "hard.h5"}[alias]
     if alias == "symlink":
-        target.symlink_to(path)
+        try:
+            target.symlink_to(path)
+        except OSError as e:    # Windows without Developer Mode or the privilege
+            pytest.skip(f"cannot create a symbolic link here: {e}")
     elif alias == "hardlink":
         import os
         os.link(path, target)

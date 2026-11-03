@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -406,6 +407,8 @@ def test_provenance_lets_a_quick_run_proceed_and_says_the_tree_was_dirty(P, monk
     assert record["working_tree_changes_if_dirty"] == ["?? scratch.txt"]
 
 
+@pytest.mark.skipif(shutil.which("git") is None or not (REPO_ROOT / ".git").exists(),
+                    reason="the measurement reads its provenance from git: needs git and a checkout")
 def test_provenance_carries_no_developer_specific_path(P):
     """Against the real repository. The interpreter's location in particular is an
     absolute path and must not appear; only whether it is a virtual environment."""

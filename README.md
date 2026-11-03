@@ -41,6 +41,17 @@ dnndenoiser --help
 Requires Python 3.10+. From a source checkout without installing, use
 `PYTHONPATH=src python3 -m dnndenoiser.cli`.
 
+**With uv**, do not use `uv sync` or a bare `uv run`: the repository's `uv.lock`
+pins the environment the benchmark records are made in (macOS on Apple Silicon,
+Python 3.12) and is refused on any other platform or Python version. Install from the project
+metadata instead:
+
+```bash
+uv venv
+uv pip install -e .
+uv run --no-sync dnndenoiser --help    # or activate .venv and run `dnndenoiser`
+```
+
 ## Quick Start
 
 ```bash
@@ -75,9 +86,10 @@ example.
 
 Training and inference run on CPU, NVIDIA CUDA, and Apple Silicon (MPS);
 the device is auto-detected, or select one with `--device {cpu,cuda,mps}`.
-`pip install torch` ships CUDA support on Linux/Windows out of the box for
-most GPUs; for recent architectures you may need the matching CUDA wheel
-index, e.g. for Blackwell (sm_120):
+On Linux, `pip install torch` from PyPI ships CUDA support for most GPUs. On
+**Windows, PyPI's torch is CPU-only** (`torch.__version__` ends in `+cpu`): install
+torch from the CUDA wheel index first, before `pip install -e .`. Recent
+architectures need a recent index on Linux too, e.g. for Blackwell (sm_120):
 
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cu128
@@ -232,6 +244,15 @@ If you arrived from the JVST A or Surface and Interface Analysis paper,
 lives where, how to get your frames into the layout the self-supervised method
 trains from, why evaluating it on measured data is the hard part, and what the
 papers did **not** deposit — so you do not discover that by trying.
+
+If an AI agent will do the analysis, give it the guide that ships with the
+installed version — what to check before denoising, what to do when the training
+distribution or a reference is unknown, and what each command's numbers do and do
+not mean:
+
+```bash
+python -m dnndenoiser.guides
+```
 
 ## Citation
 

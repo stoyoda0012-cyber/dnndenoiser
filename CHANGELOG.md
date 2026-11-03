@@ -10,6 +10,14 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **An AI-agent user guide shipped with the package** (`dnndenoiser.guides.read_guide()`,
+  `python -m dnndenoiser.guides`): what to check before denoising (the training
+  distribution, noise correlated along energy, frame order, intensity scale), what to do
+  when the training distribution or a reference is unknown, and what the numbers of
+  `evaluate`, `diagnose` and a multi-seed `infer` do and do not mean. It quotes no
+  measured result. Written for v0.2.0 and linked to that tag; a starting point to copy
+  and adapt. `python -m dnndenoiser.guides` writes UTF-8 whatever the console encoding.
+
 - **A trained model records how it was made.** `train` writes a provenance manifest
   into the checkpoint: a content digest of the training data and the identifiers it
   carries (`acquisition_id`, `frame_index`), what the targets were made from, every
@@ -167,6 +175,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **The test suite runs from a source archive and on Windows without extra privileges.**
+  The tests that build git repositories or read this checkout's commit are skipped when
+  git is not installed (or, for the position-shift measurement, when the tree is not a
+  checkout), instead of failing with `FileNotFoundError`; the symbolic-link case of
+  `test_evaluate_never_writes_to_its_input` is skipped where a link cannot be created
+  (Windows without Developer Mode). Reported from a Windows 11 run of the zip download.
+
 - **QUICK_START's recipe for several channels in one stack mixed channels.** It said a
   stride larger than any channel's number of frames was enough; the first frame of a
   channel is then only a few indices from the last frame of the previous one, and takes
@@ -215,6 +230,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   a call without an encoding fails there.
 
 ### Documentation
+
+- **README: installing with uv, and CUDA on Windows.** `uv sync` and a bare `uv run`
+  are refused off macOS/arm64 because `uv.lock` pins the benchmark environment; the
+  README now gives `uv venv` / `uv pip install -e .` / `uv run --no-sync`. It also no
+  longer says PyPI's torch has CUDA on Windows: there it is CPU-only, and the CUDA wheel
+  index is needed.
 
 - **QUICK_START says how to train one model on several channels of one stack** —
   the emission-angle channels of an angle-resolved measurement, for example — by
