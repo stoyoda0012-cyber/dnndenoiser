@@ -29,7 +29,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   versions, the device, and the commit of this package's own checkout (or `"unknown"`).
   A `model_digest` binds it to the weights, the normalisation and the configuration.
   `infer` refuses a checkpoint whose digest no longer matches, carries the manifest into
-  its output, and records a digest of its input as read; `evaluate` checks that the
+  its output (dataset `model_provenance`; attributes `model_digest` and
+  `model_body_digest` on `denoised`), and records a digest of its input as read
+  (`input_array_digest` on `noisy`); `evaluate` checks that the
   carried records belong together and reports the model's identity under
   `evaluation_context.model` (it was always `"unknown"`). A record that is present is
   valid or refused, never read as absent; checkpoints written before this version have
@@ -59,8 +61,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   processes). `infer` takes `-m` repeatedly: models that differ only in their seed (every
   manifest field equal except a fixed list: creation time, seed, options as typed, final loss
   and status) are each applied as one model is, and the output keeps every member's output
-  with an `ensemble_mean_estimate` and a `between_run_std_fixed_input` (ddof 1), each member's
-  verified records, and notes; it has no `denoised`, and `evaluate` refuses it with the
+  (`denoised_members`) with an `ensemble_mean_estimate` and a `between_run_std_fixed_input`
+  (ddof 1), each member's verified records (group `members`), and notes (root attributes
+  `ensemble_k`, `members_seeds`, `inference_device`, `ensemble_notes`); it has no `denoised`, and `evaluate` refuses it with the
   per-member command. The spread is not a measurement uncertainty, a confidence interval or a
   bound on the difference from the signal, and several seeds are not evidence that a
   conclusion is settled. `--see` no longer abbreviates `--seed`; `diagnose` still takes one
@@ -71,7 +74,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   added to every frame the injection response (the output change projected on the probe,
   as a fraction of it; not clipped to [0, 1]) and the area ratio, as medians and
   `[q25, q75]` over frames, with the held-out status of the frames, the model's identity
-  and a digest of the frames as stored. None
+  and a digest of the frames as stored. `--probe E0:FWHM:k` (repeatable) replaces the
+  five default probes; `--device` defaults to `cpu` (on another device the two passes
+  may differ by device nondeterminism); `--batch-size` and `--trust-checkpoint` are as
+  for `infer`. None
   of these is an accuracy, a noise reduction or an SNR, and none is a collapse verdict.
   Tests with evaluation-level negative controls (identity, constant, a linear smoother, a
   shrink matched to its contraction, a mirror) show that a frame-mean reference gives the
@@ -101,21 +107,46 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   separated indices is deprecated. Design and two independent audits:
   `docs/design/FRAME_STACK_CHANNELS.md`.
 - **[`docs/WHEN_TO_TRUST.md`](docs/WHEN_TO_TRUST.md)** — what has been measured about
-  where a trained model stops being trustworthy, one question at a time. The first
-  answer is how far a shift in energy can be trusted, from the P2-A record: the
-  conditions, what to do, and what was not established. Every number on the page is
+  where a trained model stops being trustworthy, one question at a time. Two answers so
+  far: how far a shift in energy can be trusted (the P2-A record,
+  `benchmarks/boundaries/position_shift/`), and whether a self-supervised model trained
+  at one count rate can be used at another (the P2-B record,
+  `benchmarks/boundaries/snr_transfer/`): the conditions, what to do, and what was not
+  established. Every number on the page is
   anchored to the record or to its registered design; a test recomputes the record's
   and matches the design's, within limits the preregistration lists. The prose around
   the numbers is checked by review, not by the test.
 
 ### Changed
 
-- **Breaking: `infer` refuses a 3-D frame stack whose channel axis is not declared**
-  (no `angles`, malformed `angles`, no channels, a `times` dataset, or an `order_basis`
-  outside its vocabulary), and `train`
-  refuses an `angle_kind`, `angle_units` or `order_basis` attribute outside its
-  vocabulary. `infer` reads `noisy` files and 2-D stacks exactly as before. Checkpoints written from this version carry a version-2
-  manifest, which earlier versions refuse.
+- **Breaking for a user of v0.1.2**, in one place; the entries below give the details:
+  - `evaluate` refuses a file written before this version (its arrays carry no
+    `intensity_units`) until `--assert-alignment units` is given, together with either a
+    declaration (`--reference-origin synthetic_truth --generator … --units …`) or
+    `--legacy-output`.
+  - `evaluate`'s JSON keys are renamed (`n_samples` → `n_spectra`, `mse_input_mean` →
+    `mse_in_mean`, …; the table below), and `snr_*` keys appear only against a declared
+    synthetic truth.
+  - An evaluation of a model on its own training file reports `training_fit_*` keys, not
+    `snr_*`. The README Quick Start, which generates its test set with another seed, is
+    unaffected.
+  - `--clean` of another shape is refused instead of broadcast, and when the evaluated
+    file has its own reference, `--reference {file,external}` must say which one to use.
+  - `SyntheticGenerator.save_hdf5` requires the keyword arguments `reference_declaration`
+    and `intensity_units`.
+  - `train --seed` now takes effect for `noise2clean` and `noise2noise`, where it was
+    ignored; a seeded run of those methods gives different weights than v0.1.2 gave.
+- **`infer` reads a 3-D frame stack (new in this version) only with a declared channel
+  axis**: it refuses one with no `angles`, malformed `angles`, no channels, a `times`
+  dataset, or an `order_basis` outside its vocabulary, and `train` refuses an
+  `angle_kind`, `angle_units` or `order_basis` attribute outside its vocabulary. `infer`
+  reads `noisy` files and 2-D stacks exactly as before (v0.1.2 read no 3-D stack at all).
+  Checkpoints written from this version carry a `dnd-provenance-3` manifest; v0.1.2 does
+  not read the manifest and loads them, and checkpoints from v0.1.0–v0.1.2 load here as
+  before.
+- **`uv.lock` pins the benchmark environment** (macOS on Apple Silicon, Python 3.12;
+  `[tool.uv]` in `pyproject.toml`) and is refused elsewhere. `pip install` is unaffected;
+  with uv, use `uv venv` and `uv pip install -e .` (README).
 - **Breaking: an evaluation of a model on its own training rows is renamed.** When
   `held_out_status` is `not_held_out`, the dB keys carry the prefix `training_fit_`
   (`training_fit_snr_gain_mean`, …, `training_fit_agreement_db_change_std`), the printed
@@ -133,7 +164,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   reference. Files written before this
   version are undeclared and get no SNR by default; declare them with
   `--reference-origin synthetic_truth --generator … --units …`, or reproduce the old
-  output with `--legacy-output`. It runs the old arithmetic in the input's own dtype
+  output with `--legacy-output`; both need `--assert-alignment units` on such a file (see
+  the alignment entry). An estimate from other data is declared with
+  `--reference-declaration FILE` (a JSON origin object), with `--overlap`,
+  `--used-in-model-development` and `--signal-match` for what the declaration states;
+  when the evaluated file has its own reference and `--clean` names another,
+  `--reference {file,external}` chooses. `--legacy-output` runs the old arithmetic in the input's own dtype
   (float32 for files written by `generate`), so its values are exact on the same platform
   and NumPy version and can differ in the last bits elsewhere, where float32 summation
   differs between NumPy versions. The JSON output gains `evaluation_context`, refuses NaN and Infinity, and
@@ -146,6 +182,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   | `mse_reduction_mean` | `mean_relative_mse_change_per_spectrum_pct` | excludes spectra with zero input MSE, counted in `per_spectrum_excluded_zero_input_mse` |
   | — | `mse_difference`, `relative_mse_change_aggregate_pct` | new |
   | `n_samples` | `n_spectra` | |
+  | — | `zero_reference_power_count`, `floor_active_input_count`, `floor_active_output_count` | new: spectra left out for a zero reference power, and spectra whose residual power hit the floor |
   | `snr_*` | `snr_*` against a synthetic truth only; `agreement_db_*` against an estimate whose overlap with the evaluated data is not `overlap` (that includes `unknown`); none otherwise | |
 
   `--legacy-output` writes the old keys. `evaluate` also no longer ignores `--clean` when the input has its
