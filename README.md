@@ -262,6 +262,8 @@ Archived on Zenodo:
 
 - **All versions** (concept DOI; resolves to the latest):
   [10.5281/zenodo.22867628](https://doi.org/10.5281/zenodo.22867628)
+- **v0.2.0**:
+  [10.5281/zenodo.23922578](https://doi.org/10.5281/zenodo.23922578)
 - **v0.1.2**:
   [10.5281/zenodo.22885873](https://doi.org/10.5281/zenodo.22885873)
 - **v0.1.1**:
