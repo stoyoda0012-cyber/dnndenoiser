@@ -231,6 +231,12 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Documentation
 
+- **README: installing with uv, and CUDA on Windows.** `uv sync` and a bare `uv run`
+  are refused off macOS/arm64 because `uv.lock` pins the benchmark environment; the
+  README now gives `uv venv` / `uv pip install -e .` / `uv run --no-sync`. It also no
+  longer says PyPI's torch has CUDA on Windows: there it is CPU-only, and the CUDA wheel
+  index is needed.
+
 - **QUICK_START says how to train one model on several channels of one stack** —
   the emission-angle channels of an angle-resolved measurement, for example — by
   offsetting each channel's `frame_index`, and why numbering them one after another
