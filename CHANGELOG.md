@@ -8,6 +8,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-03
+
 ### Added
 
 - **An AI-agent user guide shipped with the package** (`dnndenoiser.guides.read_guide()`,
@@ -429,7 +431,8 @@ produces, and one of them changes it for a given seed.
   Noise2Noise rests on. The rate is floored at zero, matching the synthetic
   generator and the other training methods.
 
-[Unreleased]: https://github.com/stoyoda0012-cyber/dnndenoiser/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/stoyoda0012-cyber/dnndenoiser/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/stoyoda0012-cyber/dnndenoiser/releases/tag/v0.2.0
 [0.1.2]: https://github.com/stoyoda0012-cyber/dnndenoiser/releases/tag/v0.1.2
 [0.1.1]: https://github.com/stoyoda0012-cyber/dnndenoiser/releases/tag/v0.1.1
 [0.1.0]: https://github.com/stoyoda0012-cyber/dnndenoiser/releases/tag/v0.1.0
