@@ -175,6 +175,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **The test suite runs from a source archive and on Windows without extra privileges.**
+  The tests that build git repositories or read this checkout's commit are skipped when
+  git is not installed (or, for the position-shift measurement, when the tree is not a
+  checkout), instead of failing with `FileNotFoundError`; the symbolic-link case of
+  `test_evaluate_never_writes_to_its_input` is skipped where a link cannot be created
+  (Windows without Developer Mode). Reported from a Windows 11 run of the zip download.
+
 - **QUICK_START's recipe for several channels in one stack mixed channels.** It said a
   stride larger than any channel's number of frames was enough; the first frame of a
   channel is then only a few indices from the last frame of the previous one, and takes
