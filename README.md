@@ -233,6 +233,15 @@ lives where, how to get your frames into the layout the self-supervised method
 trains from, why evaluating it on measured data is the hard part, and what the
 papers did **not** deposit — so you do not discover that by trying.
 
+If an AI agent will do the analysis, give it the guide that ships with the
+installed version — what to check before denoising, what to do when the training
+distribution or a reference is unknown, and what each command's numbers do and do
+not mean:
+
+```bash
+python -m dnndenoiser.guides
+```
+
 ## Citation
 
 If you use this software, please cite it via [CITATION.cff](CITATION.cff).

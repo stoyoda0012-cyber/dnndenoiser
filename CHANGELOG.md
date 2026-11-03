@@ -10,6 +10,14 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- **An AI-agent user guide shipped with the package** (`dnndenoiser.guides.read_guide()`,
+  `python -m dnndenoiser.guides`): what to check before denoising (the training
+  distribution, noise correlated along energy, frame order, intensity scale), what to do
+  when the training distribution or a reference is unknown, and what the numbers of
+  `evaluate`, `diagnose` and a multi-seed `infer` do and do not mean. It quotes no
+  measured result. Written for v0.2.0 and linked to that tag; a starting point to copy
+  and adapt. `python -m dnndenoiser.guides` writes UTF-8 whatever the console encoding.
+
 - **A trained model records how it was made.** `train` writes a provenance manifest
   into the checkpoint: a content digest of the training data and the identifiers it
   carries (`acquisition_id`, `frame_index`), what the targets were made from, every
